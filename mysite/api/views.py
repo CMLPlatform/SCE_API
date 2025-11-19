@@ -41,8 +41,8 @@ class ProcessSearch(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 from rest_framework.viewsets import ModelViewSet
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainablityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
-from .serializers import InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, CriticalRawMaterialSerializer, ProductTypeSerializer, PackagingSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, ProductExchangeSerializer, EnvExchangeSerializer, BillOfMaterialsSerializer, PackagingInfoSerializer, ServiceEventSerializer, ServiceRecordSerializer, ReplacedComponentsSerializer, EndOfLifeSerializer, ImpactCategorySerializer, SustainablityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, OldCircularityIndicatorSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityEnablerSerializer
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from .serializers import InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, CriticalRawMaterialSerializer, ProductTypeSerializer, PackagingSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, ProductExchangeSerializer, EnvExchangeSerializer, BillOfMaterialsSerializer, PackagingInfoSerializer, ServiceEventSerializer, ServiceRecordSerializer, ReplacedComponentsSerializer, EndOfLifeSerializer, ImpactCategorySerializer, SustainabilityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, OldCircularityIndicatorSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityEnablerSerializer
 
 
 class InstitutionViewSet(ModelViewSet):
@@ -153,9 +153,9 @@ class ImpactCategoryViewSet(ModelViewSet):
     queryset = ImpactCategory.objects.all()
     serializer_class = ImpactCategorySerializer
 
-class SustainablityEvaluationViewSet(ModelViewSet):
-    queryset = SustainablityEvaluation.objects.all()
-    serializer_class = SustainablityEvaluationSerializer
+class SustainabilityEvaluationViewSet(ModelViewSet):
+    queryset = SustainabilityEvaluation.objects.all()
+    serializer_class = SustainabilityEvaluationSerializer
 
 class SustainabilityScoreViewSet(ModelViewSet):
     queryset = SustainabilityScore.objects.all()

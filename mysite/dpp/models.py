@@ -486,7 +486,7 @@ class ImpactCategory(models.Model):
     def __str__(self):
         return self.name
 
-class SustainablityEvaluation(models.Model):  # including metadata
+class SustainabilityEvaluation(models.Model):  # including metadata
     """
     A sustainability evaluation is defined by a scope definition,
     a functional unit (the final product of a production line), and its amount. 
@@ -524,11 +524,11 @@ class SustainablityEvaluation(models.Model):  # including metadata
 
 class SustainabilityScore(models.Model):
     """
-    The indicator results for one impact category in a SustainablityEvaluation,
+    The indicator results for one impact category in a SustainabilityEvaluation,
     plus contribution analysis data.
     """
     impact_category = models.ForeignKey(ImpactCategory, on_delete=models.CASCADE)
-    evaluation = models.ForeignKey(SustainablityEvaluation, on_delete=models.CASCADE)
+    evaluation = models.ForeignKey(SustainabilityEvaluation, on_delete=models.CASCADE)
     impact_value = models.FloatField()  # cradle-to-gate total (unit = impact_category.unit)
     upstream_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
     manufacturing_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)

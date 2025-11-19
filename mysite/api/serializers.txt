@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainablityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -161,9 +161,9 @@ class ImpactCategorySerializer(serializers.ModelSerializer):
         model = ImpactCategory
         fields = ['name', 'description', 'unit', 'is_environmental']
 
-class SustainablityEvaluationSerializer(serializers.ModelSerializer):
+class SustainabilityEvaluationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SustainablityEvaluation
+        model = SustainabilityEvaluation
         fields = ['product_line', 'functional_amount', 'system_boundaries', 'geographical_scope', 'temporal_scope', 'impact_assessment_method', 'software_used', 'allocation_method', 'assessment_date', 'assessed_by']
 
 class SustainabilityScoreSerializer(serializers.ModelSerializer):
