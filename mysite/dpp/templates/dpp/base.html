@@ -1,0 +1,143 @@
+{% load static %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DPP{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style type="text/css">
+        .sidenav {
+            height: 100%;
+            width: 150pt;
+            position: fixed;
+            z-index: 1;
+            top: 80px;
+            left: 0;
+            background-color: #666;
+            overflow-x: :hidden;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    {% if not is_popup %}
+    {% block header %}
+    <div id="header" style="background:#088488; color:white; padding:15px 20px; min-height:60px;">
+        <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+            <!-- Logo + Title -->
+            <div style="display:flex; align-items:center; gap:15px;">
+                <img src="{% static 'img/logo-white.png' %}" height="40" alt="Logo">
+                <a href="/" style="color:white; text-decoration:none; font-size:22px; font-weight:bold;">
+                    Lasers4MaaS Sustainability Cost Evaluation
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+    <!--
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-bold">Lasers4MaaS DPP Platform</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    -->
+
+    <!-- END Header -->
+    {% block nav-breadcrumbs %}
+      <nav aria-label="{% translate 'Breadcrumbs' %}">
+        {% block breadcrumbs %}
+        <div id="header" style="background:#173755; color:white; padding:5px 5px; min-height:20px;">
+            <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+                <!-- Breadcrumbs -->
+                <div class="breadcrumbs">
+                    <a href="{%url 'admin:index' %}">{% translate 'Home' %}</a>
+                    {% if title %} &rsaquo; {{ title }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endblock %}
+      </nav>
+    {% endblock %}
+    {% endif %}
+
+    <!--
+    <div class="sidenav">
+        <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}">Production lines</a>
+        <a href="{% url opts.app_label|add:':'|add:'producttype_list' %}">Products</a>
+        <a href="{% url opts.app_label|add:':'|add:'importer_list' %}">Importers</a>
+        <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}">Sustainability evaluations</a>
+    </div>
+    -->
+    <!-- sidebar -->
+    <div class="hidden md:flex flex-col w-64 bg-gray-800">
+        <div class="flex items-center justify-center h-16 bg-gray-900">
+            <span class="text-white font-bold uppercase">Sidebar</span>
+        </div>
+        <div class="flex flex-col flex-1 overflow-y-auto">
+            <nav class="flex-1 px-2 py-4 bg-gray-800">
+                <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}" class="flex items-center px-4 py-2 text-gray-100 hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    Production lines
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'producttype_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Products
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'importer_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Importers
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Sustainability evaluations
+                </a>
+                <a href="#" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Settings
+                </a>
+            </nav>
+        </div>
+    </div>
+
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {% block content %}{% endblock %}
+    </main>
+
+{% block footer %}
+    <div id="footer" style="text-align:center; padding:20px; color:#666; font-size:12px;">
+        CC-BY CML, Leiden University - 2025
+    </div>
+{% endblock %}
+
+</body>
+</html>

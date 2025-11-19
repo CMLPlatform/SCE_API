@@ -38,6 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_countries',
+    'crispy_forms',
+    'crispy_tailwind',
     'api',
     'dpp.apps.DppConfig',
     'rest_framework',
@@ -71,6 +73,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'mysite.wsgi.application'
+
+CRISPY_TEMPLATE_PACK = 'tailwind'
 
 
 # Database

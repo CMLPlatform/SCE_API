@@ -1,19 +1,58 @@
+{% extends "dpp/base.html" %}
+{% block title %}Lasers4MaaS DPP{% endblock %}
+
+{% block content %}
 <!doctype html>
 <html lang="en-US">
   <head>
     <meta charset="utf-8" />
     <title>Welcome to the Lasers4MaaS project.</title>
   </head>
-  <body>
-    {% if latest_lines %}
-        <p>Recently modified production lines:</p>
-        <ul>
-        {% for production_line in latest_lines %}
-            <li><a href="/dpp/{{ production_line.id }}/">{{ production_line.name }}</a></li>
-        {% endfor %}
-        </ul>
-    {% else %}
-        <p>No production lines created yet.</p>
-    {% endif %}
-  </body>
+  <div>
+    <h1>Welcome to the Lasers4MaaS DPP Platform</h1>
+    <body>
+      {% if latest_lines %}
+      <p>Recently modified production lines:</p>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Name
+                </th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Last Modified
+                </th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              {% for production_line in latest_lines %}
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <!-- Only the name is a link -->
+                  <a href="{% url 'dpp:productionline_detail' production_line.pk %}"
+                    class="text-indigo-600 hover:text-indigo-900 hover:underline">
+                    {{ production_line.name }}
+                  </a>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {{ production_line.modified_at|date:"d M Y" }}
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="2" class="px-6 py-4 text-center text-gray-500">
+                  No production lines created yet.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+          <p>No production lines created yet.</p>
+      {% endif %}
+    </body>
+  </div>
 </html>
+{% endblock %}
