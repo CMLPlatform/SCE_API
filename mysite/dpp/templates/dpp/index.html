@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Welcome to the Lasers4MaaS project.</title>
+  </head>
+  <body>
+    {% if latest_lines %}
+        <p>Recently modified production lines:</p>
+        <ul>
+        {% for production_line in latest_lines %}
+            <li><a href="/dpp/{{ production_line.id }}/">{{ production_line.name }}</a></li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No production lines created yet.</p>
+    {% endif %}
+  </body>
+</html>
