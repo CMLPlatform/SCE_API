@@ -29,7 +29,7 @@
                 <tr>
                     {% for field in opts.fields %}
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        {{ field.name|title }}
+                        {{ field.verbose_name|title }}
                     </th>
                     {% endfor %}
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -42,7 +42,7 @@
                 <tr class="hover:bg-gray-50">
                     {% for field in opts.fields %}
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {% with value=object|get_attr:field.name %}
+                        {% with value=object|get_attr:field.verbose_name %}
                             {% if field.get_internal_type == "TextField" %}
                                 {{ value|truncatewords:10 }}
                             {% else %}
