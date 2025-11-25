@@ -1,5 +1,8 @@
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.http import HttpResponseRedirect
+from django import forms
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import ProductionLine
 from api.serializers import ProductionLineSerializer
 
@@ -39,9 +42,25 @@ def production_line_edit(request, pk):
     line = ProductionLine.objects.get(pk=pk)
     return render(request, "production_line_edit.html", {"line": line})
 
+class ProductionLineDetailView(DetailView):
+    model = ProductionLine
+    template_name = 'production_line_detail.html'
+    # context_object_name = 'production_line'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Add associated processes to the context
+        context['processes'] = Process.objects.filter(
+            production_line=self.object
+        ).order_by('id')
+        return context
+
 # Views based on the admin templates
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.urls import reverse_lazy
+from django.utils.safestring import mark_safe
+from django.db.models import ForeignKey
+from django.forms import widgets
+from django.conf import settings
+from django.urls import reverse, reverse_lazy
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
     Material, HazardousMaterial, CriticalRawMaterial, ProductType,
@@ -54,6 +73,41 @@ from .models import (
     CircularityScore, CircularityEnabler,
 )
 
+
+class RelatedFieldWidgetCanAdd(widgets.Select):
+    """Widget consisting of a '+' icon and a link to popup a 'create' form.
+    """
+    # Source - https://stackoverflow.com/questions/28068168/django-adding-an-add-new-button-for-a-foreignkey-in-a-modelform
+    # Retrieved 2025-11-21, License - CC BY-SA 4.0
+
+    def __init__(self, related_model, related_url=None, *args, **kwargs):
+
+        super(RelatedFieldWidgetCanAdd, self).__init__(*args, **kwargs)
+
+        if not related_url:
+            info = (related_model._meta.app_label, related_model._meta.object_name.lower())
+            related_url = 'admin:%s_%s_add' % info
+
+        # Be careful that here "reverse" is not allowed
+        self.related_url = related_url
+
+    def render(self, name, value, *args, **kwargs):
+        self.related_url = reverse(self.related_url)
+        output = [super(RelatedFieldWidgetCanAdd, self).render(name, value, *args, **kwargs)]
+        output.append('<a href="%s?_to_field=id&_popup=1" class="add-another" id="add_id_%s" onclick="return showAddAnotherPopup(this);"> ' % (self.related_url, name))
+        output.append('<img src="%sadmin/img/icon_addlink.gif" width="10" height="10" alt="%s"/></a>' % (settings.STATIC_URL, 'Add another'))
+        return mark_safe(''.join(output))
+
+def customize_form(db_field, **kwargs):
+    """Customize some form fields by adding a widget"""
+    if isinstance(db_field, ForeignKey):
+        related_model = db_field.related_model
+        kwargs['widget'] = RelatedFieldWidgetCanAdd(
+            related_model,
+            related_url=f"{related_model._meta.model_name}_create"
+        )
+    return db_field.formfield(**kwargs)
+
 # Base class to make every view use admin templates
 class AdminTemplateMixin:
     template_name = "adminlike/change_form.html"
@@ -64,22 +118,31 @@ class AdminTemplateMixin:
         opts = model._meta
 
         context.update({
+            "opts": opts,
             "app_label": opts.app_label,
             "model_name": opts.model_name,
-            "opts": opts,
             "verbose_name": opts.verbose_name,
-            "verbose_name_plural": opts.verbose_name_plural,
-            "has_add_permission": True, # or self.request.user.has_perm(...)
-            "has_change_permission": True,
-            "has_delete_permission": True,
-            "has_view_permission": True,
-            # This gives you all the form media (widgets, JS, CSS)
+            "name_plural": opts.verbose_name_plural,
             "media": self.get_form().media if hasattr(self, "get_form") else "",
         })
         return context
 
     def get_template_names(self):
         return([self.template_name])
+
+class PreFillFromMixin:
+    """
+    Mixin that pre-fills form fields from URL query parameters.
+    Any query parameter matching a field name will be used as initial value.
+    """
+    def get_initial(self):
+        initial = super().get_initial()
+        if hasattr(self, 'fields'):
+            # Iterate over URL parameters and pre-fill matching fields
+            for field, value in self.request.GET.items():
+                if field in self.fields:
+                    initial[field] = value
+        return initial
 
 def make_crud_views(model):
     app_label = model._meta.app_label
@@ -95,13 +158,26 @@ def make_crud_views(model):
         template_name = "dpp/generic_detail.html"
         # template_name = "adminlike/change_form.html"
 
-    class Create(AdminTemplateMixin, CreateView):
+    class Create(AdminTemplateMixin, PreFillFromMixin, CreateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
         # template_name = "adminlike/change_form.html"
 
-    class Update(AdminTemplateMixin, UpdateView):
+        def get_form_class(self):
+            return forms.modelform_factory(
+                self.model,
+                fields=self.fields,
+                formfield_callback=customize_form
+            )
+
+        def form_valid(self, form):
+            self.object = form.save(commit=False)
+            self.object.save()
+            form.save_m2m()
+            return HttpResponseRedirect(self.get_success_url())
+
+    class Update(AdminTemplateMixin, PreFillFromMixin, UpdateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"

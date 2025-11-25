@@ -9,6 +9,7 @@ urlpatterns = [
     path("welcome", views.home, name="home"),
     path("production-lines/create/", views.production_line_create, name="production_line_create"),
     path("production-lines/<int:pk>/edit/", views.production_line_edit, name="production_line_edit"),
+    path('production-line/<int:pk>/', views.ProductionLineDetailView.as_view(), name='production_line_detail'),
 ]
 
 # urlpatterns = []
