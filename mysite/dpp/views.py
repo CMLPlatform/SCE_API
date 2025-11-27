@@ -5,6 +5,8 @@ from django import forms
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import ProductionLine
 from api.serializers import ProductionLineSerializer
+import json
+import networkx as nx
 
 def home(request):
     
@@ -42,19 +44,6 @@ def production_line_edit(request, pk):
     line = ProductionLine.objects.get(pk=pk)
     return render(request, "production_line_edit.html", {"line": line})
 
-class ProductionLineDetailView(DetailView):
-    model = ProductionLine
-    template_name = 'production_line_detail.html'
-    # context_object_name = 'production_line'
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # Add associated processes to the context
-        context['processes'] = Process.objects.filter(
-            production_line=self.object
-        ).order_by('id')
-        return context
-
 # Views based on the admin templates
 from django.utils.safestring import mark_safe
 from django.db.models import ForeignKey
@@ -65,8 +54,8 @@ from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
     Material, HazardousMaterial, CriticalRawMaterial, ProductType,
     Packaging, SecondaryProduct, Emission, Composition, Product,
-    ProductionLine, Process, SharedProcess, Exchange,
-    ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
+    Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
+    Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
     ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, OldCircularityIndicator, CircularityIndicator,
@@ -222,3 +211,158 @@ for model in [
 
 # Make them importable
 globals().update(views)
+
+
+def create_process_graph(processes: list=[]):
+    """
+    Create a directed graph showing processes and their in/outputs.
+    Returns graph data in a format suitable for visualization.
+    """
+    G = nx.DiGraph()
+    
+    # Add nodes and edges
+    for process in processes:
+        G.add_node(process.name, node_type='process', shape='square')
+        
+        # Add output node (functional_flow)
+        if process.functional_flow:
+            output_name = process.functional_flow.name
+            G.add_node(output_name, node_type='output', shape='dot')
+            G.add_edge(process.name, output_name)
+        
+        # Add environmental exchanges
+        exchanges = process.env_exchanges.all()
+        for exchange in exchanges:
+            io_name = exchange.substance.name
+            node_type = 'input' if exchange.exchange_type=='in' else 'output'
+            G.add_node(io_name, node_type=node_type, shape='triangle')
+            if node_type == 'output':
+                G.add_edge(process.name, io_name)
+            else:
+                G.add_edge(io_name, process.name)
+        # Add input nodes from Exchange table
+        exchanges = process.prod_exchanges.all()
+        for exchange in exchanges:
+            io_name = exchange.product.name
+            node_type = 'input' if exchange.exchange_type=='in' else 'output'
+            G.add_node(io_name, node_type=node_type, shape='dot', size=0.1)
+            G.add_edge(io_name, process.name)
+            sources = Process.objects.filter(functional_flow=exchange.product)
+            if sources:
+                source_name = sources[0].name
+                if source_name not in G.nodes:
+                    G.add_node(source_name, node_type='process', shape='square')
+                G.add_edge(source_name, io_name)
+
+    # Convert to format suitable for D3.js or other visualization
+    graph_dict = {'nodes': [], 'links': []}
+    for node in G.nodes():
+        graph_dict['nodes'].append({
+            'id': node,
+            'type': G.nodes[node].get('node_type', 'unknown'),
+            'shape': G.nodes[node].get('shape', 'dot'),
+        })
+    
+    for source, target in G.edges():
+        graph_dict['links'].append({'source': source, 'target': target})
+    print("Graph size", len(G.nodes), len(G.edges))
+    return graph_dict
+
+def create_flowchart(processes):
+    """
+    Build a Mermaid script for generating a flowchart of processes.
+
+    The output string looks like:
+        p1{{Electricity}}:::input --> a1
+        a2(Steel mill):::outside -->|steel sheet| a1
+        a2 -->e1((CO2)):::env
+    outputs: final outputs, not used in `processes`
+    suppliers: all production lines supplying input to `processes`
+    background: all background processes supplying input to `processes`
+    inputs: all products used by `processes` (or waste going out), but not produced anywhere
+    """
+    outputs = ProductType.objects.filter(
+        produced_by__in=processes
+        ).exclude(exchanged_by__process__in=processes
+    ).distinct()
+    inputs = ProductType.objects.filter(
+        exchanged_by__process__in=processes
+    ).distinct()
+    exchanges = ProductExchange.objects.filter(product__in=inputs).filter(process__in=processes)
+    suppliers = ProductionLine.objects.filter(final_product__in=inputs)
+    background = BackgroundProcess.objects.filter(functional_flow__in=inputs)
+    inputs = inputs.exclude(productionline__in=suppliers).exclude(produced_by_other__in=background).exclude(exchanged_by__in=exchanges)
+
+    # Build Mermaid string
+    lines = ["flowchart LR"]
+    lines.append("    classDef default fill:aquamarine,stroke:teal,stroke-width:3px")
+    lines.append("    classDef product fill:#4CAF50,color:white,stroke:green,stroke-width:3px")
+    lines.append("    classDef input   fill:#2196F3,color:white,stroke:#1565c0,stroke-width:3px")
+    lines.append("    classDef env     fill:#f44336,color:white,stroke:#c62828,stroke-width:3px")
+    lines.append("    classDef outside fill:#9c27b0,color:white,stroke:#6a1b9a,stroke-width:3px")
+    lines.append("")
+    lines.append('    subgraph pl["`**Production line**`"]')
+
+    node_ids = {}
+    for proc in processes: # Print the core processes
+        lines.append(f"        a{proc.id}({proc.name})")
+
+    lines.append("    end")
+    lines.append("    style pl #ffffde,stroke-width:3px,stroke-dasharray: 5 5")
+
+    # Add unlinked products and emissions
+    for prod in outputs:
+        proc = prod.produced_by.first() #if prod.produced_by.exists() else None
+        lines.append("    a%d --> ff%d{{%s}}:::product" % (proc.id, prod.id, prod.name))
+
+    for prod in inputs:
+        for proc in processes.filter(prod_exchanges__product=prod):
+            lines.append("    p%d{{%s}}:::input -->a%d" % (prod.id, prod.name, proc.id))
+    for exch in EnvExchange.objects.filter(process__in=processes):
+        if exch.exchange_type == 'in':
+            lines.append("    e%d((%s)):::env -->a%d" % (exch.id, exch.substance.name, exch.process.id))
+        else:
+            lines.append("    a%d --> e%d((%s)):::env" % (exch.process.id, exch.id, exch.substance.name))
+    # Add background processes
+    for supp in suppliers:
+        prod = supp.productionline.final_product
+        for proc in processes.filter(prod_exchanges__product=prod):
+            lines.append(
+                f"    a{supp.id}({supp.operator.name}):::outside -->"
+                f"|{prod.name}| a{proc.id}"
+            )
+
+    for supp in background: #NOTE: also check for outputs
+        prod = supp.productionline.final_product
+        for proc in processes.filter(prod_exchanges__product=prod):
+            lines.append(
+                f"    a{supp.id}({supp.operator.name}):::outside -->"
+                f"|{prod.name}| a{proc.id}"
+            )
+    # Internal exchanges
+    for exch in exchanges:
+        orig = exch.product.produced_by.first()
+        dest = exch.process
+        lines.append("    a%d -->|%s| a%d" % (orig.id, exch.product.name, dest.id))
+
+    return "\n".join(lines)
+
+class ProductionLineDetailView(DetailView):
+    model = ProductionLine
+    template_name = 'dpp/productionline_detail.html' #'dpp/graph_test.html' #
+    # context_object_name = 'production_line'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['opts'] = model._meta
+        # Add associated processes to the context
+        context['processes'] = Process.objects.filter(
+            production_line=self.object
+        ).order_by('id')
+        # Add a network graph
+        graph_data = create_process_graph(context['processes'])
+        context['graph_data'] = json.dumps(graph_data)
+        # Add Mermaid flowchart
+        mermaid_code = create_flowchart(context['processes'])
+        context["mermaid_code"] = mermaid_code
+        return context
