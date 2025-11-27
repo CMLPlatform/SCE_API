@@ -58,7 +58,7 @@ from .models import (
     Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
     ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
-    CircularityEvaluation, OldCircularityIndicator, CircularityIndicator,
+    CircularityEvaluation, CircularityIndicator,
     CircularityScore, CircularityEnabler,
 )
 
@@ -204,7 +204,7 @@ for model in [
     ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
     ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
-    CircularityEvaluation, OldCircularityIndicator, CircularityIndicator,
+    CircularityEvaluation, CircularityIndicator,
     CircularityScore, CircularityEnabler,
 ]:
     views.update(make_crud_views(model))

@@ -33,7 +33,6 @@ router.register(r'impactcategory', views.ImpactCategoryViewSet, basename='Impact
 router.register(r'sustainabilityevaluation', views.SustainabilityEvaluationViewSet, basename='SustainabilityEvaluation')
 router.register(r'sustainabilityscore', views.SustainabilityScoreViewSet, basename='SustainabilityScore')
 router.register(r'circularityevaluation', views.CircularityEvaluationViewSet, basename='CircularityEvaluation')
-router.register(r'oldcircularityindicator', views.OldCircularityIndicatorViewSet, basename='OldCircularityIndicator')
 router.register(r'circularityindicator', views.CircularityIndicatorViewSet, basename='CircularityIndicator')
 router.register(r'circularityscore', views.CircularityScoreViewSet, basename='CircularityScore')
 router.register(r'circularityenabler', views.CircularityEnablerViewSet, basename='CircularityEnabler')

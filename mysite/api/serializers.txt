@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -175,11 +175,6 @@ class CircularityEvaluationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CircularityEvaluation
         fields = ['product', 'assessment_date', 'assessed_by']
-
-class OldCircularityIndicatorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OldCircularityIndicator
-        fields = ['product', 'is_static', 'name', 'value', 'unit']
 
 class CircularityIndicatorSerializer(serializers.ModelSerializer):
     class Meta:

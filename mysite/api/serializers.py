@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
@@ -151,11 +151,6 @@ class CircularityEvaluationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CircularityEvaluation
         fields = ['product', 'assessment_date', 'assessed_by']
-
-class OldCircularityIndicatorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OldCircularityIndicator
-        fields = ['product', 'is_static', 'name', 'value', 'unit']
 
 class CircularityIndicatorSerializer(serializers.ModelSerializer):
     class Meta:

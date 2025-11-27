@@ -1,6 +1,6 @@
 from rest_framework.viewsets import ModelViewSet
-from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
-from .serializers import OrganizationSerializer, InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, InstructionSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, CriticalRawMaterialSerializer, ProductTypeSerializer, PackagingSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, ExchangeSerializer, ProductExchangeSerializer, EnvExchangeSerializer, BillOfMaterialsSerializer, PackagingInfoSerializer, ServiceEventSerializer, ServiceRecordSerializer, ReplacedComponentsSerializer, ModificationSerializer, CorrectiveMaintenanceSerializer, EndOfLifeSerializer, ImpactCategorySerializer, SustainabilityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, OldCircularityIndicatorSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityEnablerSerializer, CircularityTracker
+from .models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, Modification, CorrectiveMaintenance, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from .serializers import OrganizationSerializer, InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, InstructionSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, CriticalRawMaterialSerializer, ProductTypeSerializer, PackagingSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, ExchangeSerializer, ProductExchangeSerializer, EnvExchangeSerializer, BillOfMaterialsSerializer, PackagingInfoSerializer, ServiceEventSerializer, ServiceRecordSerializer, ReplacedComponentsSerializer, ModificationSerializer, CorrectiveMaintenanceSerializer, EndOfLifeSerializer, ImpactCategorySerializer, SustainabilityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityEnablerSerializer, CircularityTracker
 
 class OrganizationViewSet(ModelViewSet):
     queryset = Organization.objects.all()
@@ -141,10 +141,6 @@ class SustainabilityScoreViewSet(ModelViewSet):
 class CircularityEvaluationViewSet(ModelViewSet):
     queryset = CircularityEvaluation.objects.all()
     serializer_class = CircularityEvaluationSerializer
-
-class OldCircularityIndicatorViewSet(ModelViewSet):
-    queryset = OldCircularityIndicator.objects.all()
-    serializer_class = OldCircularityIndicatorSerializer
 
 class CircularityIndicatorViewSet(ModelViewSet):
     queryset = CircularityIndicator.objects.all()

@@ -662,117 +662,16 @@ class CircularityEvaluation(models.Model):
     assessed_by = models.ForeignKey(Institution, blank=True, null=True, on_delete=models.PROTECT)
     report = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='circularity_reports', help_text="Report describing the circularity assessment, and manual for monitoring and updating the circularity metrics.")
 
-R_CHOICES = {  #TODO: move this to a database init script
-    'R0 - Refuse': [
-        ('hazardous', 'Hazardous substances'),
-        ('fossil', 'Fossil energy use'),
-        ('nonrenewable', 'Non-renewable materials'),
-        ('other', 'Other materials'),
-        ('consumption', 'Avoided product consumption'),
-    ],
-    'R1 - Rethink': [
-        ('modularity', 'Modularity'),
-        ('product_takeback', 'Product take-back'),  # Appears multiple times
-        ('crm', 'Critical Materials'),
-        ('shared_use', 'Shared use'),
-        ('durability', 'Durability'),
-        ('potential_use_during_lifetime', 'Potential use during lifetime'),
-        ('multifunctionality', 'Multifunctionality'),
-        ('modularity_score', 'Modularity score'),
-        ('materials', 'Materials'),
-        ('number_of_components', 'Number of components'),
-        ('material_composition_complexity', 'Material composition complexity'),
-        ('tools_required', 'Number of tools required'),
-        ('separable_pieces_ratio', 'Separable pieces ratio'),
-    ],
-    'R2 - Reduce': [
-        ('reduce_raw_materials_intensity', 'Raw materials intensity reduction'),
-        ('reduce_energy_intensity', 'Energy intensity reduction'),
-        ('reduce_energy_consumption', 'Energy consumption reduction'),
-        ('reduce_waste_generation', 'Waste generation reduction'),
-        ('reduce_material_losses', 'Material losses reduction'),
-        ('reduce_water_intensity', 'Water intensity reduction'),
-        ('reduce_water_consumption', 'Water consumption'),
-    ],
-    'R3 - Reuse': [
-        ('reuse_rate', 'Reuse rate'),
-        ('product_takeback', 'Product take-back'),
-        ('consumer_awareness', 'Consumer awareness'),
-        ('potential_use', 'Potential use'),
-        ('ownership_time', 'Ownership time'),
-        ('voidance_of_reuse_barriers', 'Voidance of reuse rarriers'),
-        ('reuse_potential', 'Reuse potential'),
-        ('costs_of_reuse', 'Costs of reuse'),
-        ('access_to_parts', 'Access to high-value parts'),
-    ],
-    'R4 - Repair': [
-        ('longevity_extension', 'Longevity extension'),
-        ('extension_of_producer_responsibility', 'Extension of producer responsibility'),
-        ('consumer_awareness', 'Consumer awareness'),
-        ('potential_repair', 'Potential repair'),
-        ('repairability_score', 'Repairability score'),
-        ('durability_score', 'Durability score'),
-        ('non_destructive_disassembly_score', 'Non-destructive disassembly score'),
-        ('ease_of_reassembly', 'Ease of reassembly'),
-    ],
-    'R5 - Refurbish': [
-        ('product_takeback', 'Product take-back'),
-        ('refurbished_content', 'Refurbished content'),
-        ('refurbishment_potential', 'Refurbishment rotential'),
-        ('refurbishment_score', 'Refurbishment score'),
-        ('upgradability_score', 'Upgradability score'),
-    ],
-    'R6 - Remanufacture': [
-        ('product_takeback', 'Product take-back'),
-        ('remanufacturing_effectiveness', 'Remanufacturing effectiveness'),
-        ('consumer_awareness', 'Consumer awareness'),
-        ('remanufacturing_content', 'Remanufacturing content'),
-        ('remanufacturing_score', 'Remanufacturing score'),
-    ],
-    'R7 - Repurpose': [
-        ('secondary_raw_materials', 'Secondary raw materials'),
-        ('hazardous_waste_diverted', 'Hazardous waste diverted from disposal'),
-        ('nonhazardous_waste_diverted', 'Non-hazardous waste diverted from disposal'),
-    ],
-    'R8 - Recycle': [
-        ('overall_recycling_rates', 'Overall recycling rates'),
-        ('recycling_rate_for_waste_streams', 'Recycling rate for waste streams'),
-        ('waste_generation', 'Waste generation'),
-        ('reverse_logistics', 'Reverse logistics'),
-        ('recycling_potential', 'Recycling potential'),
-        ('design_for_recyclability', 'Design for recyclability'),
-        ('recycling_compatibility_score', 'Recycling compatibility score'),
-        ('material_homogeneity_score', 'Material homogeneity score'),
-        ('hazardous_substance_barrier', 'Hazardous substance barrier'),
-        ('high_purity_sorting_possible', 'High purity sorting possible'),
-        ('use_of_recyclable_materials', 'Use of easily recyclable materials'),
-        ('recycling_collection_rate', 'Recycling collection rate'),
-    ],
-    'R9 - Recover': [
-        ('waste_diversion_from_landfill', 'Waste diversion from landfill'),
-        ('potential_recovery', 'Potential recovery'),
-        ('hazardous_waste_disposal', 'Hazardous waste directed to disposal'),
-        ('nonhazardous_waste_disposal', 'Non-hazardous waste directed to disposal'),
-        ('energy_recoverability_benefit', 'Energy recoverability benefit'),
-        ('raw_materials_input', 'Raw materials input'),
-    ],
-}
-
-class OldCircularityIndicator(models.Model):
-    product = models.ForeignKey(ProductType, on_delete=models.CASCADE)
-    is_static = models.BooleanField(choices={True: "Static", False: "Dynamic"}, default=True)
-    name = models.CharField(max_length=50, choices=R_CHOICES)
-    value = models.FloatField()
-    unit = models.CharField(max_length=20)
-
-    def __str__(self):
-        return f"{self.name} for {self.product} is {self.value}"
-
-# Alternative implementation:
 class CircularityIndicator(models.Model):
+    """
+    An indicator for measuring circularity performance,
+    including description and unit.
+    """
+    id = models.CharField(max_length=6, primary_key=True)
     name = models.CharField(max_length=50)
     description = models.TextField(max_length=300, blank=True)
-    is_static = models.BooleanField(choices={True: "Static", False: "Dynamic"}, default=True)
+    is_static = models.BooleanField(choices={True: "Static", False: "Dynamic"},
+                                    default=True)
     unit = models.CharField(max_length=20)
 
     def __str__(self):
@@ -788,7 +687,6 @@ class CircularityScore(models.Model):
 
     def __str__(self):
         return f"{self.indicator.name}: {self.value}"
-# End alternative implementation
 
 #FIXME: a service event should not update the CircularityScore of a Product,
 # but rather trigger an updated assessment of the ProductType.
