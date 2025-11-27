@@ -166,7 +166,7 @@ class Document(models.Model):  #TODO: security check on files
 
 class Material(models.Model):
     name = models.CharField("Material name", max_length=50)
-    density = models.FloatField(blank=True)
+    density = models.FloatField(blank=True, default=0)
     recycled_content = models.FloatField("Recycled content (%)", default=0, validators=FRACTION_VALIDATOR)
     recyclable_percentage = models.FloatField("Recyclable material (%)", default=0, validators=FRACTION_VALIDATOR)
     biobased_percentage = models.FloatField("Bio-based material (%)", default=0, validators=FRACTION_VALIDATOR)
@@ -179,8 +179,8 @@ class Material(models.Model):
 class HazardousMaterial(Material):
     CAS_number = models.CharField(max_length=50, blank=True, unique=True)
     safety_instructions = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_safety_instructions')  # (SafetyDataSheet)
-    substance_concentration = models.FloatField(blank=True)  # Not used anywhere?
-    concentration_unit = models.CharField(max_length=20, blank=True)
+    substance_concentration = models.FloatField(blank=True, default=1, validators=FRACTION_VALIDATOR)  #TODO: set this attribute on products
+    concentration_unit = models.CharField(max_length=20, choices={'wt': 'Weight fraction'})
     substance_location = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_location')  # (TechnicalDrawings)
 
 class CriticalRawMaterial(Material):
@@ -244,8 +244,7 @@ class DppProduct(ProductType):
 
     # Documents and other quality compliance info
     quality_compliance_documents = models.ManyToManyField(Document, blank=True)
-    warranty_period_months = models.PositiveSmallIntegerField(default=0, help_text="Warranty period in months") #TODO: check how users can enter data in months, then convert to duration
-    warranty_duration = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Warranty period in years")
+    warranty_period = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Warranty period in years")
     spare_parts_availability_duration = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Spare parts availability in years")
     takeback_system = models.CharField(max_length=10, choices={'no': 'No take-back system', 'basic': 'Collection on request', 'active': 'Structured take-back with dedicated channels or collection points', 'advanced': 'Certified, traceable take-back system'}, default='no')
     # technical_drawings = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='product_drawings')
@@ -292,7 +291,7 @@ class Product(models.Model):  # =ProductInformation in DPP
     product_type = models.ForeignKey(ProductType, on_delete=models.PROTECT)
     DPP_metadata = models.ForeignKey(Metadata, on_delete=models.PROTECT, blank=True)
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
-    batch_number = models.IntegerField(blank=True)
+    batch_number = models.IntegerField(blank=True, null=True)
     CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
     GS1_GPC_code = models.CharField(max_length=20, blank=True, help_text="Global Product Classification code")
     GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
@@ -313,7 +312,7 @@ class Activity(models.Model):  #TODO: check what common fields can be moved here
 
 class ProductionLine(Activity):
     description = models.TextField(max_length=300, blank=True)
-    final_product = models.OneToOneField(ProductType, on_delete=models.RESTRICT)
+    final_product = models.OneToOneField(ProductType, on_delete=models.RESTRICT, verbose_name="Final Product")
     operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.SET(get_unknown_company))
     modified_at = models.DateField(auto_now=True)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance')
@@ -355,7 +354,7 @@ class ProductionLine(Activity):
 
 class Process(Activity):
     production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE)  # Assuming 1:M
-    functional_flow = models.ForeignKey(ProductType, blank=True, null=True, on_delete=models.SET_NULL)
+    functional_flow = models.ForeignKey(ProductType, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main product", related_name='produced_by')  #FIXME: make this 1:1?
     # energy_use = models.FloatField()
     is_outsourced = models.BooleanField("Outsourced", default=False)
     operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.CASCADE)
@@ -398,9 +397,12 @@ class SharedProcess(Process):
         super().save(*args, **kwargs)
 
 class BackgroundProcess(Activity):
+    functional_flow = models.ForeignKey(ProductType, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main product", related_name='produced_by_other')
     location = CountryField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
+    database = models.CharField(max_length=50, blank=True)
+    #TODO: more UnitProcess attributes
 
     class Meta:
         verbose_name = "Average market process"
@@ -421,11 +423,11 @@ class Exchange(models.Model):
     is_proxy = models.BooleanField("This is an approximation of the actual product", default=False)
     observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
     uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none')
-    loc = models.FloatField(blank=True)  # mean or median
-    scale = models.FloatField(blank=True)  # stddev or geometric stddev
-    shape = models.FloatField(blank=True)  # for lognormal
-    minimum = models.FloatField(blank=True)  # for interval and triangular
-    maximum = models.FloatField(blank=True)  # for interval and triangular
+    loc = models.FloatField("Mean or median", blank=True, null=True)
+    scale = models.FloatField("Standard deviation", blank=True, null=True)  # or geometric stddev
+    shape = models.FloatField(blank=True, null=True, help_text="for lognormal distribution")
+    minimum = models.FloatField(blank=True, null=True, help_text="for interval and triangular distribution")
+    maximum = models.FloatField(blank=True, null=True, help_text="for interval and triangular distribution")
     # unit = models.CharField(max_length=20) #product.unit
     # description = models.TextField(max_length=300, blank=True)
 
@@ -434,7 +436,7 @@ class Exchange(models.Model):
 
 class ProductExchange(Exchange):
     """Represents the input or output of a product by an activity."""
-    product = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='used_in_process')
+    product = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='exchanged_by')
     process = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='prod_exchanges')
 
     class Meta:
@@ -453,13 +455,14 @@ class EnvExchange(Exchange):
         'seawater': 'seawater',
         'surface_water': 'surface water',
     }
-    substance = models.ForeignKey(Emission, on_delete=models.CASCADE)
+    substance = models.ForeignKey(Emission, on_delete=models.CASCADE, related_name='exchanges')
     process = models.ForeignKey(Process, on_delete=models.CASCADE, related_name='env_exchanges')
     compartment = models.CharField(max_length=20, choices=COMPARTMENTS)
 
     class Meta:
         unique_together = ['substance', 'compartment', 'exchange_type']
         ordering = ['process', 'substance']
+        verbose_name = 'Emissions & Extractions'
 
     def __str__(self):
         return f"{self.exchange_type}: {self.amount} {self.substance.unit} {self.substance}"
@@ -591,7 +594,7 @@ class ImpactCategory(models.Model):
     # type = models.CharField(max_length=3, choices={'env': 'environmental', 'sec': 'socioeconomic'})
 
     class Meta:
-        verbose_name_plural = "Impact Categories"
+        verbose_name_plural = "Impact categories"
 
     def __str__(self):
         return self.name
@@ -623,14 +626,14 @@ class SustainabilityEvaluation(models.Model):  # including metadata
     assessed_by = models.ForeignKey(Institution, blank=True, null=True, on_delete=models.PROTECT)
 
     @property
-    def functional_flow(self):
+    def reference_flow(self):
         return self.product.name
     @property
     def functional_unit(self):  # literally the unit
         return self.product.unit
     
     def __str__(self):
-        return f"Sustainability evaluation of {self.functional_amount} {self.functional_unit} {self.functional_flow}"
+        return f"Sustainability evaluation of {self.functional_amount} {self.functional_unit} {self.reference_flow}"
 
 class SustainabilityScore(models.Model):
     """
