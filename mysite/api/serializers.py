@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
@@ -47,15 +47,15 @@ class CriticalRawMaterialSerializer(serializers.ModelSerializer):
         model = CriticalRawMaterial
         fields = ['supply_risk_level', 'substance_concentration', 'concentration_unit']
 
-class ProductTypeSerializer(serializers.ModelSerializer):
+class ProductModelSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProductType
-        fields = ['name', 'unit', 'description', 'unit_price', 'weight', 'weight_unit', 'volume', 'volume_unit', 'vendor_or_importer', 'origin', 'taric_code', 'hs_code', 'quality_compliance_documents', 'warranty_duration', 'spare_parts_availability_duration', 'takeback_system']
+        model = ProductModel
+        fields = ['__all__']
 
-class PackagingSerializer(serializers.ModelSerializer):
+class ProductBatchSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Packaging
-        fields = '__all__'
+        model = ProductBatch
+        fields = ['__all__']
 
 class SecondaryProductSerializer(serializers.ModelSerializer):
     class Meta:
@@ -107,11 +107,6 @@ class BillOfMaterialsSerializer(serializers.ModelSerializer):
         model = BillOfMaterials
         fields = ['product', 'component', 'amount', 'unit']
 
-class PackagingInfoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PackagingInfo
-        fields = ['product', 'packaging', 'packaging_ratio']
-
 class ServiceEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceEvent
@@ -122,7 +117,7 @@ class ServiceRecordSerializer(serializers.ModelSerializer):
         model = ServiceRecord
         fields = ['description', 'service_event']
 
-class ReplacedComponentsSerializer(serializers.ModelSerializer):
+class  ReplacedComponentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReplacedComponent
         fields = ['service_record', 'old_component', 'new_component']

@@ -52,8 +52,9 @@ from django.conf import settings
 from django.urls import reverse, reverse_lazy
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, CriticalRawMaterial, ProductType,
-    Packaging, SecondaryProduct, Emission, Composition, ProductItem,
+    Material, HazardousMaterial, CriticalRawMaterial,
+    ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
+    Packaging, Emission, Composition,
     Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
     Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
     ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife,
@@ -205,7 +206,7 @@ def make_crud_views(model):
 views = {}
 for model in [
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, CriticalRawMaterial, ProductType,
+    Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch,
     Packaging, SecondaryProduct, Emission, Composition, ProductItem,
     ProductionLine, Process, SharedProcess, Exchange,
     ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo,
@@ -288,11 +289,11 @@ def create_flowchart(processes):
     background: all background processes supplying input to `processes`
     inputs: all products used by `processes` (or waste going out), but not produced anywhere
     """
-    outputs = ProductType.objects.filter(
+    outputs = ProductBatch.objects.filter(
         produced_by__in=processes
         ).exclude(exchanged_by__process__in=processes
     ).distinct()
-    inputs = ProductType.objects.filter(
+    inputs = ProductBatch.objects.filter(
         exchanged_by__process__in=processes
     ).distinct()
     exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)

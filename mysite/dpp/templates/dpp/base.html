@@ -78,12 +78,13 @@
     <!--
     <div class="sidenav">
         <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}">Production lines</a>
-        <a href="{% url opts.app_label|add:':'|add:'producttype_list' %}">Products</a>
+        <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}">Products</a>
         <a href="{% url opts.app_label|add:':'|add:'importer_list' %}">Importers</a>
         <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}">Sustainability evaluations</a>
     </div>
     -->
     <!-- sidebar -->
+    {% if not is_popup %}
     <aside class="hidden md:flex flex-col w-74 bg-gray-800 h-screen sticky top-0">
         <div class="flex items-center justify-center h-16 px-4 bg-gray-900">
             <span class="text-white font-bold uppercase">Navigation</span>
@@ -98,7 +99,7 @@
                     </svg>
                     Production lines
                 </a>
-                <a href="{% url opts.app_label|add:':'|add:'producttype_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
                         stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
