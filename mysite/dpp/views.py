@@ -61,6 +61,7 @@ from .models import (
     CircularityEvaluation, CircularityIndicator,
     CircularityScore, CircularityEnabler,
 )
+from .forms import get_model_form_plus
 
 
 class RelatedFieldWidgetCanAdd(widgets.Select):
@@ -152,13 +153,15 @@ def make_crud_views(model):
         fields = "__all__"
         template_name = "dpp/generic_form.html"
         # template_name = "adminlike/change_form.html"
+        # form_class = FormWithAutoAdd
 
         def get_form_class(self):
-            return forms.modelform_factory(
-                self.model,
-                fields=self.fields,
-                formfield_callback=customize_form
-            )
+            return get_model_form_plus(self.model, self.fields)
+            # return forms.modelform_factory(
+            #     self.model,
+            #     fields=self.fields,
+            #     formfield_callback=customize_form
+            # )
 
         def form_valid(self, form):
             self.object = form.save(commit=False)
@@ -168,9 +171,13 @@ def make_crud_views(model):
 
     class Update(AdminTemplateMixin, PreFillFromMixin, UpdateView):
         model = model
-        fields = "__all__"
+        # fields = "__all__"
         template_name = "dpp/generic_form.html"
         # template_name = "adminlike/change_form.html"
+        # form_class = FormWithAutoAdd
+
+        def get_form_class(self):
+            return get_model_form_plus(self.model, self.fields)
 
     class Delete(DeleteView):
         model = model
@@ -214,7 +221,7 @@ globals().update(views)
 
 
 def create_process_graph(processes: list=[]):
-    """
+    """ UNUSED
     Create a directed graph showing processes and their in/outputs.
     Returns graph data in a format suitable for visualization.
     """
@@ -288,14 +295,14 @@ def create_flowchart(processes):
     inputs = ProductType.objects.filter(
         exchanged_by__process__in=processes
     ).distinct()
-    exchanges = ProductExchange.objects.filter(product__in=inputs).filter(process__in=processes)
+    exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)
     suppliers = ProductionLine.objects.filter(final_product__in=inputs)
     background = BackgroundProcess.objects.filter(functional_flow__in=inputs)
     inputs = inputs.exclude(productionline__in=suppliers).exclude(produced_by_other__in=background).exclude(exchanged_by__in=exchanges)
 
     # Build Mermaid string
     lines = ["flowchart LR"]
-    lines.append("    classDef default fill:aquamarine,stroke:teal,stroke-width:3px")
+    lines.append("    classDef process fill:aquamarine,stroke:teal,stroke-width:3px")
     lines.append("    classDef product fill:#4CAF50,color:white,stroke:green,stroke-width:3px")
     lines.append("    classDef input   fill:#2196F3,color:white,stroke:#1565c0,stroke-width:3px")
     lines.append("    classDef env     fill:#f44336,color:white,stroke:#c62828,stroke-width:3px")
@@ -303,9 +310,9 @@ def create_flowchart(processes):
     lines.append("")
     lines.append('    subgraph pl["`**Production line**`"]')
 
-    node_ids = {}
-    for proc in processes: # Print the core processes
-        lines.append(f"        a{proc.id}({proc.name})")
+    # Print the core processes
+    for proc in processes:
+        lines.append(f"        a{proc.id}({proc.name}):::process")
 
     lines.append("    end")
     lines.append("    style pl #ffffde,stroke-width:3px,stroke-dasharray: 5 5")
@@ -315,30 +322,45 @@ def create_flowchart(processes):
         proc = prod.produced_by.first() #if prod.produced_by.exists() else None
         lines.append("    a%d --> ff%d{{%s}}:::product" % (proc.id, prod.id, prod.name))
 
-    for prod in inputs:
-        for proc in processes.filter(prod_exchanges__product=prod):
-            lines.append("    p%d{{%s}}:::input -->a%d" % (prod.id, prod.name, proc.id))
+    for exch in ProductExchange.objects.filter(product__in=inputs, process__in=processes):
+        prod, proc = exch.product, exch.process
+        if exch.exchange_type == 'in':
+            lines.append('    p%d{{"%s"}}:::input -->a%d' % (prod.id, prod.name, proc.id))
+        else:
+            lines.append('    a%d -->p%d{{"%s"}}:::input' % (proc.id, prod.id, prod.name))
     for exch in EnvExchange.objects.filter(process__in=processes):
         if exch.exchange_type == 'in':
-            lines.append("    e%d((%s)):::env -->a%d" % (exch.id, exch.substance.name, exch.process.id))
+            lines.append('    e%d(("%s")):::env -->a%d' % (exch.id, exch.substance.name, exch.process.id))
         else:
-            lines.append("    a%d --> e%d((%s)):::env" % (exch.process.id, exch.id, exch.substance.name))
+            lines.append('    a%d --> e%d(("%s")):::env' % (exch.process.id, exch.id, exch.substance.name))
     # Add background processes
     for supp in suppliers:
         prod = supp.productionline.final_product
-        for proc in processes.filter(prod_exchanges__product=prod):
-            lines.append(
-                f"    a{supp.id}({supp.operator.name}):::outside -->"
-                f"|{prod.name}| a{proc.id}"
-            )
+        for exch in ProductExchange.objects.filter(product=prod):
+            if exch.exchange_type == 'in':
+                lines.append(
+                    f"    a{supp.id}({supp.operator.name}):::outside -->"
+                    f"|{prod.name}| a{exch.process.id}"
+                )
+            else:
+                lines.append(
+                    f"    a{exch.process.id} -->|{prod.name}| "
+                    f"a{supp.id}({supp.operator.name}):::outside"
+                )
 
-    for supp in background: #NOTE: also check for outputs
+    for supp in background:
         prod = supp.productionline.final_product
-        for proc in processes.filter(prod_exchanges__product=prod):
-            lines.append(
-                f"    a{supp.id}({supp.operator.name}):::outside -->"
-                f"|{prod.name}| a{proc.id}"
-            )
+        for exch in ProductExchange.objects.filter(product=prod):
+            if exch.exchange_type == 'in':
+                lines.append(
+                    f"    a{supp.id}({supp.operator.name}):::outside -->"
+                    f"|{prod.name}| a{exch.process.id}"
+                )
+            else:
+                lines.append(
+                    f"    a{exch.process.id} -->|{prod.name}| "
+                    f"a{supp.id}({supp.operator.name}):::outside"
+                )
     # Internal exchanges
     for exch in exchanges:
         orig = exch.product.produced_by.first()
@@ -365,4 +387,24 @@ class ProductionLineDetailView(DetailView):
         # Add Mermaid flowchart
         mermaid_code = create_flowchart(context['processes'])
         context["mermaid_code"] = mermaid_code
+        return context
+
+class ProcessDetailView(DetailView):
+    model = Process
+    template_name = 'dpp/process_detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['opts'] = model._meta
+        context['process'] = self.object
+        # Add associated inputs and outputs to the context
+        context['inputs'] = ProductExchange.objects.filter(
+            process=self.object, exchange_type='in'
+        )
+        context['outputs'] = ProductExchange.objects.filter(
+            process=self.object).exclude(exchange_type='in'
+        )
+        context['emissions'] = EnvExchange.objects.filter(
+            process=self.object
+        )
         return context

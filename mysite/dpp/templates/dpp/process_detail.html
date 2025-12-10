@@ -1,0 +1,69 @@
+{% extends "dpp/generic_detail.html" %}
+{% load static %}
+
+{% block special_detail %}
+
+<div class="grid md:grid-cols-2 gap-8">
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">Inputs to process</h2>
+    <table>
+    <tbody>
+      {% for input in inputs %}
+      <tr class="{% cycle 'bg-gray-200' 'bg-white' %}">
+        <td class="px-6 py-1">Input</td>
+        <td class="px-4 py-1">{{input.amount}}</td>
+        <td class="px-4 py-1">{{input.product.unit}}</td>
+        <td class="px-4 py-1">{{input.product.name}}</td>
+        <td class="px-4 py-1"><a href="{% url 'dpp:productexchange_delete' input.pk %}"
+          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
+          title="Remove this input">
+            ×
+        </a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+  </div>
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">Outputs of process</h2>
+    <table>
+    <tbody class="{% cycle 'bg-gray-50' 'bg-white' %} divide-gray-200">
+      <tr class="font-bold">
+        <td class="px-3 py-1">Main product</td>
+        <td class="px-3 py-1">{{process.amount}}</td>
+        <td class="px-3 py-1">{{process.functional_flow.unit}}</td>
+        <td class="px-3 py-1">{{process.functional_flow.name}}</td>
+        <td class="px-3 py-1"><a href="{% url 'dpp:process_detail' process.functional_flow.pk %}">View</a></td>
+      </tr>
+      {% for output in outputs %}
+      <tr>
+        <td class="px-3 py-1">Waste</td>
+        <td class="px-3 py-1">{{output.amount}}</td>
+        <td class="px-3 py-1">{{output.product.unit}}</td>
+        <td class="px-3 py-1">{{output.product.name}}</td>
+        <td class="px-3 py-1"><a href="{% url 'dpp:productexchange_delete' output.pk %}"
+          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
+          title="Remove this input">
+            ×
+        </a></td>
+      </tr>
+      {% endfor %}
+      {% for output in emissions %}
+      <tr>
+        <td class="px-3 py-1">Emission</td>
+        <td class="px-3 py-1">{{output.amount}}</td>
+        <td class="px-3 py-1">{{output.substance.unit}}</td>
+        <td class="px-3 py-1">{{output.substance.name}} to {{output.compartment}}</td>
+        <td class="px-3 py-1"><a href="{% url 'dpp:envexchange_delete' output.pk %}"
+          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
+          title="Remove this input">
+            ×
+        </a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

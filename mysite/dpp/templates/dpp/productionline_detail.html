@@ -8,30 +8,30 @@
 <pre class="mermaid">{{ mermaid_code|safe }}</pre>
 
 <div class="reference-list">
-    <h2>Associated Processes</h2>
-    {% if processes %}
-    <ul>
-        {% for process in processes %}
-        <li>
-            <a href="{% url 'dpp:process_detail' process.pk %}">{{ process.name }}
-            </a>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p>No processes associated with this production line.</p>
-    {% endif %}
+  <h2>Associated Processes</h2>
+  {% if processes %}
+  <ul>
+    {% for process in processes %}
+    <li>
+      <a href="{% url 'dpp:process_detail' process.pk %}">{{ process.name }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No processes associated with this production line.</p>
+  {% endif %}
 </div>
 
 <div class="add-button">
-    <a href="{% url 'dpp:process_add' %}?production_line={{ productionline.id }}" class="btn btn-primary">
-        Add new process
-    </a>
+  <a href="{% url 'dpp:process_add' %}?production_line={{ productionline.id }}" class="btn btn-primary">
+    Add new process
+  </a>
 </div>
 
 <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, flowchart: { useMaxWidth: true }});
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, flowchart: { useMaxWidth: true }});
 </script>
 
 {% endblock %}
