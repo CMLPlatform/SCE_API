@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
@@ -74,7 +74,7 @@ class CompositionSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Product
+        model = ProductItem
         fields = ['product_type', 'DPP_metadata', 'serial_number', 'batch_number', 'CPV_code', 'GS1_GPC_code', 'GTIN_code', 'production_date']
 
 class ProductionLineSerializer(serializers.ModelSerializer):
@@ -124,7 +124,7 @@ class ServiceRecordSerializer(serializers.ModelSerializer):
 
 class ReplacedComponentsSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ReplacedComponents
+        model = ReplacedComponent
         fields = ['service_record', 'old_component', 'new_component']
 
 class EndOfLifeSerializer(serializers.ModelSerializer):

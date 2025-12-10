@@ -41,7 +41,7 @@ class ProcessSearch(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 from rest_framework.viewsets import ModelViewSet
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 from .serializers import InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, CriticalRawMaterialSerializer, ProductTypeSerializer, PackagingSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, ProductExchangeSerializer, EnvExchangeSerializer, BillOfMaterialsSerializer, PackagingInfoSerializer, ServiceEventSerializer, ServiceRecordSerializer, ReplacedComponentsSerializer, EndOfLifeSerializer, ImpactCategorySerializer, SustainabilityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityEnablerSerializer
 
 
@@ -102,7 +102,7 @@ class CompositionViewSet(ModelViewSet):
     serializer_class = CompositionSerializer
 
 class ProductViewSet(ModelViewSet):
-    queryset = Product.objects.all()
+    queryset = ProductItem.objects.all()
     serializer_class = ProductSerializer
 
 class ProductionLineViewSet(ModelViewSet):
@@ -142,7 +142,7 @@ class ServiceRecordViewSet(ModelViewSet):
     serializer_class = ServiceRecordSerializer
 
 class ReplacedComponentsViewSet(ModelViewSet):
-    queryset = ReplacedComponents.objects.all()
+    queryset = ReplacedComponent.objects.all()
     serializer_class = ReplacedComponentsSerializer
 
 class EndOfLifeViewSet(ModelViewSet):

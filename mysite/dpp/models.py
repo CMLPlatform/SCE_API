@@ -14,7 +14,7 @@ class Organization(models.Model):
     address = models.TextField(max_length=100, blank=True)
     contact_email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
-    legal_documents = models.ForeignKey('Document', blank=True, null=True, on_delete=models.SET_NULL, related_name='organization_legal_documents')
+    legal_documents = models.ForeignKey('Document', blank=True, null=True, on_delete=models.SET_NULL, related_name='organization_legal_documents', help_text="Add official legal documentation associated with the company. This may include licenses, registration papers, permits, or other legally mandated certificates.")
 
     # class Meta:  # If made abstract, cannot link legal_documents here
     #     abstract = True
@@ -26,7 +26,7 @@ class Institution(Organization):
     type = models.CharField(max_length=30, choices={'university': 'University', 'research': 'Research institute', 'governmental': 'Government agency', 'ngo': 'Non-governmental organization', 'statistical': 'Statistical office', 'accountant': 'Accountant office', 'legal': 'Legal institution', 'other': 'Other'})
 
 class Company(Organization):
-    vat_number = models.CharField(max_length=50, unique=True, blank=True)
+    vat_number = models.CharField("VAT number", max_length=50, blank=True)
     country = CountryField()  #NOTE: address inherited from Organization
 
     class Meta:
@@ -184,7 +184,6 @@ class HazardousMaterial(Material):
     substance_location = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_location')  # (TechnicalDrawings)
 
 class CriticalRawMaterial(Material):
-    origin_country = CountryField()
     supply_risk_level = models.CharField(max_length=10)
     substance_concentration = models.FloatField()
     concentration_unit = models.CharField(max_length=20)
@@ -200,10 +199,10 @@ class ProductType(models.Model):
         },
         'Volume': {
             'l': 'liters',
-            'cm3': 'cm<sup>3</sup>',
-            'dm3': 'dm<sup>3</sup>',
-            'm3': 'm<sup>3</sup> (cubic meters)',
-            'ft3': 'ft<sup>3</sup> (cubic feet)',
+            'cm3': 'cm3',
+            'dm3': 'dm3',
+            'm3': 'm3 (cubic meters)',
+            'ft3': 'ft3 (cubic feet)',
         },
         'Energy': {
             'kWh': 'kWh',
@@ -214,16 +213,16 @@ class ProductType(models.Model):
     }
     # produced_by = models.OneToOneField(Activity, blank=True, null=True, on_delete=models.SET_NULL)
     name = models.CharField("Model or product name", max_length=100)
-    unit = models.CharField(max_length=3, choices=UNIT_CHOICES, default='pcs')
+    unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
     description = models.TextField(max_length=200, blank=True)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True)
-    weight = models.FloatField(default=1, validators=[MinValueValidator(0)])
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    weight = models.FloatField("Weight of 1 unit", blank=True, null=True, default=1, validators=[MinValueValidator(0)])
     weight_unit = models.CharField(max_length=2, choices=UNIT_CHOICES['Mass'], default='kg')
     volume = models.FloatField(validators=[MinValueValidator(0)])
     volume_unit = models.CharField(max_length=3, choices=UNIT_CHOICES['Volume'], default='m3')
 
     taric_code = models.CharField(max_length=20, blank=True, help_text="TARIC (customs code)")
-    hs_code = models.CharField(max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
+    hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
 
     def __str__(self):
         return self.name
@@ -270,23 +269,38 @@ class SecondaryProduct(ProductType):
 
 class Emission(models.Model):
     name = models.CharField(max_length=50)
+    unit = models.CharField(max_length=10, default='g')
 
     def __str__(self):
         return self.name
 
 class Composition(models.Model):
     product = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='composition')
-    material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name='used_in')
-    fraction = models.FloatField(validators=FRACTION_VALIDATOR)
+    material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='used_in')
+    quantity = models.FloatField(help_text="The amount of material present in product.")
+    # fraction = models.FloatField(validators=FRACTION_VALIDATOR)
+
+    origin_country = CountryField(blank=True, null=True, help_text="Only fill for Critical Raw Materials")
 
     class Meta:
         unique_together = ('product', 'material')
         ordering = ['product', 'material']
 
+    def clean(self):
+        if isinstance(self.material, CriticalRawMaterial):
+            if not self.origin_country:
+                raise ValidationError({
+                    'origin_country': 'Origin country is mandatory when the material is a Critical Raw Material.'
+                })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()   # Enforce clean() on every save
+        return super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.amount}% {self.material} in ({self.product})"
 
-class Product(models.Model):  # =ProductInformation in DPP
+class ProductItem(models.Model):  # =ProductInformation in DPP
     verbose_plural_name = "Products"
     product_type = models.ForeignKey(ProductType, on_delete=models.PROTECT)
     DPP_metadata = models.ForeignKey(Metadata, on_delete=models.PROTECT, blank=True)
@@ -312,11 +326,11 @@ class Activity(models.Model):  #TODO: check what common fields can be moved here
 
 class ProductionLine(Activity):
     description = models.TextField(max_length=300, blank=True)
-    final_product = models.OneToOneField(ProductType, on_delete=models.RESTRICT, verbose_name="Final Product")
-    operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.SET(get_unknown_company))
+    final_product = models.OneToOneField(ProductType, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
+    operator = models.ForeignKey(Company, verbose_name="Producing company", blank=True, null=True, on_delete=models.SET(get_unknown_company))
     modified_at = models.DateField(auto_now=True)
-    mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance')
-    energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance')
+    mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
+    energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
 
     def __str__(self):
         return self.name
@@ -354,7 +368,8 @@ class ProductionLine(Activity):
 
 class Process(Activity):
     production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE)  # Assuming 1:M
-    functional_flow = models.ForeignKey(ProductType, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main product", related_name='produced_by')  #FIXME: make this 1:1?
+    functional_flow = models.ForeignKey(ProductType, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')  #FIXME: make this 1:1?
+    amount = models.FloatField(default=1, help_text="Number of units produced")
     # energy_use = models.FloatField()
     is_outsourced = models.BooleanField("Outsourced", default=False)
     operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.CASCADE)
@@ -419,10 +434,10 @@ class Exchange(models.Model):
         'triangular': 'Triangular distribution',
     }
     amount = models.FloatField()
-    exchange_type = models.CharField(max_length=3, choices={'in': 'Input', 'out': 'Output', 'ff': 'functional flow'})  #NOTE: out means waste
+    direction = models.CharField(max_length=3, choices={'in': 'Input', 'out': 'Output', 'ff': 'functional flow'})  #NOTE: out means waste
     is_proxy = models.BooleanField("This is an approximation of the actual product", default=False)
     observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
-    uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none')
+    uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none', help_text="If the amount is uncertain, how can this uncertainty be described?")
     loc = models.FloatField("Mean or median", blank=True, null=True)
     scale = models.FloatField("Standard deviation", blank=True, null=True)  # or geometric stddev
     shape = models.FloatField(blank=True, null=True, help_text="for lognormal distribution")
@@ -440,11 +455,11 @@ class ProductExchange(Exchange):
     process = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='prod_exchanges')
 
     class Meta:
-        unique_together = ['product', 'process', 'exchange_type']
+        unique_together = ['product', 'process', 'direction']
         ordering = ['process', 'product']
 
     def __str__(self):
-        return f"{self.exchange_type}: {self.amount} {self.product.unit} {self.product}"
+        return f"{self.direction}: {self.amount} {self.product.unit} {self.product}"
 
 class EnvExchange(Exchange):
     """Represents an emission or resource extraction by a process."""
@@ -460,17 +475,18 @@ class EnvExchange(Exchange):
     compartment = models.CharField(max_length=20, choices=COMPARTMENTS)
 
     class Meta:
-        unique_together = ['substance', 'compartment', 'exchange_type']
+        unique_together = ['substance', 'compartment', 'direction']
         ordering = ['process', 'substance']
-        verbose_name = 'Emissions & Extractions'
+        verbose_name = 'Emission or Extraction'
+        verbose_name_plural = 'Emissions & Extractions'
 
     def __str__(self):
-        return f"{self.exchange_type}: {self.amount} {self.substance.unit} {self.substance}"
+        return f"{self.direction}: {self.amount} {self.substance.unit} {self.substance}"
 
 class BillOfMaterials(models.Model):
     """ Represents the components contained in a ProductType."""
     product = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='bom')  # product or subclass Material
-    component = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='part_of')  # Could contain ProductType, Product, Material
+    component = models.ForeignKey(ProductType, on_delete=models.CASCADE, related_name='part_of')  #FIXME: could also contain Material
     amount = models.FloatField()
     unit = models.CharField(max_length=20, choices=ProductType.UNIT_CHOICES) # Choices validated below
 
@@ -533,7 +549,7 @@ class ServiceEvent(models.Model):
         'eol': 'End-of-life treatment',
     }
     id = models.UUIDField(primary_key=True, editable=False)
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='service_events')
+    product = models.ForeignKey(ProductItem, on_delete=models.CASCADE, related_name='service_events')
     operator = models.ForeignKey(ServiceOperator, on_delete=models.CASCADE)
     # life_stage = models.CharField(max_length=20, choices=LIFE_STAGES) # Obsolete, already implied by service_type
     service_type = models.CharField(max_length=30, blank=True, choices=SERVICE_TYPES)
@@ -566,11 +582,14 @@ class ServiceRecord(models.Model):
     diagnostics_performed = models.TextField(max_length=300, blank=True)
     corrective_action = models.TextField(max_length=300, blank=True)
 
-class ReplacedComponents(models.Model):
+class ReplacedComponent(models.Model):
     """ Components that were replaced or added during a service event."""
     service_record = models.ForeignKey(ServiceRecord, on_delete=models.CASCADE, related_name='replaced_components')
-    old_component = models.ForeignKey(Product, blank=True, null=True, on_delete=models.SET_NULL, related_name='replaced')
-    new_component = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='installed')
+    old_component = models.ForeignKey(ProductItem, blank=True, null=True, on_delete=models.SET_NULL, related_name='replaced')
+    new_component = models.ForeignKey(ProductItem, on_delete=models.CASCADE, related_name='installed')
+
+    def __str__(self):
+        return self.new_component.name
 
 class EndOfLife(models.Model):
     service_record = models.ForeignKey(ServiceRecord, on_delete=models.CASCADE, related_name='end_of_life')
@@ -581,23 +600,41 @@ class EndOfLife(models.Model):
         'stockpiling': 'Stockpiling',
     }
     treatment_type = models.CharField(max_length=20, choices=EOL_TREATMENTS)
-    affected_component = models.ForeignKey(Product, on_delete=models.RESTRICT)
+    affected_component = models.ForeignKey(ProductItem, on_delete=models.RESTRICT)
 
 
 ## Sustainability evaluation
 
-class ImpactCategory(models.Model):
+class IndicatorSet(models.Model):
+    """A methodology or group of related impact indicators (e.g. EF3.0)"""
     name = models.CharField(max_length=50)
-    description = models.CharField(max_length=200, blank=True)
-    unit = models.CharField(max_length=40)
-    is_environmental = models.BooleanField("Type of impact", choices={True: "Environmental", False: "Socioeconomic"}, default=True)
-    # type = models.CharField(max_length=3, choices={'env': 'environmental', 'sec': 'socioeconomic'})
+    start_date = models.DateField("Release date")
+    end_date = models.DateField("Phase-out date", blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+class ImpactCategory(models.Model):
+    """The type of impact that is assessed"""
+    name = models.CharField(max_length=50)
 
     class Meta:
         verbose_name_plural = "Impact categories"
 
     def __str__(self):
         return self.name
+
+class ImpactIndicator(models.Model):
+    """Life Cycle Impact Assessment Method"""
+    method = models.CharField(max_length=50)
+    description = models.CharField(max_length=200, blank=True)
+    unit = models.CharField(max_length=40)
+    is_environmental = models.BooleanField("Type of impact", choices={True: "Environmental", False: "Socioeconomic"}, default=True)
+    indicator_set = models.ForeignKey(IndicatorSet, on_delete=models.SET_NULL, blank=True, null=True)
+    impact_category = models.ForeignKey(ImpactCategory, on_delete=models.PROTECT)
+
+    def __str__(self):
+        return self.method
 
 class SustainabilityEvaluation(models.Model):  # including metadata
     """
@@ -640,7 +677,7 @@ class SustainabilityScore(models.Model):
     The indicator results for one impact category in a SustainabilityEvaluation,
     plus contribution analysis data.
     """
-    impact_category = models.ForeignKey(ImpactCategory, on_delete=models.CASCADE)
+    impact_category = models.ForeignKey(ImpactIndicator, on_delete=models.CASCADE)
     evaluation = models.ForeignKey(SustainabilityEvaluation, on_delete=models.CASCADE)
     impact_value = models.FloatField()  # cradle-to-gate total (unit = impact_category.unit)
     upstream_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
