@@ -1,6 +1,7 @@
 {% load static %}
 {% load i18n %}
 <link rel="stylesheet" href="{% static 'css/components.css' %}">
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
 
 <!DOCTYPE html>
 <html lang="en">
@@ -73,6 +74,7 @@
     {% endblock %}
     {% endif %}
 
+    <div class="flex flex-col lg:flex-row min-h-screen">
     <!--
     <div class="sidenav">
         <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}">Production lines</a>
@@ -82,12 +84,12 @@
     </div>
     -->
     <!-- sidebar -->
-    <div class="hidden md:flex flex-col w-64 bg-gray-800">
-        <div class="flex items-center justify-center h-16 bg-gray-900">
-            <span class="text-white font-bold uppercase">Sidebar</span>
+    <aside class="hidden md:flex flex-col w-74 bg-gray-800 h-screen sticky top-0">
+        <div class="flex items-center justify-center h-16 px-4 bg-gray-900">
+            <span class="text-white font-bold uppercase">Navigation</span>
         </div>
         <div class="flex flex-col flex-1 overflow-y-auto">
-            <nav class="flex-1 px-2 py-4 bg-gray-800">
+            <nav class="flex-1 px-2 py-2">
                 <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}" class="flex items-center px-4 py-2 text-gray-100 hover:bg-gray-700">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
                         stroke="currentColor">
@@ -130,11 +132,12 @@
                 </a>
             </nav>
         </div>
-    </div>
+    </aside>
 
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="flex-1 flex flex-col max-w-7xl w-full mx-auto py-6 sm:px-6 lg:px-8">
         {% block content %}{% endblock %}
     </main>
+    </div>
 
 {% block footer %}
     <div id="footer" style="text-align:center; padding:20px; color:#666; font-size:12px;">
