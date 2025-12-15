@@ -1,5 +1,21 @@
 {% extends "dpp/base.html" %}
 {% load crispy_forms_tags %}
+{% load static %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script src="{% url 'admin:jsi18n' %}"></script>
+    <!-- jQuery (required for admin widgets) -->
+    <script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+    <script src="{% static 'admin/js/jquery.init.js' %}"></script>
+    
+    <!-- Admin popup handling -->
+    <script src="{% static 'admin/js/core.js' %}"></script>
+    <script src="{% static 'admin/js/admin/RelatedObjectLookups.js' %}"></script>
+    
+    <!-- scripts defined in form -->
+    {{ form.media }}
+{% endblock %}
 
 {% block title %}{% if object %}Edit{% else %}Create new{% endif %} {{ verbose_name }}{% endblock %}
 

@@ -11,7 +11,7 @@
       {% for input in inputs %}
       <tr class="{% cycle 'bg-gray-200' 'bg-white' %}">
         <td class="px-6 py-1">Input</td>
-        <td class="px-4 py-1">{{input.amount}}</td>
+        <td class="px-4 py-1"><a href="{% url 'dpp:productexchange_update' input.pk %}">{{input.amount}}</a></td>
         <td class="px-4 py-1">{{input.product.unit}}</td>
         <td class="px-4 py-1">{{input.product.name}}</td>
         <td class="px-4 py-1"><a href="{% url 'dpp:productexchange_delete' input.pk %}"
@@ -23,6 +23,11 @@
       {% endfor %}
     </tbody>
     </table>
+    <div class="add-button">
+      <a href="{% url 'dpp:productexchange_add' %}?direction=in" class="btn btn-primary">Add input</a>
+      <a href="{% url 'dpp:productexchange_add' %}?direction=in&type=pack" class="btn btn-primary">Add packaging</a>
+      <a href="{% url 'dpp:envexchange_add' %}?direction=in" class="btn btn-primary">Add resource extraction</a>
+    </div>
   </div>
   <div class="bg-white rounded-lg shadow-md overflow-hidden">
     <h2 class="px-4 text-xl font-semibold">Outputs of process</h2>
@@ -63,6 +68,10 @@
       {% endfor %}
     </tbody>
     </table>
+    <div class="add-button">
+      <a href="{% url 'dpp:productexchange_add' %}?direction=out" class="btn btn-primary">Add waste</a>
+      <a href="{% url 'dpp:envexchange_add' %}?direction=out" class="btn btn-primary">Add emission</a>
+    </div>
   </div>
 </div>
 

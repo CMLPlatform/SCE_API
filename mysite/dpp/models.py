@@ -1,10 +1,52 @@
 from django.db import models
+from django.db.models.signals import m2m_changed
+from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django_countries.fields import CountryField
 import datetime
 
 FRACTION_VALIDATOR = [MinValueValidator(0), MaxValueValidator(1)]
+
+UNIT_CHOICES = {
+    'pcs': 'pieces',
+    'Mass': {
+        'kg': 'kg',
+        'g': 'g',
+        'lb': 'lb',
+        'oz': 'oz',
+    },
+    'Volume': {
+        'l': 'liters',
+        'cm3': 'cm3',
+        'dm3': 'dm3',
+        'm3': 'm3 (cubic meters)',
+        'ft3': 'ft3 (cubic feet)',
+        'gal': 'gallons'
+    },
+    'Energy': {
+        'kWh': 'kWh',
+        'MWh': 'MWh',
+        'MJ': 'MJ',
+        'GJ': 'GJ',
+    }
+}
+CONVERSIONS = {
+    'kg': 1,
+    'g': 0.001,
+    'lb': 0.4535924,
+    'oz': 0.02834952,
+    'l': 1,
+    'cm3': 0.001,
+    'dm3': 1,
+    'm3': 1000,
+    'ft3': 28.3168466,
+    'gal': 3.785412,
+    'kWh': 1,
+    'MWh': 1000,
+    'MJ': 1 / 3.6,
+    'GJ': 1000 / 3.6,
+}
 
 ## Organizations and companies
 
@@ -121,45 +163,21 @@ class Document(models.Model):  #TODO: security check on files
     # file_type = models.CharField(max_length=5, default=file.split('.')[-1])
     upload_date = models.DateTimeField(auto_now_add=True)
 
-    def clean(self):
-        # Validate that instructions are only set for manuals
-        if self.type in self.DOCUMENT_TYPES['Manuals']:
-            if not self.instructions.exists():
-                raise ValidationError({
-                    "instructions": "A manual must have at least one instruction type."
-                })
-        elif self.instructions.exists():
-            raise ValidationError({"instructions": "Instructions can only be associated with manuals."})
-    
-    def save(self, *args, **kwargs):
-        # Save instance first so M2M relations are available
-        super().save(*args, **kwargs)
-
-        manuals = self.DOCUMENT_TYPES['Manuals']
-
-        # If there are instructions but this is not a manual, raise validation error
-        if self.instructions.exists() and self.type not in manuals:
-            raise ValidationError({"instructions": "Instructions can only be associated with manuals."})
-
-        # If this is a manual but no instructions have been attached, raise validation error
-        if self.type in manuals and not self.instructions.exists():
-            raise ValidationError({"instructions": "A manual must have at least one instruction type."})
-
     def __str__(self):
         return self.file.name.split('/')[-1]
     @property
     def filename(self):
         return self.file.name.split('/')[-1]
 
-# class ComplianceDocument(Document):
-#     super.type = models.CharField(choices=DOCUMENT_TYPES['Compliance document'])
-
-# class Manual(Document):
-#     language = models.CharField(max_length=40)
-#     type = models.CharField(default='manual', max_length=20, choices={'manual': 'User manual', 'circularity': 'Circularity manual', 'maintenance': 'Maintenance manual', 'installation': 'Installation guide', 'eol': 'End-of-life guidelines', 'datasheet': 'Product data sheet'})
-
-# class Labels(Document):
-#     type = models.CharField(max_length=20, default='label', choices={'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'recycling_label': 'Recycling label', 'legal': 'Legal markings'})
+@receiver(m2m_changed, sender=Document.instructions.through)
+def validate_instructions(sender, instance, action, **kwargs):
+    """Ensure that all and only manuals have instructions."""
+    if action == "post_add" or action == "post_remove" or action == "post_clear":
+        manuals = instance.DOCUMENT_TYPES['Manuals']
+        if instance.type in manuals and not instance.instructions.exists():
+            raise ValidationError("A manual must have at least one instruction type.")
+        if instance.instructions.exists() and instance.type not in manuals:
+            raise ValidationError("Instructions can only be associated with manuals.")
 
 
 ## Technosphere: products and processes
@@ -189,36 +207,10 @@ class CriticalRawMaterial(Material):
     concentration_unit = models.CharField(max_length=20)
 
 class ProductModel(models.Model):
-    UNIT_CHOICES = {
-        'pcs': 'pieces',
-        'Mass': {
-            'kg': 'kg',
-            'g': 'g',
-            'lb': 'lb',
-            'oz': 'oz',
-        },
-        'Volume': {
-            'l': 'liters',
-            'cm3': 'cm3',
-            'dm3': 'dm3',
-            'm3': 'm3 (cubic meters)',
-            'ft3': 'ft3 (cubic feet)',
-        },
-        'Energy': {
-            'kWh': 'kWh',
-            'MWh': 'MWh',
-            'MJ': 'MJ',
-            'GJ': 'GJ',
-        }
-    }
     name = models.CharField("Model or product name", max_length=100)
     unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
     description = models.TextField(max_length=200, blank=True)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    weight = models.FloatField("Weight of 1 unit", blank=True, null=True, default=1, validators=[MinValueValidator(0)])
-    weight_unit = models.CharField(max_length=2, choices=UNIT_CHOICES['Mass'], default='kg')
-    volume = models.FloatField(validators=[MinValueValidator(0)])
-    volume_unit = models.CharField(max_length=3, choices=UNIT_CHOICES['Volume'], default='m3')
 
     taric_code = models.CharField(max_length=20, blank=True, help_text="TARIC (customs code)")
     hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
@@ -235,14 +227,51 @@ class ProductModel(models.Model):
         return process.operator if process else None
 
 class ProductBatch(ProductModel):
-    batch_number = models.IntegerField(blank=True, null=True)
+    batch_number = models.PositiveIntegerField()
+    model = models.ForeignKey(ProductModel, on_delete=models.RESTRICT, blank=True, null=True, related_name='batch')
     
-class DppProduct(ProductBatch):
-    """A product for which a Digital Product Passport (DPP) is issued.
-    Typically a final product sold in stores.
+    def __str__(self):
+        return f"{self.name} batch {self.batch_number}"
+
+class ProductProperties(models.Model):
+    """Physical properties of a product."""
+    product = models.OneToOneField(ProductModel, on_delete=models.CASCADE, related_name='properties')
+    weight = models.FloatField("Weight of 1 unit", validators=[MinValueValidator(0)])
+    weight_unit = models.CharField(max_length=2, choices=UNIT_CHOICES['Mass'], default='kg')
+    volume = models.FloatField(validators=[MinValueValidator(0)])
+    volume_unit = models.CharField(max_length=3, choices=UNIT_CHOICES['Volume'], default='m3')
+    includes_packaging = models.BooleanField("The above includes packaging", default=False)
+    density = models.FloatField(validators=[MinValueValidator(0)], help_text='Density of the product, excluding packaging and empty space.')
+
+    @property
+    def density_unit(self):
+        return f"{self.weight_unit}/{self.volume_unit}"
+    @property
+    def net_weight(self):
+        if self.includes_packaging:
+            return self.weight - 0.1
+        else:
+            return self.weight
+    @property
+    def packaging_ratio(self):
+        if self.weight == 0:
+            return 0
+        package_weight = 0
+        for pack in self.produced_by.prod_exchanges.filter(type='pack'):
+            package_weight += pack.properties.weight * CONVERSIONS[pack.weight_unit]
+        if self.includes_packaging:
+            return package_weight / (self.weight - package_weight)
+        else:
+            return package_weight / self.weight
+        
+    
+class DppDetails(models.Model):
+    """Detailed info about a product, as required for the Digital Product Passport (DPP).
+    Typically needed for final products sold in stores.
     """
+    product = models.OneToOneField(ProductModel, on_delete=models.CASCADE)
     vendor_or_importer = models.ForeignKey(Importer, blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='sold_products')
-    origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products") # duplicate of ProductionLine.operator
+    origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products") #FIXME duplicate of ProductionLine.operator
 
     # Documents and other quality compliance info
     quality_compliance_documents = models.ManyToManyField(Document, blank=True)
@@ -252,9 +281,8 @@ class DppProduct(ProductBatch):
     # technical_drawings = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='product_drawings')
     # conformity_certificate = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='product_conformity_certificate')
 
-
-class Packaging(ProductBatch):
-    pass
+    def __str__(self):
+        return f"Details for {self.product.name}"
 
 class SecondaryProduct(ProductModel):
     CIRCULARITY_CHOICES = {
@@ -278,7 +306,7 @@ class Emission(models.Model):
         return self.name
 
 class Composition(models.Model):
-    product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE, related_name='composition')
+    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='composition')
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='used_in')
     quantity = models.FloatField(help_text="The amount of material present in product.")
     # fraction = models.FloatField(validators=FRACTION_VALIDATOR)
@@ -328,7 +356,7 @@ class Activity(models.Model):  #TODO: check what common fields can be moved here
 
 class ProductionLine(Activity):
     description = models.TextField(max_length=300, blank=True)
-    final_product = models.OneToOneField(ProductBatch, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
+    final_product = models.OneToOneField(ProductModel, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
     operator = models.ForeignKey(Company, verbose_name="Producing company", blank=True, null=True, on_delete=models.SET(get_unknown_company))
     modified_at = models.DateField(auto_now=True)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
@@ -370,7 +398,7 @@ class ProductionLine(Activity):
 
 class Process(Activity):
     production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE)  # Assuming 1:M
-    functional_flow = models.ForeignKey(ProductBatch, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')  #FIXME: make this 1:1?
+    functional_flow = models.ForeignKey(ProductModel, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')  #FIXME: make this 1:1
     amount = models.FloatField(default=1, help_text="Number of units produced")
     # energy_use = models.FloatField()
     is_outsourced = models.BooleanField("Outsourced", default=False)
@@ -455,6 +483,15 @@ class ProductExchange(Exchange):
     """Represents the input or output of a product by an activity."""
     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='exchanged_by')
     process = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='prod_exchanges')
+    FLOW_TYPES = {
+        'prod': 'Component (added to the product)',
+        'cons': 'Consumable',
+        'pack': 'Packaging',
+        'ener': 'Electricity or heat',
+        'util': 'Utility or equipment',
+        'waste': 'Waste',
+    }
+    type = models.CharField(max_length=5, choices=FLOW_TYPES)
 
     class Meta:
         unique_together = ['product', 'process', 'direction']
@@ -487,17 +524,18 @@ class EnvExchange(Exchange):
 
 class BillOfMaterials(models.Model):
     """ Represents the components contained in a ProductBatch."""
-    product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE, related_name='bom')  # product or subclass Material
-    component = models.ForeignKey(ProductBatch, on_delete=models.CASCADE, related_name='part_of')  #FIXME: could also contain Material
+    #FIXME: BOM should be calculated from inventory, not stored as table.
+    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='bom')  # product or subclass Material
+    component = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='part_of')  #FIXME: could also contain Material
     amount = models.FloatField()
-    unit = models.CharField(max_length=20, choices=ProductModel.UNIT_CHOICES) # Choices validated below
+    unit = models.CharField(max_length=20, choices=UNIT_CHOICES) # Choices validated below
 
     @property  # Dynamic choices of units based on product type
     def find_units(self):
         if self.component.product_type.unit == 'pcs':
             return ['pcs']
         else:
-            return ProductModel.UNIT_CHOICES['Mass'].keys() | ProductModel.UNIT_CHOICES['Volume'].keys()
+            return UNIT_CHOICES['Mass'].keys() | UNIT_CHOICES['Volume'].keys()
 
     def clean(self):
         if self.product == self.component:
@@ -512,14 +550,6 @@ class BillOfMaterials(models.Model):
 
     def __str__(self):
         return f"{self.amount} {self.unit} {self.component} in ({self.product})"
-
-class PackagingInfo(models.Model):
-    product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE, related_name='packaging_info')
-    packaging = models.ForeignKey(Packaging, on_delete=models.CASCADE, related_name='used_as_packaging')
-    packaging_ratio = models.FloatField()
-
-    def __str__(self):
-        return f"{self.product} packaged in {self.packaging}"
 
 class Alias(models.Model):
     """Allow companies to define an alternative product name to display"""
@@ -653,7 +683,7 @@ class SustainabilityEvaluation(models.Model):  # including metadata
     def get_year():
         return datetime.date.today().year
     
-    product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE)
+    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE)
     functional_amount = models.FloatField()
     system_boundaries = models.CharField(max_length=200, blank=True)
     geographical_scope = models.CharField(max_length=4, choices=GEO_CHOICES, blank=True)
@@ -695,8 +725,8 @@ class SustainabilityScore(models.Model):
 ## Circularity indicators
 
 class CircularityEvaluation(models.Model):
-    """A circularity evaluation of a certain ProductBatch."""
-    product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE)
+    """A circularity evaluation of a certain ProductModel."""
+    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE)
     assessment_date = models.DateField(default=datetime.date.today, help_text="When the assessment was made or updated.")
     assessed_by = models.ForeignKey(Institution, blank=True, null=True, on_delete=models.PROTECT)
     report = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='circularity_reports', help_text="Report describing the circularity assessment, and manual for monitoring and updating the circularity metrics.")
@@ -728,7 +758,7 @@ class CircularityScore(models.Model):
         return f"{self.indicator.name}: {self.value}"
 
 #FIXME: a service event should not update the CircularityScore of a Product,
-# but rather trigger an updated assessment of the ProductBatch.
+# but rather trigger an updated assessment of the ProductModel.
 # class CircularityUpdate(CircularityScore):
 #     service_event = models.ForeignKey(ServiceEvent, on_delete=models.SET_NULL, blank=True, null=True)
 #     previous_value = models.FloatField()
@@ -767,7 +797,7 @@ class CircularityTracker(CircularityScore):
 # ## Quality and compliance
 
 # class QualityCompliance(models.Model):
-#     product = models.ForeignKey(ProductBatch, on_delete=models.CASCADE)
+#     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE)
 #     document = models.ForeignKey(Document, on_delete=models.CASCADE)
 
 #     class Meta:

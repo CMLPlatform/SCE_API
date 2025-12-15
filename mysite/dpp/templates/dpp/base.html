@@ -10,19 +10,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}DPP{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style type="text/css">
-        .sidenav {
-            height: 100%;
-            width: 150pt;
-            position: fixed;
-            z-index: 1;
-            top: 80px;
-            left: 0;
-            background-color: #666;
-            overflow-x: hidden;
-            padding-top: 10px;
-        }
-    </style>
+    {% block extra_js %}
+    {% endblock %}
 </head>
 <body class="bg-gray-100">
     {% if not is_popup %}
@@ -129,11 +118,12 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    Settings
+                    Profile
                 </a>
             </nav>
         </div>
     </aside>
+    {% endif %} <!-- End of sidebar-->
 
     <main class="flex-1 flex flex-col max-w-7xl w-full mx-auto py-6 sm:px-6 lg:px-8">
         {% block content %}{% endblock %}
