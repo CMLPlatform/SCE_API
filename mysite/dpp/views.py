@@ -46,7 +46,7 @@ from .models import (
     ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
     Emission, Composition, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
-    Exchange, ProductExchange, EnvExchange, BillOfMaterials,
+    Exchange, ProductExchange, EnvExchange,
     ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
@@ -189,7 +189,7 @@ for model in [
     Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch,
     SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, Exchange,
-    ProductExchange, EnvExchange, BillOfMaterials,
+    ProductExchange, EnvExchange,
     ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
@@ -269,11 +269,11 @@ def create_flowchart(processes):
     background: all background processes supplying input to `processes`
     inputs: all products used by `processes` (or waste going out), but not produced anywhere
     """
-    outputs = ProductBatch.objects.filter(
+    outputs = ProductModel.objects.filter(
         produced_by__in=processes
         ).exclude(exchanged_by__process__in=processes
     ).distinct()
-    inputs = ProductBatch.objects.filter(
+    inputs = ProductModel.objects.filter(
         exchanged_by__process__in=processes
     ).distinct()
     exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)

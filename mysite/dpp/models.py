@@ -1,3 +1,4 @@
+from collections import defaultdict
 from django.db import models
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
@@ -225,6 +226,43 @@ class ProductModel(models.Model):
         """
         process = Process.objects.filter(output_product=self).first()
         return process.operator if process else None
+    
+    def calc_composition(self, main_line):
+        """
+        Recursively collect the Composition of components,
+        by searching upstream processes.
+        Returns a dict of {crm_id: country_code}. / Add to Composition table
+        """
+        composition = defaultdict(float)
+        
+        # Use known composition for this product, if it comes from background
+        if self.produced_by.production_line == main_line and any(bom := self.composition.all()):
+            for entry in bom:
+                key = (entry.material, entry.origin_country)
+                composition[key] += input.amount * entry.quantity
+            return composition
+        
+        # Recurse into components  #FIXME perhaps do this as Process/Activity method
+        for input in self.produced_by.exchanged_by.filter(type__in=['prod', 'waste']):
+            component_bom = input.product.calc_composition(recalculate=True)
+            plm = -1 if input.type == 'waste' else 1 # Subtract waste materials
+            for key, value in component_bom.items():
+                composition[key] += value * plm
+        
+        return composition
+
+    def get_composition(self, recalculate=False):
+        """Make a composition table for this product.
+        Calculate from supply chain if needed.
+        Returns a QuerySet with all materials
+        """
+        if recalculate or not self.composition.all():
+            production_line = self.produced_by.production_line
+            composition = self.calc_composition(production_line)
+            for (mat, origin), value in composition.items():
+                Composition(product=self, material=mat, quantity=value)
+        return self.composition.all()
+        
 
 class ProductBatch(ProductModel):
     batch_number = models.PositiveIntegerField()
@@ -329,7 +367,7 @@ class Composition(models.Model):
         return super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.amount}% {self.material} in ({self.product})"
+        return f"{self.quantity}% {self.material} in ({self.product})"
 
 class ProductItem(models.Model):  # =ProductInformation in DPP
     verbose_plural_name = "Products"
@@ -364,6 +402,18 @@ class ProductionLine(Activity):
 
     def __str__(self):
         return self.name
+
+    def create_transport(self):
+        """Find all the input products of this production line
+        and create a transport entry with default distance and mode.
+        """
+        processes = Process.objects.filter(production_line=self)
+        # processes = production_line.bop.all()
+        inputs = ProductModel.objects.filter(
+            exchanged_by__process__in=processes
+        ).exclude(produced_by__in=processes).distinct()
+        for prod in inputs:
+            Transport(production_line=self, product=prod)
     
     def check_unused_outputs(self):
         """
@@ -397,10 +447,9 @@ class ProductionLine(Activity):
         return ""  # All good
 
 class Process(Activity):
-    production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE)  # Assuming 1:M
-    functional_flow = models.ForeignKey(ProductModel, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')  #FIXME: make this 1:1
+    production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name='bop')
+    functional_flow = models.OneToOneField(ProductModel, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')
     amount = models.FloatField(default=1, help_text="Number of units produced")
-    # energy_use = models.FloatField()
     is_outsourced = models.BooleanField("Outsourced", default=False)
     operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.CASCADE)
     location = CountryField(blank=True)
@@ -522,35 +571,6 @@ class EnvExchange(Exchange):
     def __str__(self):
         return f"{self.direction}: {self.amount} {self.substance.unit} {self.substance}"
 
-class BillOfMaterials(models.Model):
-    """ Represents the components contained in a ProductBatch."""
-    #FIXME: BOM should be calculated from inventory, not stored as table.
-    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='bom')  # product or subclass Material
-    component = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='part_of')  #FIXME: could also contain Material
-    amount = models.FloatField()
-    unit = models.CharField(max_length=20, choices=UNIT_CHOICES) # Choices validated below
-
-    @property  # Dynamic choices of units based on product type
-    def find_units(self):
-        if self.component.product_type.unit == 'pcs':
-            return ['pcs']
-        else:
-            return UNIT_CHOICES['Mass'].keys() | UNIT_CHOICES['Volume'].keys()
-
-    def clean(self):
-        if self.product == self.component:
-            raise ValidationError("A product cannot contain itself as a component.")
-        if self.unit and self.unit not in self.find_units():
-            raise ValidationError(f"Invalid unit '{self.unit}'. Allowed: {', '.join(self.find_units())}.")
-
-    class Meta:
-        verbose_name_plural = "Bills of Materials"
-        unique_together = ('product', 'component')
-        ordering = ['product', 'component']
-
-    def __str__(self):
-        return f"{self.amount} {self.unit} {self.component} in ({self.product})"
-
 class Alias(models.Model):
     """Allow companies to define an alternative product name to display"""
     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='alias')
@@ -562,6 +582,22 @@ class Alias(models.Model):
 
     def __str__(self):
         return f"{self.product.name} = {self.alt_name}"
+
+class Transport(models.Model):
+    """Table of transport distance and vehicle
+    for inputs to a production line.
+    """
+    VEHICLES = {
+        'ocean': 'Ship (ocean)',
+        'NA': 'Unspecified',
+    }
+    production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name='transport')
+    product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='transport')
+    distance = models.PositiveSmallIntegerField("Transport distance (km)", default=0, validators=[MaxValueValidator(40000)])
+    mode = models.CharField("Main mode of transport", max_length=10, choices=VEHICLES, default='NA')
+
+    def __str__(self):
+        return f"{self.distance} km by {self.mode}"
 
 
 ## Service and maintenance records
