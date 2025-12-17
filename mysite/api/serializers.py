@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, ProductModel, ProductBatch, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
 
 
 class InstitutionSerializer(serializers.ModelSerializer):
@@ -41,11 +41,6 @@ class HazardousMaterialSerializer(serializers.ModelSerializer):
     class Meta:
         model = HazardousMaterial
         fields = ['CAS_number', 'safety_instructions', 'substance_concentration', 'concentration_unit', 'substance_location']
-
-class CriticalRawMaterialSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CriticalRawMaterial
-        fields = ['supply_risk_level', 'substance_concentration', 'concentration_unit']
 
 class ProductModelSerializer(serializers.ModelSerializer):
     class Meta:

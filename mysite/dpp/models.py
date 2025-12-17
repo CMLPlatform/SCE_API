@@ -192,20 +192,34 @@ class Material(models.Model):
     reused_fraction = models.FloatField("Reused material (%)", default=0, validators=FRACTION_VALIDATOR)
     renewable_fraction = models.FloatField("Sustainable and renewable material (%)", default=0, validators=FRACTION_VALIDATOR)
 
+    criticality_level = models.CharField(max_length=1, blank=True, default='', choices={'': 'N/A', 'c': 'critical', 'h': 'high', 'm': 'intermediate'}, help_text="Only for Critical Raw Materials (CRMs): criticality indicator based on supply risk and economic importance.")
+    origin_country = CountryField("Country of origin", blank=True, null=True, help_text="Only for Critical Raw Materials (CRMs)")
+
     def __str__(self):
-        return self.name
+        if self.origin_country:
+            return f"{self.name} ({self.origin_country.code})"
+        else:
+            return self.name
+
+    class Meta:
+        # unique_together = ('name', 'origin_country')  # If always the same %'s
+        ordering = ['name', 'origin_country']
+
+    def clean(self):
+        if bool(self.criticality_level) != bool(self.origin_country):
+            raise ValidationError({
+                'criticality_level': "If this is a CRM, 'Country of origin' must also be specified.",
+                'origin_country': "If this is a CRM, 'Criticality level' must also be specified.",
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 class HazardousMaterial(Material):
     CAS_number = models.CharField(max_length=50, blank=True, unique=True)
     safety_instructions = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_safety_instructions')  # (SafetyDataSheet)
-    substance_concentration = models.FloatField(blank=True, default=1, validators=FRACTION_VALIDATOR)  #TODO: set this attribute on products
-    concentration_unit = models.CharField(max_length=20, choices={'wt': 'Weight fraction'})
-    substance_location = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_location')  # (TechnicalDrawings)
-
-class CriticalRawMaterial(Material):
-    supply_risk_level = models.CharField(max_length=10)
-    substance_concentration = models.FloatField()
-    concentration_unit = models.CharField(max_length=20)
+    # substance_location = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_location')
 
 class ProductModel(models.Model):
     name = models.CharField("Model or product name", max_length=100)
@@ -227,41 +241,56 @@ class ProductModel(models.Model):
         process = Process.objects.filter(output_product=self).first()
         return process.operator if process else None
     
+    #TODO: only works for linear supply chains. No infinite loop detection. Fix with Leontief matrix.
     def calc_composition(self, main_line):
         """
         Recursively collect the Composition of components,
         by searching upstream processes.
-        Returns a dict of {crm_id: country_code}. / Add to Composition table
+        Returns a dict of {crm_id: country_code}.
         """
         composition = defaultdict(float)
         
         # Use known composition for this product, if it comes from background
-        if self.produced_by.production_line == main_line and any(bom := self.composition.all()):
+        if self.produced_by.production_line != main_line and any(bom := self.composition.all()):
             for entry in bom:
-                key = (entry.material, entry.origin_country)
-                composition[key] += input.amount * entry.quantity
+                composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit]
             return composition
         
         # Recurse into components  #FIXME perhaps do this as Process/Activity method
         for input in self.produced_by.exchanged_by.filter(type__in=['prod', 'waste']):
             component_bom = input.product.calc_composition(recalculate=True)
             plm = -1 if input.type == 'waste' else 1 # Subtract waste materials
-            for key, value in component_bom.items():
-                composition[key] += value * plm
+            for material, value in component_bom.items():
+                composition[material] += input.amount * value * plm
         
         return composition
 
     def get_composition(self, recalculate=False):
-        """Make a composition table for this product.
+        """Make a Composition table for this product.
         Calculate from supply chain if needed.
         Returns a QuerySet with all materials
         """
         if recalculate or not self.composition.all():
             production_line = self.produced_by.production_line
             composition = self.calc_composition(production_line)
-            for (mat, origin), value in composition.items():
+            if len(composition) == 0:
+                print("No material composition specified for any component.")
+            for mat, value in composition.items():
                 Composition(product=self, material=mat, quantity=value)
         return self.composition.all()
+    
+    def get_hazardous_concentrations(self):
+        """Returns a dict with the concentration of each hazardous material"""
+        concentrations = defaultdict(float)
+        try:
+            product_weight = self.properties.weight * CONVERSIONS[self.properties.weight_unit.unit]
+        except ProductProperties.DoesNotExist:
+            print(f"Weight of {self} unknown; cannot calculate concentration.")
+        bom = self.get_composition()
+        for content in bom:
+            if isinstance(mat := content.material, HazardousMaterial):
+                concentrations[mat] += content.quantity * CONVERSIONS[content.unit] / product_weight
+        return concentrations
         
 
 class ProductBatch(ProductModel):
@@ -285,12 +314,6 @@ class ProductProperties(models.Model):
     def density_unit(self):
         return f"{self.weight_unit}/{self.volume_unit}"
     @property
-    def net_weight(self):
-        if self.includes_packaging:
-            return self.weight - 0.1
-        else:
-            return self.weight
-    @property
     def packaging_ratio(self):
         if self.weight == 0:
             return 0
@@ -301,6 +324,12 @@ class ProductProperties(models.Model):
             return package_weight / (self.weight - package_weight)
         else:
             return package_weight / self.weight
+    @property
+    def net_weight(self):
+        if self.includes_packaging:
+            return self.weight / (self.packaging_ratio + 1)
+        else:
+            return self.weight
         
     
 class DppDetails(models.Model):
@@ -347,24 +376,11 @@ class Composition(models.Model):
     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE, related_name='composition')
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='used_in')
     quantity = models.FloatField(help_text="The amount of material present in product.")
-    # fraction = models.FloatField(validators=FRACTION_VALIDATOR)
-
-    origin_country = CountryField(blank=True, null=True, help_text="Only fill for Critical Raw Materials")
+    unit = models.CharField(max_length=2, choices=UNIT_CHOICES['Mass'], default='g')
 
     class Meta:
         unique_together = ('product', 'material')
         ordering = ['product', 'material']
-
-    def clean(self):
-        if isinstance(self.material, CriticalRawMaterial):
-            if not self.origin_country:
-                raise ValidationError({
-                    'origin_country': 'Origin country is mandatory when the material is a Critical Raw Material.'
-                })
-
-    def save(self, *args, **kwargs):
-        self.full_clean()   # Enforce clean() on every save
-        return super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.quantity}% {self.material} in ({self.product})"

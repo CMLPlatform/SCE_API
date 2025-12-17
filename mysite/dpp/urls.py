@@ -14,7 +14,7 @@ urlpatterns = [
 ]
 
 # urlpatterns = []
-for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch, SecondaryProduct, DppDetails, Emission, Composition, ProductItem, Activity, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler]:
+for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, ProductModel, ProductBatch, SecondaryProduct, DppDetails, Emission, Composition, ProductItem, Activity, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityEnabler]:
     name = model.__name__.lower()
     urlpatterns += [
         path(f"{name}/", getattr(views, f"{model.__name__}List").as_view(), name=f"{name}_list"),

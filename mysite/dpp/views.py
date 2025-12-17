@@ -42,7 +42,7 @@ def production_line_edit(request, pk):
 from django.urls import reverse, reverse_lazy
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, CriticalRawMaterial,
+    Material, HazardousMaterial,
     ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
     Emission, Composition, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
@@ -186,7 +186,7 @@ def make_crud_views(model):
 views = {}
 for model in [
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, CriticalRawMaterial, ProductModel, ProductBatch,
+    Material, HazardousMaterial, ProductModel, ProductBatch,
     SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, Exchange,
     ProductExchange, EnvExchange,
