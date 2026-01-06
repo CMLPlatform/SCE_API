@@ -23,7 +23,7 @@
         </a>
     </div>
 
-    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+    <div class="overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
@@ -39,10 +39,11 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
                 {% for object in object_list %}
-                <tr class="hover:bg-gray-50">
+                <tr class="hover:bg-gray-50 cursor-pointer"
+                onclick="window.location='{% url opts.app_label|add:':'|add:opts.model_name|add:'_detail' object.pk %}';">
                     {% for field in opts.fields %}
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {% with value=object|get_attr:field.verbose_name %}
+                        {% with value=object|get_attr:field.name %}
                             {% if field.get_internal_type == "TextField" %}
                                 {{ value|truncatewords:10 }}
                             {% else %}

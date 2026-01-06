@@ -30,6 +30,10 @@ UNIT_CHOICES = {
         'MWh': 'MWh',
         'MJ': 'MJ',
         'GJ': 'GJ',
+    },
+    'Transport': {
+        'tkm': 'ton.km',
+        'm3km': 'm3.km',
     }
 }
 CONVERSIONS = {
@@ -294,12 +298,24 @@ class ProductModel(models.Model):
             if isinstance(mat := content.material, HazardousMaterial):
                 concentrations[mat] += content.quantity * CONVERSIONS[content.unit] / product_weight
         return concentrations
-        
+    
+    def find_missing_bom(self):
+        """Find direct components without a composition"""
+        if not hasattr(self, 'produced_by'):
+            return []
+        missing = []
+        for flow in self.produced_by.prod_exchanges.filter(type__in=['prod', 'waste']):
+            # Check if this flow has any composition data
+            if not any(flow.product.composition.all()):
+                missing.append(flow)
+        return missing
 
 class ProductBatch(ProductModel):
     batch_number = models.PositiveIntegerField()
     model = models.ForeignKey(ProductModel, on_delete=models.RESTRICT, blank=True, null=True, related_name='batch')
     
+    class Meta:
+        verbose_name_plural = 'Product batches'
     def __str__(self):
         return f"{self.name} batch {self.batch_number}"
 
@@ -351,6 +367,9 @@ class DppDetails(models.Model):
     # technical_drawings = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='product_drawings')
     # conformity_certificate = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='product_conformity_certificate')
 
+    class Meta:
+        verbose_name = verbose_name_plural = "DPP details"
+
     def __str__(self):
         return f"Details for {self.product.name}"
 
@@ -386,7 +405,7 @@ class Composition(models.Model):
         ordering = ['product', 'material']
     
     def __str__(self):
-        return f"{self.quantity}% {self.material} in ({self.product})"
+        return f"{self.quantity} {self.unit} {self.material} (in {self.product})"
 
 class ProductItem(models.Model):  # =ProductInformation in DPP
     verbose_plural_name = "Products"
@@ -546,9 +565,11 @@ class ProductExchange(Exchange):
     FLOW_TYPES = {
         'prod': 'Component (added to the product)',
         'cons': 'Consumable',
-        'pack': 'Packaging',
         'ener': 'Electricity or heat',
         'util': 'Utility or equipment',
+        'trans': 'Transport',
+        'pack': 'Packaging',
+        'react': 'Reactant',
         'waste': 'Waste',
     }
     type = models.CharField(max_length=5, choices=FLOW_TYPES)

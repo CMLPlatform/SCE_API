@@ -1,0 +1,61 @@
+{% extends "dpp/generic_detail.html" %}
+{% load static %}
+
+{% block content %}
+<!-- TODO: move contents below to the 'content' block (append) -->
+{{ block.super }}
+
+<!-- Manufacturing info-->
+<div class="py-6">
+  <h2 class="text-xl font-semibold">Origin</h2>
+  {% if produced_by%}
+  <p>Manufacturer: {{manufacturer}}</p>
+  <p>Production process: <a href="{% url 'dpp:process_detail' produced_by.pk%}">{{produced_by}}</a></p>
+  {% else %}
+  <p>Production process: unspecified. <i>Create a new process to describe the production of {{object}}.</i></p>
+  {% endif %}
+</div>
+
+<!-- Composition info-->
+<div class="grid md:grid-cols-2 gap-8">
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">Bill of Materials</h2>
+    <table>
+    <tbody>
+      {% for comp in materials %}
+      <tr class="{% cycle 'bg-white' 'bg-gray-100' %}">
+        <td class="px-4 py-1">{{comp.quantity}} {{comp.unit}}</td>
+        <td class="px-4 py-1"><a href="{% url 'dpp:material_detail' comp.material.pk %}">{{comp.material.name}}</a></td>
+        <td class="px-4 py-1">Hazardous or not</td>
+        <td class="px-4 py-1"><a href="{% url 'dpp:composition_delete' comp.pk %}"
+          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
+          title="Remove this material">
+            ×
+        </a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+    <div class="add-button">
+      <a href="{% url 'dpp:composition_add' %}" class="btn btn-primary">Add material</a>
+      <form method="post" action="">
+          {% csrf_token %}
+          <button type="submit" name="recalculate" class="btn">Recalculate</button>
+      </form>
+    </div>
+  </div>
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">Componets with missing BoM</h2>
+    <table>
+    <tbody class="{% cycle 'bg-gray-50' 'bg-white' %} divide-gray-200">
+      {% for flow in missing_bom %}
+      <tr>
+        <td class="px-3 py-1">Type: {{flow.type}}</td>
+        <td class="px-3 py-1"><a href="{% url app_label|add:':product_detail' flow.product.pk %}">{{flow.product.name}}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

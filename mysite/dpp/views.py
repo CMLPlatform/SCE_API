@@ -390,3 +390,24 @@ class ProcessDetailView(AdminTemplateMixin, DetailView):
             process=self.object
         )
         return context
+
+class ProductDetailView(AdminTemplateMixin, DetailView):
+    model = ProductModel
+    template_name = 'dpp/product_detail.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['materials'] = self.object.get_composition()
+        context['manufacturer'] = self.object.manufacturer
+        context['missing_bom'] = self.object.find_missing_bom()
+        if hasattr(self.object, 'produced_by'):
+            context['produced_by'] = self.object.produced_by
+        else:
+            context['produced_by'] = None
+        return context
+    
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if 'recalculate' in request.POST:
+            self.object.get_composition(recalculate=True)
+        return redirect('dpp:product_detail', pk=self.object.pk)
