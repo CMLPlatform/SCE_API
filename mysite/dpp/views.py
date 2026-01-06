@@ -300,7 +300,7 @@ def create_flowchart(processes):
 
     # Add unlinked products and emissions
     for prod in outputs:
-        proc = prod.produced_by.first() #if prod.produced_by.exists() else None
+        proc = prod.produced_by
         lines.append("    a%d --> ff%d{{%s}}:::product" % (proc.id, prod.id, prod.name))
 
     for exch in ProductExchange.objects.filter(product__in=inputs, process__in=processes):
@@ -344,7 +344,7 @@ def create_flowchart(processes):
                 )
     # Internal exchanges
     for exch in exchanges:
-        orig = exch.product.produced_by.first()
+        orig = exch.product.produced_by
         dest = exch.process
         lines.append("    a%d -->|%s| a%d" % (orig.id, exch.product.name, dest.id))
 
@@ -363,7 +363,7 @@ class ProductionLineDetailView(DetailView):
             production_line=self.object
         ).order_by('id')
         # Check for warnings
-        context['warnings'] = model.check_unused_outputs()
+        context['warnings'] = self.object.check_unused_outputs()
         # Add a network graph (obsolete)
         graph_data = create_process_graph(context['processes'])
         context['graph_data'] = json.dumps(graph_data)
@@ -372,13 +372,12 @@ class ProductionLineDetailView(DetailView):
         context["mermaid_code"] = mermaid_code
         return context
 
-class ProcessDetailView(DetailView):
+class ProcessDetailView(AdminTemplateMixin, DetailView):
     model = Process
     template_name = 'dpp/process_detail.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['opts'] = model._meta
         context['process'] = self.object
         # Add associated inputs and outputs to the context
         context['inputs'] = ProductExchange.objects.filter(

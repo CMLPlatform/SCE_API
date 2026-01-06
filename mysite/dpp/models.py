@@ -234,11 +234,11 @@ class ProductModel(models.Model):
         return self.name
     
     @property
-    def producer_of(self):
+    def manufacturer(self):
         """Get the manufacturer of this product
         (operator from the Process that produces this ProductModel).
         """
-        process = Process.objects.filter(output_product=self).first()
+        process = Process.objects.filter(functional_flow=self).first()
         return process.operator if process else None
     
     #TODO: only works for linear supply chains. No infinite loop detection. Fix with Leontief matrix.
@@ -251,18 +251,18 @@ class ProductModel(models.Model):
         composition = defaultdict(float)
         
         # Use known composition for this product, if it comes from background
-        if self.produced_by.production_line != main_line and any(bom := self.composition.all()):
-            for entry in bom:
-                composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit]
+        if not hasattr(self, 'produced_by') or self.produced_by.production_line != main_line:
+            if any(bom := self.composition.all()):
+                for entry in bom:
+                    composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit]
             return composition
         
         # Recurse into components  #FIXME perhaps do this as Process/Activity method
-        for input in self.produced_by.exchanged_by.filter(type__in=['prod', 'waste']):
-            component_bom = input.product.calc_composition(recalculate=True)
+        for input in self.produced_by.prod_exchanges.filter(type__in=['prod', 'waste']):
+            component_bom = input.product.calc_composition(main_line)
             plm = -1 if input.type == 'waste' else 1 # Subtract waste materials
             for material, value in component_bom.items():
                 composition[material] += input.amount * value * plm
-        
         return composition
 
     def get_composition(self, recalculate=False):
@@ -270,13 +270,16 @@ class ProductModel(models.Model):
         Calculate from supply chain if needed.
         Returns a QuerySet with all materials
         """
-        if recalculate or not self.composition.all():
+        if hasattr(self, 'produced_by') and (recalculate or not self.composition.all()):
             production_line = self.produced_by.production_line
             composition = self.calc_composition(production_line)
+            print(f"Taking the BOM as: {composition}")
             if len(composition) == 0:
                 print("No material composition specified for any component.")
             for mat, value in composition.items():
-                Composition(product=self, material=mat, quantity=value)
+                Composition.objects.update_or_create(
+                    product=self, material=mat, defaults={'quantity': value}
+                )
         return self.composition.all()
     
     def get_hazardous_concentrations(self):
@@ -424,7 +427,6 @@ class ProductionLine(Activity):
         and create a transport entry with default distance and mode.
         """
         processes = Process.objects.filter(production_line=self)
-        # processes = production_line.bop.all()
         inputs = ProductModel.objects.filter(
             exchanged_by__process__in=processes
         ).exclude(produced_by__in=processes).distinct()
@@ -436,28 +438,21 @@ class ProductionLine(Activity):
         Check which Process functional_flows are not linked to another Process.
         Return a message if unused outputs differ from the final_product.
         """
-        process_list = self.process_set.all().order_by('order')
-        final_product = self.final_product
+        process_list = self.bop.all()
         unused_outputs = []
         
         for process in process_list:
             # Check if this process's output is used as input in any Exchange
+            func_flow = process.functional_flow
             is_linked = ProductExchange.objects.filter(
-                product=process.functional_flow,
-                process__production_line=self
+                product=func_flow, process__in=process_list
             ).exists()
             
-            if not is_linked:
-                unused_outputs.append(process.functional_flow)
+            if not is_linked and func_flow != self.final_product:
+                unused_outputs.append(func_flow)
         
-        # Check if any unused output differs from final_product
-        unexpected_unused = [
-            product for product in unused_outputs 
-            if product != final_product
-        ]
-        
-        if unexpected_unused:
-            product_names = ', '.join([p.name for p in unexpected_unused])
+        if unused_outputs:
+            product_names = ', '.join([p.name for p in unused_outputs])
             return f"Warning: Products [{product_names}] are not linked to other processes."
         
         return ""  # All good
