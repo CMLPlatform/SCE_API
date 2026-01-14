@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django_countries.fields import CountryField
 import datetime
+from uuid import uuid4
 
 FRACTION_VALIDATOR = [MinValueValidator(0), MaxValueValidator(1)]
 
@@ -56,7 +57,7 @@ CONVERSIONS = {
 ## Organizations and companies
 
 class Organization(models.Model):
-    organization_id = models.AutoField(primary_key=True)
+    # id = models.UUIDField(primary_key=True, default=uuid4, editable=False) # Using default id for simplicity
     name = models.CharField(max_length=100)
     address = models.TextField(max_length=100, blank=True)
     contact_email = models.EmailField(blank=True)
@@ -100,12 +101,13 @@ def get_unknown_servicer():
         )
     return unknown
 
-class Metadata(models.Model):  #FIXME: Should each product have unique metadata?
-    registration_number = models.UUIDField(primary_key=True, editable=False)
-    issuer = models.ForeignKey(Company, verbose_name="Responsible Economic Operator", on_delete=models.PROTECT)
+class Metadata(models.Model):
+    registration_number = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    # issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
     creation_date = models.DateField(auto_now_add=True)
     last_modified = models.DateField(auto_now=True)
     version = models.CharField(max_length=20)
+    language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
     # Data access & governance
     access_link = models.URLField(max_length=200, blank=True, help_text="URL to full DPP record.")
     access_policy = models.URLField(max_length=200, blank=True, help_text="URL to data access terms and conditions.")
@@ -163,10 +165,12 @@ class Document(models.Model):  #TODO: security check on files
     type = models.CharField(
         "Document type", max_length=25, choices=DOCUMENT_TYPES
     )
+    issuer = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.SET_NULL, help_text="Author, issuer or publisher")
     instructions = models.ManyToManyField(Instruction, blank=True, help_text="Select all that apply. Instructions included in this document (ony for manauals)")
     language = models.CharField(max_length=40, blank=True)
     # file_type = models.CharField(max_length=5, default=file.split('.')[-1])
-    upload_date = models.DateTimeField(auto_now_add=True)
+    issue_date = models.DateTimeField(default=datetime.date.today)
+    expiry_date = models.DateTimeField(blank=True, null=True)
 
     def __str__(self):
         return self.file.name.split('/')[-1]
@@ -190,10 +194,10 @@ def validate_instructions(sender, instance, action, **kwargs):
 class Material(models.Model):
     name = models.CharField("Material name", max_length=50)
     density = models.FloatField(blank=True, default=0)
-    recycled_content = models.FloatField("Recycled content (%)", default=0, validators=FRACTION_VALIDATOR)
-    recyclable_percentage = models.FloatField("Recyclable material (%)", default=0, validators=FRACTION_VALIDATOR)
-    biobased_percentage = models.FloatField("Bio-based material (%)", default=0, validators=FRACTION_VALIDATOR)
-    reused_fraction = models.FloatField("Reused material (%)", default=0, validators=FRACTION_VALIDATOR)
+    recycled_fraction = models.FloatField("Recycled content (%)", default=0, validators=FRACTION_VALIDATOR)
+    recyclable_fraction = models.FloatField("Recyclable material (%)", default=0, validators=FRACTION_VALIDATOR)
+    biobased_fraction = models.FloatField("Bio-based material (%)", default=0, validators=FRACTION_VALIDATOR)
+    reused_fraction = models.FloatField("Reused material (%)", default=0, validators=FRACTION_VALIDATOR) #FIXME: N/A
     renewable_fraction = models.FloatField("Sustainable and renewable material (%)", default=0, validators=FRACTION_VALIDATOR)
 
     criticality_level = models.CharField(max_length=1, blank=True, default='', choices={'': 'N/A', 'c': 'critical', 'h': 'high', 'm': 'intermediate'}, help_text="Only for Critical Raw Materials (CRMs): criticality indicator based on supply risk and economic importance.")
@@ -228,10 +232,11 @@ class HazardousMaterial(Material):
 class ProductModel(models.Model):
     name = models.CharField("Model or product name", max_length=100)
     unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
+    brand = models.CharField(max_length=50, blank=True)
     description = models.TextField(max_length=200, blank=True)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
-    taric_code = models.CharField(max_length=20, blank=True, help_text="TARIC (customs code)")
+    taric_code = models.CharField("TARIC code", max_length=20, blank=True, help_text="(customs code)")
     hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
 
     def __str__(self):
@@ -258,7 +263,7 @@ class ProductModel(models.Model):
         if not hasattr(self, 'produced_by') or self.produced_by.production_line != main_line:
             if any(bom := self.composition.all()):
                 for entry in bom:
-                    composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit]
+                    composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit] * 1000
             return composition
         
         # Recurse into components  #FIXME perhaps do this as Process/Activity method
@@ -277,7 +282,6 @@ class ProductModel(models.Model):
         if hasattr(self, 'produced_by') and (recalculate or not self.composition.all()):
             production_line = self.produced_by.production_line
             composition = self.calc_composition(production_line)
-            print(f"Taking the BOM as: {composition}")
             if len(composition) == 0:
                 print("No material composition specified for any component.")
             for mat, value in composition.items():
@@ -355,9 +359,13 @@ class DppDetails(models.Model):
     """Detailed info about a product, as required for the Digital Product Passport (DPP).
     Typically needed for final products sold in stores.
     """
-    product = models.OneToOneField(ProductModel, on_delete=models.CASCADE)
-    vendor_or_importer = models.ForeignKey(Importer, blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='sold_products')
+    product = models.OneToOneField(ProductModel, on_delete=models.CASCADE, primary_key=True)
+    vendor_or_importer = models.ForeignKey(Importer, verbose_name="Responsible Economic Operator", blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='sold_products')
     origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products") #FIXME duplicate of ProductionLine.operator
+
+    #Classification
+    CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
+    GS1_GPC_code = models.CharField(max_length=20, blank=True, help_text="Global Product Classification code")
 
     # Documents and other quality compliance info
     quality_compliance_documents = models.ManyToManyField(Document, blank=True)
@@ -407,50 +415,107 @@ class Composition(models.Model):
     def __str__(self):
         return f"{self.quantity} {self.unit} {self.material} (in {self.product})"
 
-class ProductItem(models.Model):  # =ProductInformation in DPP
-    verbose_plural_name = "Products"
+class ProductItem(models.Model):
     product_batch = models.ForeignKey(ProductBatch, on_delete=models.PROTECT)
     DPP_metadata = models.ForeignKey(Metadata, on_delete=models.PROTECT, blank=True)
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
-    CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
-    GS1_GPC_code = models.CharField(max_length=20, blank=True, help_text="Global Product Classification code")
     GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
     production_date = models.DateField(default=datetime.date.today)
+    circularity = models.CharField(max_length=50, default="new")
+
+    def update_circularity(self, circularity_code):
+        """Append circularity_code to self.circularity"""
+        allowed_values = ['R3', 'R5', 'R6', 'R7', 'R8', '-']
+        assert circularity_code in allowed_values, (
+            "Expecting one of the following circularity codes: " +
+            ', '.join(allowed_values)
+        )
+        self.circularity += ',' + circularity_code
+        self.save()
 
     def __str__(self):
-        return f"Product #{self.name}"
+        return f"Product #{self.serial_number}"
+    
+    def disassemble(self):
+        """
+        Creates a ProductItem for each component.
+        Returns a list of created ProductItems.
+        """
+        created_items = []
+        
+        for i, component in enumerate(self.components.all()):  #TODO: make this table
+            component_serial = f"{self.serial_number}-C{i}"
+            for j in range(component.amount):
+                # Generate unique serial number for each component
+                if component.amount > 1:
+                    component_serial += f"-{j}"
+                
+                new_item = ProductItem.objects.create(
+                    product_batch=component,
+                    serial_number=component_serial,
+                    GTIN_code="",  # Components may not have GTIN initially
+                    production_date=self.production_date,
+                )
+                created_items.append(new_item)
+        
+        return created_items
 
-
-class Activity(models.Model):  #TODO: check what common fields can be moved here
+class Activity(models.Model):
     name = models.CharField(max_length=100)
+    amount = models.FloatField(default=1, help_text="Reference number of units produced")
+    operator = models.ForeignKey(Company, verbose_name="Producing company", blank=True, null=True, on_delete=models.SET(get_unknown_company))
+    location = CountryField(blank=True)
+    description = models.TextField(max_length=300, blank=True)
 
     class Meta:
         verbose_name_plural = "Activities"
 
+    def save(self, *args, **kwargs):
+        if not self.location:
+            self.location = self.operator.country
+        self.clean()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
-class ProductionLine(Activity):
+class ManufacturingProcess(Activity):
+    """Aggregated manufacturing process that will be published
+    along with the DPP"""
+    functional_flow = models.OneToOneField(ProductModel, on_delete=models.RESTRICT, verbose_name="Main product", related_name='produced_by_other', help_text="The output product of this manufacturing process.")
+    modified_at = models.DateField(auto_now=True)
+    # mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="A document showing all material exchanges of the process.")
+    # energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="A document showing all energy flows exchanges of the process.")
+
+    def clean(self):
+        if not self.operator:
+            raise ValidationError({
+                'operator': "'Producing company' cannot be blank. Please specify a company."
+            })
+
+class ProductionLine(models.Model):
+    name = models.CharField(max_length=100)
     description = models.TextField(max_length=300, blank=True)
     final_product = models.OneToOneField(ProductModel, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
-    operator = models.ForeignKey(Company, verbose_name="Producing company", blank=True, null=True, on_delete=models.SET(get_unknown_company))
+    operator = models.ForeignKey(Company, verbose_name="Producing company", on_delete=models.SET(get_unknown_company))
     modified_at = models.DateField(auto_now=True)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
     energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
 
-    def __str__(self):
-        return self.name
-
+    #TODO: use this function to create a ManufacturingProcess
     def create_transport(self):
         """Find all the input products of this production line
         and create a transport entry with default distance and mode.
         """
-        processes = Process.objects.filter(production_line=self)
+        processes = self.bop.all()
         inputs = ProductModel.objects.filter(
             exchanged_by__process__in=processes
         ).exclude(produced_by__in=processes).distinct()
         for prod in inputs:
-            Transport(production_line=self, product=prod)
+            Transport(production_line=self, product=prod, distance=150).save()
+
+    def __str__(self):
+        return self.name
     
     def check_unused_outputs(self):
         """
@@ -477,33 +542,30 @@ class ProductionLine(Activity):
         return ""  # All good
 
 class Process(Activity):
+    """Internal subprocess, used for convenient modeling of a production line"""
     production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name='bop')
     functional_flow = models.OneToOneField(ProductModel, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main output", related_name='produced_by')
-    amount = models.FloatField(default=1, help_text="Number of units produced")
     is_outsourced = models.BooleanField("Outsourced", default=False)
-    operator = models.ForeignKey(Company, blank=True, null=True, on_delete=models.CASCADE)
-    location = CountryField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
         if not self.functional_flow:
-            raise ValidationError("functional_flow cannot be blank. Please select a product.")
+            raise ValidationError("'Main output' cannot be blank. Please select a product.")
 
     def save(self, *args, **kwargs):
         # If operator is not set, default to production line operator
-        if self.production_line and not self.operator:
-            self.operator = self.production_line.operator
-        if not self.location:
-            self.location = self.operator.country
+        if self.production_line:
+            if self.operator:
+                self.is_outsourced = (self.operator != self.production_line.operator)
+            else:  # not self.operator
+                self.operator = self.production_line.operator
+        
         self.clean()
         super().save(*args, **kwargs)
     
     class Meta:
         verbose_name_plural = "Processes"
-
-    def __str__(self):
-        return self.name
 
 class SharedProcess(Process):
     """ Represents a process that is shared across multiple processes or production lines.
@@ -520,13 +582,12 @@ class SharedProcess(Process):
             self.functional_flow = self.production_line.final_product
         super().save(*args, **kwargs)
 
-class BackgroundProcess(Activity):
-    functional_flow = models.ForeignKey(ProductModel, blank=True, null=True, on_delete=models.SET_NULL, verbose_name="Main product", related_name='produced_by_other')
-    location = CountryField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    modified_at = models.DateTimeField(auto_now=True)
+class BackgroundProcess(ManufacturingProcess):
+    created_at = models.DateField(auto_now_add=True)
     database = models.CharField(max_length=50, blank=True)
-    #TODO: more UnitProcess attributes
+    db_code = models.CharField(max_length=50, blank=True, help_text="Unique ID in the source database")
+    tags = models.CharField(max_length=150, blank=True)
+    type = models.CharField(max_length=50, blank=True)
 
     class Meta:
         verbose_name = "Average market process"
@@ -545,7 +606,7 @@ class Exchange(models.Model):
     amount = models.FloatField()
     direction = models.CharField(max_length=3, choices={'in': 'Input', 'out': 'Output', 'ff': 'functional flow'})  #NOTE: out means waste
     is_proxy = models.BooleanField("This is an approximation of the actual product", default=False)
-    observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
+    is_observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
     uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none', help_text="If the amount is uncertain, how can this uncertainty be described?")
     loc = models.FloatField("Mean or median", blank=True, null=True)
     scale = models.FloatField("Standard deviation", blank=True, null=True)  # or geometric stddev
@@ -567,7 +628,7 @@ class ProductExchange(Exchange):
         'cons': 'Consumable',
         'ener': 'Electricity or heat',
         'util': 'Utility or equipment',
-        'trans': 'Transport',
+        'serv': 'Service',
         'pack': 'Packaging',
         'react': 'Reactant',
         'waste': 'Waste',
@@ -634,73 +695,106 @@ class Transport(models.Model):
 
 ## Service and maintenance records
 
-class ServiceEvent(models.Model):
-    LIFE_STAGES = {
-        'upstream': 'Upstream',
-        'manufacturing': 'Manufacturing stage',
-        'use': 'Use phase',
-        'eol': 'End-of-life stage',
+class LifeCycleEvent(models.Model):
+    """An activity or event during the life cycle of a product item.
+    In line with UNTP Traceability Event.
+    """
+    EVENT_TYPES = {
+        'sales': 'Sales or ownership transfer',
+        'test': 'Inspection',
+        'Maintenance': {
+            'corrective': 'Repair',
+            'software': 'Software update',
+            'performance': 'Performance upgrade',
+            'safety': 'Safety improvement',
+            'energy_optimization': 'Energy optimization',
+            'compliance': 'Compliance update',
+            'other': 'Other maintenance',
+        },
+        'disassembly': 'Disassembly',
+        'Closing the loop': {
+            'R3': 'Reuse',
+            'R5': 'Refurbish',
+            'R6': 'Remanufacture',
+            'R7': 'Repurpose',
+        },
+        'End-of-life treatment': {
+            'recycling': 'Recycling',
+            'landfill': 'Landfilling',
+            'incineration': 'Incineration',
+            'stockpiling': 'Stockpiling',
+            'disposal': 'Disposal (unspecified)',
+        },
     }
-    SERVICE_TYPES = {
-        'preventive_maintenance': 'Preventive maintenance',
-        'corrective_maintenance': 'Corrective maintenance',
-        'modification': 'Modification',
-        'upgrade': 'Upgrade',
-        'eol': 'End-of-life treatment',
-    }
-    id = models.UUIDField(primary_key=True, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     product = models.ForeignKey(ProductItem, on_delete=models.CASCADE, related_name='service_events')
-    operator = models.ForeignKey(ServiceOperator, on_delete=models.CASCADE)
-    # life_stage = models.CharField(max_length=20, choices=LIFE_STAGES) # Obsolete, already implied by service_type
-    service_type = models.CharField(max_length=30, blank=True, choices=SERVICE_TYPES)
+    operator = models.ForeignKey(ServiceOperator, on_delete=models.CASCADE, help_text="Entity that performs this event.")
+    type = models.CharField(max_length=30, choices=EVENT_TYPES)
     date = models.DateField(auto_now_add=True)
-    maintenance_plan = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL)
+
+    # Link to LCA activity
+    def get_empty_activity():
+        unknown, created = ManufacturingProcess.objects.get_or_create(name="Empty activity")
+        return unknown
+    activity_data = models.ForeignKey(ManufacturingProcess, default=get_empty_activity, on_delete=models.SET_DEFAULT, help_text="Activity describing the inputs and outputs (optional).")
 
     def clean(self):
-        if self.service_type in ['preventive_maintenance', 'corrective_maintenance'] and not self.maintenance_plan:
+        if self.service_type == 'maintenance' and not self.maintenance_plan:
             raise ValidationError("Maintenance plan must be attached for maintenance services.")
-
-class ServiceRecord(models.Model):
-    description = models.TextField(max_length=300)
-    service_event = models.ForeignKey(ServiceEvent, on_delete=models.CASCADE)
-    # Modifications fields
-    MODIFICATIONS = {
-        'corrective': 'Repair',
-        'software': 'Software update',
-        'performance': 'Performance upgrade',
-        'safety': 'Safety improvement',
-        'energy_optimization': 'Energy optimization',
-        'compliance': 'Compliance update',
-        'other': 'Other',
-    }
-    modification_category = models.CharField(max_length=50, choices=MODIFICATIONS)
-    affected_functionality = models.CharField(max_length=500, blank=True)
-    software_or_hardware = models.BooleanField(choices={True: "Software", False: "Hardware"})
-
-    # Repair fields (aka corrective maintenance)
-    root_cause = models.TextField(max_length=300, blank=True)
-    diagnostics_performed = models.TextField(max_length=300, blank=True)
-    corrective_action = models.TextField(max_length=300, blank=True)
-
-class ReplacedComponent(models.Model):
-    """ Components that were replaced or added during a service event."""
-    service_record = models.ForeignKey(ServiceRecord, on_delete=models.CASCADE, related_name='replaced_components')
-    old_component = models.ForeignKey(ProductItem, blank=True, null=True, on_delete=models.SET_NULL, related_name='replaced')
-    new_component = models.ForeignKey(ProductItem, on_delete=models.CASCADE, related_name='installed')
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.new_component.name
+        event = self.EVENT_TYPES[self.type]
+        return f"{event} of a {self.product.product_batch.name}"
 
-class EndOfLife(models.Model):
-    service_record = models.ForeignKey(ServiceRecord, on_delete=models.CASCADE, related_name='end_of_life')
-    EOL_TREATMENTS = {
-        'recycling': 'Recycling',
-        'disposal': 'Disposal',
-        'incineration': 'Incineration',
-        'stockpiling': 'Stockpiling',
-    }
-    treatment_type = models.CharField(max_length=20, choices=EOL_TREATMENTS)
-    affected_component = models.ForeignKey(ProductItem, on_delete=models.RESTRICT)
+class InspectionEvent(LifeCycleEvent):
+    diagnostic_results = models.ManyToManyField(Document, blank=True)
+
+class MaintenanceEvent(LifeCycleEvent):
+    """Describes maintenance, repair, refurbishment, and similar events.
+    """
+    description = models.TextField(max_length=300)
+    maintenance_plan = models.ForeignKey(Document, on_delete=models.RESTRICT)
+    # Modifications fields
+    affected_functionality = models.CharField(max_length=200, blank=True)
+    software_or_hardware = models.BooleanField(choices={True: "Software", False: "Hardware"})
+
+    # Repair (i.e. corrective maintenance) fields
+    root_cause = models.TextField(max_length=300, blank=True)
+    diagnostics_performed = models.TextField(max_length=300, blank=True) #FIXME: remove, is a separate event
+    corrective_action = models.TextField(max_length=300, blank=True)  #FIXME: remove, same as description
+
+class DisassemblyEvent(LifeCycleEvent):
+    """Describes detachment of components from a ProductItem.
+    NOTE: self.product is the *input* being disassembled.
+    """
+    def save(self, *args, **kwargs):
+        for component in self.product.disassemble():
+            ItemExchange.objects.create(item=component, event=self, amount=-1)
+        super().save(*args, **kwargs)
+
+
+class ItemExchange(models.Model):
+    """Describes where individual product/component items are used (positive)
+    or produced (negative values).
+    Can be used for component replacement, disassembly, and closing a loop.
+    """
+    item = models.ForeignKey(ProductItem, on_delete=models.CASCADE)
+    event = models.ForeignKey(LifeCycleEvent, on_delete=models.CASCADE)
+    amount = models.SmallIntegerField(help_text="Inputs are positive, outputs are negative.")
+
+    def clean(self):
+        super().clean()
+        allowed_events = LifeCycleEvent.EVENT_TYPES['Maintenance'].keys() + LifeCycleEvent.EVENT_TYPES['Closing the loop'].keys() + ['disassembly']
+        if self.event.type not in allowed_events:
+            raise ValidationError("This life cycle event cannot exchange items.")
+    
+    def __str__(self):
+        arrow = '<-' if self.amount < 0 else '->'
+        return f"{abs(self.amount)} {self.item} {arrow} {self.event}"
 
 
 ## Sustainability evaluation
@@ -736,7 +830,7 @@ class ImpactIndicator(models.Model):
     def __str__(self):
         return self.method
 
-class SustainabilityEvaluation(models.Model):  # including metadata
+class SustainabilityEvaluation(models.Model):
     """
     A sustainability evaluation is defined by a scope definition,
     a functional unit (the final product of a production line), and its amount. 
@@ -797,7 +891,7 @@ class CircularityEvaluation(models.Model):
     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE)
     assessment_date = models.DateField(default=datetime.date.today, help_text="When the assessment was made or updated.")
     assessed_by = models.ForeignKey(Institution, blank=True, null=True, on_delete=models.PROTECT)
-    report = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='circularity_reports', help_text="Report describing the circularity assessment, and manual for monitoring and updating the circularity metrics.")
+    report = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='circularity_eval', help_text="Report describing the circularity assessment, and manual for monitoring and updating the circularity metrics.")
 
 class CircularityIndicator(models.Model):
     """
@@ -825,29 +919,6 @@ class CircularityScore(models.Model):
     def __str__(self):
         return f"{self.indicator.name}: {self.value}"
 
-#FIXME: a service event should not update the CircularityScore of a Product,
-# but rather trigger an updated assessment of the ProductModel.
-# class CircularityUpdate(CircularityScore):
-#     service_event = models.ForeignKey(ServiceEvent, on_delete=models.SET_NULL, blank=True, null=True)
-#     previous_value = models.FloatField()
-    
-#     # Change verbose name of 'comment' field
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         comm = self._meta.get_field('comment')
-#         comm.verbose_name = 'Change reason'
-
-
-class CircularityEnabler(CircularityScore):
-    ENABLERS = {
-        'design': 'Design for circularity',
-        'business_model': 'Circular business model',
-        'process': 'Circular process or technology',
-        'other': 'Other enabler',
-    }
-    type = models.CharField(max_length=20, choices=ENABLERS)
-    description = models.TextField(max_length=300, blank=True, help_text="Description and functionality")
-
 # Alternative interpretation & implementation
 class CircularityTracker(CircularityScore):
     name = models.CharField(max_length=50, help_text="The type of traceability system or device in the product")
@@ -861,16 +932,3 @@ class CircularityTracker(CircularityScore):
         quantity.help_text = "Number of such devices or systems in the product"
         super().__init__(*args, **kwargs)
 
-
-# ## Quality and compliance
-
-# class QualityCompliance(models.Model):
-#     product = models.ForeignKey(ProductModel, on_delete=models.CASCADE)
-#     document = models.ForeignKey(Document, on_delete=models.CASCADE)
-
-#     class Meta:
-#         unique_together = ('product', 'document')
-#         ordering = ['product', 'document']
-    
-#     def __str__(self):
-#         return f"{self.document} linked to {self.product}"

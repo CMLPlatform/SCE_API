@@ -46,11 +46,11 @@ from .models import (
     ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
     Emission, Composition, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
-    Exchange, ProductExchange, EnvExchange,
-    ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife,
+    Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
+    LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
-    CircularityScore, CircularityEnabler,
+    CircularityScore, CircularityTracker,
 )
 from .forms import get_model_form_plus
 
@@ -189,11 +189,11 @@ for model in [
     Material, HazardousMaterial, ProductModel, ProductBatch,
     SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
     Activity, ProductionLine, Process, SharedProcess, Exchange,
-    ProductExchange, EnvExchange,
-    ServiceEvent, ServiceRecord, ReplacedComponent, EndOfLife,
+    ProductExchange, EnvExchange, Transport, ItemExchange,
+    LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
-    CircularityScore, CircularityEnabler,
+    CircularityScore, CircularityTracker,
 ]:
     views.update(make_crud_views(model))
 
