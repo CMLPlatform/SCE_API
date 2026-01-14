@@ -87,7 +87,7 @@ def generate_urls(classes, output_file):
 if __name__ == "__main__":
     # Determine file paths relative to script location
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    models_file = os.path.join(script_dir, 'mysite/api/models.py')
+    models_file = os.path.join(script_dir, 'mysite/dpp/models.py')
     serial_file = models_file.replace('models.py', 'serializers.txt')
     view_file = models_file.replace('models.py', 'views.txt')
     url_file = models_file.replace('models.py', 'urls.txt')
