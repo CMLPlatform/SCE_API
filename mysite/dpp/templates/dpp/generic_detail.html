@@ -31,7 +31,7 @@
                 {% for field in object|get_fields %}
                 <div class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                     <dt class="text-sm font-medium text-gray-500">
-                        {{ field.name|title }}
+                        {{ field.verbose_name|sentencecase }}
                     </dt>
                     <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
                         {{ field.value|default:"—" }}

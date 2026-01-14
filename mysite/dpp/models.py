@@ -690,7 +690,7 @@ class Transport(models.Model):
     mode = models.CharField("Main mode of transport", max_length=10, choices=VEHICLES, default='NA')
 
     def __str__(self):
-        return f"{self.distance} km by {self.mode}"
+        return f"{self.distance} km by {self.VEHICLES[self.mode]}"
 
 
 ## Service and maintenance records

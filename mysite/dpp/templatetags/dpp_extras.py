@@ -14,8 +14,19 @@ def get_fields(obj):
     for field in obj._meta.fields:
         fields.append({
             'name': field.name,
+            'verbose_name': field.verbose_name,
             'value': get_attr(obj, field.name)
         })
+    try:  # Try to add related properties fields
+        for field in obj.properties._meta.fields:
+            if not field.name.endswith('_ptr'):
+                fields.append({
+                    'name': field.name,
+                    'verbose_name': field.verbose_name,
+                    'value': get_attr(obj, field.name)
+                })
+    except:
+        pass
     return fields
 
 @register.filter
@@ -30,3 +41,10 @@ def get_verbose_fields(obj):
                 'value': getattr(obj, field.name, '—')
             })
     return fields
+
+@register.filter
+def sentencecase(obj: str):
+    if len(obj) == 1:
+        return obj.upper()
+    else:
+        return obj[0].upper() + obj[1:]

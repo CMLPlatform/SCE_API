@@ -1,12 +1,10 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseRedirect
-from django import forms
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import ProductionLine
 from api.serializers import ProductionLineSerializer
 import json
-import networkx as nx
 
 def home(request):
     """Welcome page """
@@ -100,6 +98,11 @@ class PreFillFromMixin:
         context['is_popup'] = self.is_popup
         return context
     
+    def get_success_url(self):
+        return reverse(
+            f"{self.model._meta.app_label}:{self.model._meta.model_name}_list"
+        )
+    
     def form_valid(self, form):
         self.object = form.save()
         
@@ -120,7 +123,7 @@ def make_crud_views(model):
 
     class List(AdminTemplateMixin, ListView):
         model = model
-        paginate_by = 20
+        paginate_by = 40
         template_name = "dpp/generic_list.html"
         # template_name = "adminlike/change_list.html"
 
@@ -160,7 +163,7 @@ def make_crud_views(model):
         def get_form_class(self):
             return get_model_form_plus(self.model, self.fields)
 
-    class Delete(DeleteView):
+    class Delete(AdminTemplateMixin, DeleteView):
         model = model
         success_url = reverse_lazy(f"{app_label}:{model.__name__.lower()}_list")
         template_name = "dpp/confirm_delete.html"
@@ -200,61 +203,6 @@ for model in [
 # Make them importable
 globals().update(views)
 
-
-def create_process_graph(processes: list=[]):
-    """ UNUSED
-    Create a directed graph showing processes and their in/outputs.
-    Returns graph data in a format suitable for visualization.
-    """
-    G = nx.DiGraph()
-    
-    # Add nodes and edges
-    for process in processes:
-        G.add_node(process.name, node_type='process', shape='square')
-        
-        # Add output node (functional_flow)
-        if process.functional_flow:
-            output_name = process.functional_flow.name
-            G.add_node(output_name, node_type='output', shape='dot')
-            G.add_edge(process.name, output_name)
-        
-        # Add environmental exchanges
-        exchanges = process.env_exchanges.all()
-        for exchange in exchanges:
-            io_name = exchange.substance.name
-            node_type = 'input' if exchange.direction=='in' else 'output'
-            G.add_node(io_name, node_type=node_type, shape='triangle')
-            if node_type == 'output':
-                G.add_edge(process.name, io_name)
-            else:
-                G.add_edge(io_name, process.name)
-        # Add input nodes from Exchange table
-        exchanges = process.prod_exchanges.all()
-        for exchange in exchanges:
-            io_name = exchange.product.name
-            node_type = 'input' if exchange.direction=='in' else 'output'
-            G.add_node(io_name, node_type=node_type, shape='dot', size=0.1)
-            G.add_edge(io_name, process.name)
-            sources = Process.objects.filter(functional_flow=exchange.product)
-            if sources:
-                source_name = sources[0].name
-                if source_name not in G.nodes:
-                    G.add_node(source_name, node_type='process', shape='square')
-                G.add_edge(source_name, io_name)
-
-    # Convert to format suitable for D3.js or other visualization
-    graph_dict = {'nodes': [], 'links': []}
-    for node in G.nodes():
-        graph_dict['nodes'].append({
-            'id': node,
-            'type': G.nodes[node].get('node_type', 'unknown'),
-            'shape': G.nodes[node].get('shape', 'dot'),
-        })
-    
-    for source, target in G.edges():
-        graph_dict['links'].append({'source': source, 'target': target})
-    print("Graph size", len(G.nodes), len(G.edges))
-    return graph_dict
 
 def create_flowchart(processes):
     """
@@ -357,16 +305,17 @@ class ProductionLineDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['opts'] = model._meta
+        context['opts'] = self.model._meta
         # Add associated processes to the context
         context['processes'] = Process.objects.filter(
             production_line=self.object
         ).order_by('id')
+        context['transport_list'] = self.object.transport.all()
         # Check for warnings
         context['warnings'] = self.object.check_unused_outputs()
-        # Add a network graph (obsolete)
-        graph_data = create_process_graph(context['processes'])
-        context['graph_data'] = json.dumps(graph_data)
+        # # Add a network graph (obsolete)
+        # graph_data = create_process_graph(context['processes'])
+        # context['graph_data'] = json.dumps(graph_data)
         # Add Mermaid flowchart
         mermaid_code = create_flowchart(context['processes'])
         context["mermaid_code"] = mermaid_code
@@ -411,3 +360,15 @@ class ProductDetailView(AdminTemplateMixin, DetailView):
         if 'recalculate' in request.POST:
             self.object.get_composition(recalculate=True)
         return redirect('dpp:product_detail', pk=self.object.pk)
+
+class TransportSubsetView(AdminTemplateMixin, ListView):
+    template_name = "dpp/generic_list.html"
+    model = Transport
+
+    def get_queryset(self):
+        pl = get_object_or_404(ProductionLine, pk=self.kwargs['productionline'])
+        queryset = Transport.objects.filter(production_line=pl)
+        if not queryset:
+            pl.create_transport()
+            queryset = Transport.objects.filter(production_line=pl)
+        return queryset
