@@ -1,10 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import ProductionLine
-from api.serializers import ProductionLineSerializer
-import json
 
 def home(request):
     """Welcome page """
@@ -14,27 +11,6 @@ def home(request):
     context = {'latest_lines': latest_lines}
     return render(request, "dpp/index.html", context)
 
-
-# Manual views for the production line
-def production_line_create(request):
-    if request.method == "POST":
-        serializer = ProductionLineSerializer(data=request.POST)
-        if serializer.is_valid():
-            production_line = serializer.save()
-            messages.success(request, "Production line created successfully!")
-            return redirect("dpp:production_line_edit", pk=production_line.pk)
-        else:
-            # HTMX will re-render the form with errors
-            return render(request, "dpp/production_line_form.html", {
-                "form_data": request.POST,
-                "errors": serializer.errors,
-            })
-
-    return render(request, "dpp/production_line_form.html")
-
-def production_line_edit(request, pk):
-    line = ProductionLine.objects.get(pk=pk)
-    return render(request, "dpp/production_line_edit.html", {"line": line})
 
 # Views based on the admin templates
 from django.urls import reverse, reverse_lazy
@@ -301,9 +277,6 @@ class ProductionLineDetailView(DetailView):
         context['transport_list'] = self.object.transport.all()
         # Check for warnings
         context['warnings'] = self.object.check_unused_outputs()
-        # # Add a network graph (obsolete)
-        # graph_data = create_process_graph(context['processes'])
-        # context['graph_data'] = json.dumps(graph_data)
         # Add Mermaid flowchart
         mermaid_code = create_flowchart(context['processes'])
         context["mermaid_code"] = mermaid_code

@@ -46,18 +46,18 @@
   <meta charset="utf-8" />
   <title>Welcome to the Lasers4MaaS project.</title>
 </head>
-<body>
+<body class="py-6">
   <h1 class="text-2xl font-bold">Welcome to the Lasers4MaaS SCE Platform</h1>
     {% if latest_lines %}
     <p>Recently modified production lines:</p>
       <div class="overflow-x-auto">
         <table class="divide-gray-200">
-          <thead class="bg-gray-50">
+          <thead class="bg-gray-100">
             <tr>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                 Name
               </th>
-              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                 Last Modified
               </th>
             </tr>
@@ -65,14 +65,13 @@
           <tbody class="bg-white divide-y divide-gray-200">
             {% for production_line in latest_lines %}
             <tr class="hover:bg-gray-50">
-              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <!-- Only the name is a link -->
+              <td class="px-2 py-4 whitespace-nowrap text-sm font-medium">
                 <a href="{% url 'dpp:productionline_detail' production_line.pk %}"
-                  class="text-indigo-600 hover:text-indigo-900 hover:underline">
+                  class="text-indigo-600 hover:text-indigo-800 hover:underline">
                   {{ production_line.name }}
                 </a>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              <td class="px-2 py-4 whitespace-nowrap text-sm text-gray-500">
                 {{ production_line.modified_at|date:"d M Y" }}
               </td>
             </tr>
@@ -83,6 +82,15 @@
               </td>
             </tr>
             {% endfor %}
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                <a href="{% url 'dpp:productionline_list' %}"
+                  class="text-indigo-600 hover:text-indigo-800 hover:underline">
+                  See detailed list
+                </a>
+              </td>
+              <td></td>
+            </tr>
           </tbody>
         </table>
       </div>

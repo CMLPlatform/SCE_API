@@ -7,8 +7,6 @@ app_name = "dpp"
 
 urlpatterns = [
     path("welcome", views.home, name="home"),
-    path("production-lines/create/", views.production_line_create, name="production_line_create"),
-    path("production-lines/<int:pk>/edit/", views.production_line_edit, name="production_line_edit"),
     path('production-line/<int:pk>/', views.ProductionLineDetailView.as_view(), name='production_line_detail'),
     path('process/<int:pk>/', views.ProcessDetailView.as_view(), name='process_detail'),
     path('product/<int:pk>/', views.ProductDetailView.as_view(), name='product_detail'),
