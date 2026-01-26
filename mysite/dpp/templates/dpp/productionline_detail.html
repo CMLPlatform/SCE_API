@@ -36,7 +36,7 @@
     {% for transport in transport_list %}
     <li>
       <a href="{% url 'dpp:transport_update' transport.pk %}" title="Edit transport">
-        {{ transport.product.name}}: {{ transport }}
+        {{ transport.product}}: {{ transport }}
       </a>
     </li>
     {% endfor %}

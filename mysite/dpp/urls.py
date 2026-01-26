@@ -13,10 +13,11 @@ urlpatterns = [
     path('process/<int:pk>/', views.ProcessDetailView.as_view(), name='process_detail'),
     path('product/<int:pk>/', views.ProductDetailView.as_view(), name='product_detail'),
     path('transports/<int:productionline>/', views.TransportSubsetView.as_view(), name='transport_subset'),
+    path('flow/add/', views.FlowCreateView.as_view(), name='flow_add'),
 ]
 
 # urlpatterns = []
-for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, ProductModel, ProductBatch, SecondaryProduct, DppDetails, Emission, Composition, ProductItem, Activity, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent, ItemExchange, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker, Transport]:
+for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Material, HazardousMaterial, Flow, ProductModel, ProductBatch, SecondaryProduct, DppDetails, Emission, Composition, ProductItem, Activity, ProductionLine, Process, SharedProcess, Exchange, ProductExchange, EnvExchange, LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent, ItemExchange, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker, Transport]:
     name = model.__name__.lower()
     urlpatterns += [
         path(f"{name}/", getattr(views, f"{model.__name__}List").as_view(), name=f"{name}_list"),

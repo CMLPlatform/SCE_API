@@ -41,9 +41,9 @@ from django.urls import reverse, reverse_lazy
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
     Material, HazardousMaterial,
-    ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
+    Flow, ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
     Emission, Composition, DppDetails,
-    Activity, ProductionLine, Process, SharedProcess, BackgroundProcess, 
+    Activity, ManufacturingProcess, ProductionLine, Process, SharedProcess, BackgroundProcess, 
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
@@ -138,7 +138,7 @@ def make_crud_views(model):
         template_name = "dpp/generic_form.html"
         # template_name = "adminlike/change_form.html"
         # form_class = FormWithAutoAdd
-
+    
         def get_form_class(self):
             return get_model_form_plus(self.model, self.fields)
             # return forms.modelform_factory(
@@ -152,6 +152,9 @@ def make_crud_views(model):
         #     self.object.save()
         #     form.save_m2m()
         #     return HttpResponseRedirect(self.get_success_url())
+
+        # def get_success_url(self):  # Return to previous page
+        #     return self.request.META.get('HTTP_REFERER')
 
     class Update(AdminTemplateMixin, PreFillFromMixin, UpdateView):
         model = model
@@ -189,10 +192,10 @@ def make_crud_views(model):
 views = {}
 for model in [
     Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, ProductModel, ProductBatch,
+    Material, HazardousMaterial, Flow, ProductModel, ProductBatch,
     SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
-    Activity, ProductionLine, Process, SharedProcess, Exchange,
-    ProductExchange, EnvExchange, Transport, ItemExchange,
+    Activity, ManufacturingProcess, ProductionLine, Process, SharedProcess,
+    Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
@@ -225,9 +228,8 @@ def create_flowchart(processes):
         exchanged_by__process__in=processes
     ).distinct()
     exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)
-    suppliers = ProductionLine.objects.filter(final_product__in=inputs)
-    background = BackgroundProcess.objects.filter(functional_flow__in=inputs)
-    inputs = inputs.exclude(productionline__in=suppliers).exclude(produced_by_other__in=background).exclude(exchanged_by__in=exchanges)
+    suppliers = ManufacturingProcess.objects.filter(functional_flow__in=inputs)
+    inputs = inputs.exclude(produced_by_other__in=suppliers).exclude(exchanged_by__in=exchanges)
 
     # Build Mermaid string
     lines = ["flowchart LR"]
@@ -276,25 +278,11 @@ def create_flowchart(processes):
                     f"    a{exch.process.id} -->|{prod.name}| "
                     f"a{supp.id}({supp.operator.name}):::outside"
                 )
-
-    for supp in background:
-        prod = supp.productionline.final_product
-        for exch in ProductExchange.objects.filter(product=prod):
-            if exch.direction == 'in':
-                lines.append(
-                    f"    a{supp.id}({supp.operator.name}):::outside -->"
-                    f"|{prod.name}| a{exch.process.id}"
-                )
-            else:
-                lines.append(
-                    f"    a{exch.process.id} -->|{prod.name}| "
-                    f"a{supp.id}({supp.operator.name}):::outside"
-                )
     # Internal exchanges
     for exch in exchanges:
         orig = exch.product.produced_by
         dest = exch.process
-        lines.append("    a%d -->|%s| a%d" % (orig.id, exch.product.name, dest.id))
+        lines.append("    a%d -->|%s| a%d" % (orig.id, exch.product, dest.id))
 
     return "\n".join(lines)
 
@@ -372,3 +360,8 @@ class TransportSubsetView(AdminTemplateMixin, ListView):
             pl.create_transport()
             queryset = Transport.objects.filter(production_line=pl)
         return queryset
+
+class FlowCreateView(CreateView):
+    model = Flow
+    template_name = "dpp/create_flow.html"
+    fields = []  # No user-editable fields
