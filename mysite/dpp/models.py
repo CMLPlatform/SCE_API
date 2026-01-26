@@ -672,11 +672,29 @@ class ProductExchange(Exchange):
 class EnvExchange(Exchange):
     """Represents an emission or resource extraction by a process."""
     COMPARTMENTS = {
-        'air': 'air',
-        'soil': 'soil',
-        'groundwater': 'groundwater',
-        'seawater': 'seawater',
-        'surface_water': 'surface water',
+        'Air': {
+            'air-urban': 'Urban air', # close to ground
+            'air-rural': 'Non-urban air or from high stacks',
+            'air-lt': 'Long-term', # and low population density
+            'air-indoor': 'Indoor',
+            'air-strato': '10-30 km above ground', # 'lower stratosphere + upper troposphere'
+            'air': 'Unspecified',
+        },
+        'uptake': 'Direct human uptake',
+        'Soil': {
+            'soil-agri': 'Agricultural',
+            'soil-forest': 'Forest',
+            'soil-indu': 'Industrial',
+            'soil': 'Unspecified',
+        },
+        'Water': {
+            'surface_water': 'Surface water',
+            'seawater': 'Seawater',
+            'groundwater': 'Groundwater',
+            'groundwater-lt': 'Groundwater, long term',
+            'groundwater-deep': 'Deep underground wells',
+            'water': 'Unspecified',
+        },
     }
     substance = models.ForeignKey(Emission, on_delete=models.CASCADE, related_name='exchanges')
     process = models.ForeignKey(Process, on_delete=models.CASCADE, related_name='env_exchanges')
