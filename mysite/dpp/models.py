@@ -80,7 +80,7 @@ class Company(Organization):
     class Meta:
         verbose_name_plural = "Companies"
 
-class Importer(Company):  #FIXME: rename to vendor/dealer
+class Importer(Company):
     EORI_number = models.CharField(max_length=100, blank=True)
 
 class ServiceOperator(Company):
@@ -101,9 +101,29 @@ def get_unknown_servicer():
         )
     return unknown
 
+class Facility(models.Model):
+    """
+    Describes a manufacturing facility, 
+    i.e. a place where production takes place.
+    """
+    uid = models.UUIDField(primary_key=True, default=uuid4, editable=False, help_text="Unique facility identifier")
+    operator = models.ForeignKey(Company, on_delete=models.RESTRICT)
+    country = CountryField()
+    address = models.TextField(max_length=100)
+
+    class Meta:
+        verbose_name_plural = 'Facilities'
+        unique_together = ['country', 'address', 'operator']
+        ordering = ['operator', 'country', 'address']
+    
+    def __str__(self):
+        return self.address.replace('\r\n', ', ')
+
 class Metadata(models.Model):
+    """Transparency information related to a ProductItem."""
     registration_number = models.UUIDField(primary_key=True, default=uuid4, editable=False)
-    # issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
+    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
+    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
     creation_date = models.DateField(auto_now_add=True)
     last_modified = models.DateField(auto_now=True)
     version = models.CharField(max_length=20)
@@ -229,11 +249,13 @@ class ProductModel(Flow):
     
     @property
     def manufacturer(self):
-        """Get the manufacturer of this product
-        (operator from the Process that produces this ProductModel).
+        """Get the manufacturer of this product (operator of the
+        Facility hosting the Process that produces this ProductModel).
         """
-        process = Process.objects.filter(functional_flow=self).first()
-        return process.operator if process else None
+        if hasattr(self, 'produced_by'):
+            return self.produced_by.facility.operator
+        else:
+            return None
     
     #TODO: only works for linear supply chains. No infinite loop detection. Fix with Leontief matrix.
     def calc_composition(self, main_line):
@@ -251,7 +273,7 @@ class ProductModel(Flow):
                     composition[entry.material] = entry.quantity * CONVERSIONS[entry.unit] * 1000
             return composition
         
-        # Recurse into components  #FIXME perhaps do this as Process/Activity method
+        # Recurse into components
         for input in self.produced_by.prod_exchanges.filter(type__in=['prod', 'waste']):
             component_bom = input.product.model.calc_composition(main_line)
             plm = -1 if input.type == 'waste' else 1 # Subtract waste materials
@@ -404,9 +426,8 @@ class DppDetails(models.Model):
     Typically needed for final products sold in stores.
     """
     product = models.OneToOneField(Flow, on_delete=models.CASCADE, primary_key=True)
-    #FIXME: instead of vendor, importer, origin: only have REO
-    vendor_or_importer = models.ForeignKey(Importer, verbose_name="Responsible Economic Operator", blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='sold_products')
-    origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products")
+    importer = models.ForeignKey(Importer, blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='imported_products', help_text="Specify if the product is imported from outside the EU.")
+    origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products")  #FIXME: duplicate info
 
     #Classification
     CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
@@ -496,18 +517,11 @@ class Emission(models.Model):
 class Activity(models.Model):
     name = models.CharField(max_length=100)
     amount = models.FloatField(default=1, help_text="Reference number of units produced")
-    operator = models.ForeignKey(Company, verbose_name="Producing company", blank=True, null=True, on_delete=models.SET(get_unknown_company))
-    location = CountryField(blank=True)  #TODO: could be part of new Facility object
+    facility = models.ForeignKey(Facility, on_delete=models.CASCADE, help_text="Production location", blank=True, null=True)
     description = models.TextField(max_length=300, blank=True)
 
     class Meta:
         verbose_name_plural = "Activities"
-
-    def save(self, *args, **kwargs):
-        if not self.location:
-            self.location = self.operator.country
-        self.clean()
-        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -518,14 +532,13 @@ class ManufacturingProcess(Activity):
     """
     functional_flow = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Main product", related_name='produced_by_other', help_text="The output product of this manufacturing process.")
     modified_at = models.DateField(auto_now=True)
-    facility = models.CharField("Unique facility identifier", max_length=50)
     # mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="A document showing all material exchanges of the process.")
     # energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="A document showing all energy flows exchanges of the process.")
 
     def clean(self):
-        if not self.operator:
+        if not self.facility:
             raise ValidationError({
-                'operator': "'Producing company' cannot be blank. Please specify a company."
+                'facility': "'Facility' cannot be blank. Please specify it."
             })
 
 class ProductionLine(models.Model):
@@ -535,9 +548,8 @@ class ProductionLine(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(max_length=300, blank=True)
     final_product = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
-    operator = models.ForeignKey(Company, verbose_name="Producing company", on_delete=models.SET(get_unknown_company))
+    facility = models.ForeignKey(Facility, on_delete=models.CASCADE, help_text="Production location", blank=True, null=True)
     modified_at = models.DateField(auto_now=True)
-    facility = models.CharField("Unique facility identifier", max_length=50)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
     energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
 
@@ -581,12 +593,12 @@ class Process(Activity):
             raise ValidationError("'Main output' cannot be blank. Please select a product.")
 
     def save(self, *args, **kwargs):
-        # If operator is not set, default to production line operator
+        # If facility is not set, default to production line facility
         if self.production_line:
-            if self.operator:
-                self.is_outsourced = (self.operator != self.production_line.operator)
-            else:  # not self.operator
-                self.operator = self.production_line.operator
+            if self.facility:
+                self.is_outsourced = (self.facility != self.production_line.facility)
+            else:  # not self.facility
+                self.facility = self.production_line.facility
         
         self.clean()
         super().save(*args, **kwargs)
@@ -697,7 +709,7 @@ class EnvExchange(Exchange):
         },
     }
     substance = models.ForeignKey(Emission, on_delete=models.CASCADE, related_name='exchanges')
-    process = models.ForeignKey(Process, on_delete=models.CASCADE, related_name='env_exchanges')
+    process = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='env_exchanges')
     compartment = models.CharField(max_length=20, choices=COMPARTMENTS)
 
     class Meta:
@@ -1047,7 +1059,6 @@ class CircularityScore(models.Model):
     evaluation = models.ForeignKey(CircularityEvaluation, on_delete=models.CASCADE)
     indicator = models.ForeignKey(CircularityIndicator, on_delete=models.CASCADE)
     value = models.FloatField()  #FIXME: validation depends on indicator.unit
-    modified_at = models.DateField(auto_now_add=True)  #FIXME: overlaps with CircularityEvaluation.assessment_date
     uncertainty = models.CharField(max_length=100, blank=True)
     comment = models.TextField(max_length=200, blank=True)
 

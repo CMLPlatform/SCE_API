@@ -1,10 +1,11 @@
 from django.contrib import admin
-from .models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, Flow, ProductModel, DppDetails, SecondaryProduct, Emission, Composition, ProductItem, ProductionLine, Activity, ManufacturingProcess, Process, SharedProcess, ProductExchange, EnvExchange, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker
+from .models import *
 
 # Models that can be modified by admin:
 admin.site.register(Company)
-admin.site.register(Document)
 admin.site.register(Importer)
+admin.site.register(Facility)
+admin.site.register(Document)
 admin.site.register(Activity)
 admin.site.register(ManufacturingProcess)
 admin.site.register(Process)
