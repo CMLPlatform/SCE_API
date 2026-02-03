@@ -59,7 +59,8 @@ CONVERSIONS = {
 class Organization(models.Model):
     # id = models.UUIDField(primary_key=True, default=uuid4, editable=False) # Using default id for simplicity
     name = models.CharField(max_length=100)
-    address = models.TextField(max_length=100, blank=True)
+    address = models.TextField(max_length=100, blank=True, help_text="Location of the headquarters, or correspondence address")
+    country = CountryField()
     contact_email = models.EmailField(blank=True)
     website = models.URLField(blank=True)
     legal_documents = models.ForeignKey('Document', blank=True, null=True, on_delete=models.SET_NULL, related_name='organization_legal_documents', help_text="Add official legal documentation associated with the company. This may include licenses, registration papers, permits, or other legally mandated certificates.")
@@ -75,7 +76,6 @@ class Institution(Organization):
 
 class Company(Organization):
     vat_number = models.CharField("VAT number", max_length=50, blank=True)
-    country = CountryField()  #NOTE: address inherited from Organization
 
     class Meta:
         verbose_name_plural = "Companies"
@@ -461,7 +461,7 @@ class SecondaryProduct(ProductModel):
 
 class ProductItem(models.Model):
     product_batch = models.ForeignKey(ProductBatch, on_delete=models.PROTECT)
-    DPP_metadata = models.ForeignKey(Metadata, on_delete=models.PROTECT, blank=True)
+    DPP_metadata = models.OneToOneField(Metadata, on_delete=models.PROTECT, blank=True)
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
     GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
     production_date = models.DateField(default=datetime.date.today)
@@ -758,8 +758,9 @@ class Material(models.Model):
     recycled_fraction = models.FloatField("Recycled content (%)", default=0, validators=FRACTION_VALIDATOR)
     recyclable_fraction = models.FloatField("Recyclable material (%)", default=0, validators=FRACTION_VALIDATOR)
     biobased_fraction = models.FloatField("Bio-based material (%)", default=0, validators=FRACTION_VALIDATOR)
-    reused_fraction = models.FloatField("Reused material (%)", default=0, validators=FRACTION_VALIDATOR) #FIXME: N/A
+    # reused_fraction = models.FloatField("Reused material (%)", default=0, validators=FRACTION_VALIDATOR) #FIXME: N/A
     renewable_fraction = models.FloatField("Sustainable and renewable material (%)", default=0, validators=FRACTION_VALIDATOR)
+    chemical_formula=models.CharField(max_length=30, blank=True)
 
     criticality_level = models.CharField(max_length=1, blank=True, default='', choices={'': 'N/A', 'c': 'critical', 'h': 'high', 'm': 'intermediate'}, help_text="Only for Critical Raw Materials (CRMs): criticality indicator based on supply risk and economic importance.")
     origin_country = CountryField("Country of origin", blank=True, null=True, help_text="Only for Critical Raw Materials (CRMs)")

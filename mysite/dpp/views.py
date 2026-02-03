@@ -15,8 +15,8 @@ def home(request):
 # Views based on the admin templates
 from django.urls import reverse, reverse_lazy
 from .models import (
-    Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial,
+    Institution, Company, Importer, ServiceOperator, Metadata, Facility,
+    Document, Material, HazardousMaterial,
     Flow, ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
     Emission, Composition, DppDetails,
     Activity, ManufacturingProcess, ProductionLine, Process, SharedProcess, BackgroundProcess, 
@@ -167,8 +167,8 @@ def make_crud_views(model):
 # Generate all views automatically
 views = {}
 for model in [
-    Institution, Company, Importer, ServiceOperator, Metadata, Document,
-    Material, HazardousMaterial, Flow, ProductModel, ProductBatch,
+    Institution, Company, Importer, ServiceOperator, Metadata, Facility,
+    Document, Material, HazardousMaterial, Flow, ProductModel, ProductBatch,
     SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
     Activity, ManufacturingProcess, ProductionLine, Process, SharedProcess,
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
@@ -196,11 +196,11 @@ def create_flowchart(processes):
     background: all background processes supplying input to `processes`
     inputs: all products used by `processes` (or waste going out), but not produced anywhere
     """
-    outputs = ProductModel.objects.filter(
+    outputs = Flow.objects.filter(
         produced_by__in=processes
         ).exclude(exchanged_by__process__in=processes
     ).distinct()
-    inputs = ProductModel.objects.filter(
+    inputs = Flow.objects.filter(
         exchanged_by__process__in=processes
     ).distinct()
     exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)
@@ -227,14 +227,14 @@ def create_flowchart(processes):
     # Add unlinked products and emissions
     for prod in outputs:
         proc = prod.produced_by
-        lines.append("    a%d --> ff%d{{%s}}:::product" % (proc.id, prod.id, prod.name))
+        lines.append("    a%d --> ff%d{{%s}}:::product" % (proc.id, prod.id, prod))
 
     for exch in ProductExchange.objects.filter(product__in=inputs, process__in=processes):
         prod, proc = exch.product, exch.process
         if exch.direction == 'in':
-            lines.append('    p%d{{"%s"}}:::input -->a%d' % (prod.id, prod.name, proc.id))
+            lines.append('    p%d{{"%s"}}:::input -->a%d' % (prod.id, prod, proc.id))
         else:
-            lines.append('    a%d -->p%d{{"%s"}}:::input' % (proc.id, prod.id, prod.name))
+            lines.append('    a%d -->p%d{{"%s"}}:::input' % (proc.id, prod.id, prod))
     for exch in EnvExchange.objects.filter(process__in=processes):
         if exch.direction == 'in':
             lines.append('    e%d(("%s")):::env -->a%d' % (exch.id, exch.substance.name, exch.process.id))
@@ -247,11 +247,11 @@ def create_flowchart(processes):
             if exch.direction == 'in':
                 lines.append(
                     f"    a{supp.id}({supp.operator.name}):::outside -->"
-                    f"|{prod.name}| a{exch.process.id}"
+                    f"|{prod}| a{exch.process.id}"
                 )
             else:
                 lines.append(
-                    f"    a{exch.process.id} -->|{prod.name}| "
+                    f"    a{exch.process.id} -->|{prod}| "
                     f"a{supp.id}({supp.operator.name}):::outside"
                 )
     # Internal exchanges
