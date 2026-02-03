@@ -1,19 +1,8 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.forms import ModelChoiceField, ModelMultipleChoiceField
 from django.http import HttpResponse
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from .models import ProductionLine
-
-def home(request):
-    """Welcome page """
-    latest_lines = ProductionLine.objects.order_by("-modified_at")[:5]
-    if len(latest_lines) > 5:
-        latest_lines = latest_lines[:5]
-    context = {'latest_lines': latest_lines}
-    return render(request, "dpp/index.html", context)
-
-
-# Views based on the admin templates
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
     Document, Material, HazardousMaterial,
@@ -29,10 +18,16 @@ from .models import (
 from .forms import get_model_form_plus
 
 
-# Base class to make every view use admin templates
+def home(request):
+    """Welcome page """
+    latest_lines = ProductionLine.objects.order_by("-modified_at")[:5]
+    if len(latest_lines) > 5:
+        latest_lines = latest_lines[:5]
+    context = {'latest_lines': latest_lines}
+    return render(request, "dpp/index.html", context)
+
 class AdminTemplateMixin:
-    template_name = "adminlike/change_form.html"
-    
+    """Base class that prepares admin-like context."""
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         model = self.model
@@ -48,21 +43,23 @@ class AdminTemplateMixin:
         })
         return context
 
-    def get_template_names(self):
-        return([self.template_name])
-
-class PreFillFromMixin:
+class PreFillFormMixin:
     """
     Mixin that pre-fills form fields from URL query parameters.
     Any query parameter matching a field name will be used as initial value.
+    Also check if it's a popup, and define success_url
     """
     def get_initial(self):
         initial = super().get_initial()
-        if hasattr(self, 'fields'):
-            # Iterate over URL parameters and pre-fill matching fields
-            for field, value in self.request.GET.items():
-                if field in self.fields:
-                    initial[field] = value
+        form_class = self.get_form_class()
+        for field_name, value in self.request.GET.items():
+            if field_name in form_class.base_fields:
+                field = form_class.base_fields[field_name]
+                # Convert to PK for relation fields
+                if isinstance(field, (ModelChoiceField, ModelMultipleChoiceField)):
+                    initial[field_name] = int(value)
+                else:
+                    initial[field_name] = value
         return initial
     
     def dispatch(self, request, *args, **kwargs):
@@ -108,7 +105,7 @@ def make_crud_views(model):
         template_name = "dpp/generic_detail.html"
         # template_name = "adminlike/change_form.html"
 
-    class Create(AdminTemplateMixin, PreFillFromMixin, CreateView):
+    class Create(AdminTemplateMixin, PreFillFormMixin, CreateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
@@ -132,7 +129,7 @@ def make_crud_views(model):
         # def get_success_url(self):  # Return to previous page
         #     return self.request.META.get('HTTP_REFERER')
 
-    class Update(AdminTemplateMixin, PreFillFromMixin, UpdateView):
+    class Update(AdminTemplateMixin, PreFillFormMixin, UpdateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
@@ -285,6 +282,17 @@ class ProductionLineDetailView(DetailView):
 class ProcessDetailView(AdminTemplateMixin, DetailView):
     model = Process
     template_name = 'dpp/process_detail.html'
+    FLOW_ICONS = {
+        'prod':  '🧩',    # Component of the product
+        'cons':  '🧃',    # Consumable
+        'ener':  '🔥',    # Electricity or heat ⚡
+        'util':  '⚙️',    # Utility or equipment
+        'serv':  '🧑‍🔧',    # Service
+        'pack':  '📦',    # Packaging
+        'react': '⚗️',    # Reactant 🧪
+        'waste': '🗑️',    # Waste
+        'texts': ProductExchange.FLOW_TYPES,
+    }
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -299,6 +307,7 @@ class ProcessDetailView(AdminTemplateMixin, DetailView):
         context['emissions'] = EnvExchange.objects.filter(
             process=self.object
         )
+        context['flow_icons'] = self.FLOW_ICONS
         return context
 
 class ProductDetailView(AdminTemplateMixin, DetailView):

@@ -663,7 +663,7 @@ class ProductExchange(Exchange):
     product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='exchanged_by')
     process = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name='prod_exchanges')
     FLOW_TYPES = {
-        'prod': 'Component (added to the product)',
+        'prod': 'Component (part of the product)',
         'cons': 'Consumable',
         'ener': 'Electricity or heat',
         'util': 'Utility or equipment',
@@ -677,6 +677,21 @@ class ProductExchange(Exchange):
     class Meta:
         unique_together = ['product', 'process', 'direction']
         ordering = ['process', 'product']
+
+    def clean(self):
+        if (self.direction == 'out') & (self.type != 'waste'):
+            raise ValidationError("'Type' of output flow must be 'waste'.")
+
+    def save(self, *args, **kwargs):
+        # If type is not set, default to part or waste
+        if not self.type:
+            if self.direction == 'in':
+                self.type = 'prod'
+            else:
+                self.type = 'waste'
+        
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.direction}: {self.amount} {self.product.model.unit} {self.product}"
@@ -717,6 +732,16 @@ class EnvExchange(Exchange):
         ordering = ['process', 'substance']
         verbose_name = 'Emission or Extraction'
         verbose_name_plural = 'Emissions & Extractions'
+
+    def clean(self):
+        if self.direction == 'ff':
+            raise ValidationError("'Direction' must be either 'input' or 'output'.")
+
+    def save(self, *args, **kwargs):
+        if not self.direction:
+            self.direction == 'out'
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.direction}: {self.amount} {self.substance.unit} {self.substance}"

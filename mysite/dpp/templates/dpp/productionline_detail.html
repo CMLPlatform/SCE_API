@@ -24,7 +24,7 @@
 </div>
 
 <div class="add-button">
-  <a href="{% url 'dpp:process_add' %}?production_line={{ productionline.id }}" class="btn btn-primary">
+  <a href="{% url 'dpp:process_add' %}?production_line={{object.pk}}" class="btn btn-primary">
     Add new process
   </a>
 </div>

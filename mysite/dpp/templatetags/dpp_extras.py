@@ -48,3 +48,7 @@ def sentencecase(obj: str):
         return obj.upper()
     else:
         return obj[0].upper() + obj[1:]
+
+@register.filter
+def lookup(dictionary, key):
+    return dictionary.get(key)
