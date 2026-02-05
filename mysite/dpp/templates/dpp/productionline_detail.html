@@ -55,6 +55,23 @@
   {% endif %}
 </div>
 
+<div class="publisher-section">
+    {% if publisher %}
+        <p>Publisher status: <strong>{{ publisher.show_status }}</strong></p>
+        <a href="{% url 'dpp:publisher_detail' publisher.pk %}" class="btn btn-primary">
+            Proceed with publishing the DPP
+        </a>
+    {% else %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create_publisher">
+            <button type="submit" class="btn btn-success">
+                Review & Publish DPP
+            </button>
+        </form>
+    {% endif %}
+</div>
+
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
   mermaid.initialize({ startOnLoad: true, flowchart: { useMaxWidth: true }});

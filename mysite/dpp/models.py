@@ -1,12 +1,16 @@
 from collections import defaultdict
+import datetime
+import numpy as np
+import pandas as pd
+from uuid import uuid4
+
 from django.db import models, transaction
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django_countries.fields import CountryField
-import datetime
-from uuid import uuid4
+from . import lca
 
 FRACTION_VALIDATOR = [MinValueValidator(0), MaxValueValidator(1)]
 
@@ -230,27 +234,11 @@ class Flow(models.Model):
             return self.productbatch.model
         else:
             return self
-
-class ProductModel(Flow):
-    """Describes a specific model or version of a product.
-    All items of a product model share the same design, weight, and manufacturer.
-    """
-    name = models.CharField("Model or product name", max_length=100)
-    unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
-    brand = models.CharField(max_length=50, blank=True)
-    description = models.TextField(max_length=200, blank=True)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-
-    taric_code = models.CharField("TARIC code", max_length=20, blank=True, help_text="(customs code)")
-    hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
-
-    def __str__(self):
-        return self.name
     
     @property
     def manufacturer(self):
         """Get the manufacturer of this product (operator of the
-        Facility hosting the Process that produces this ProductModel).
+        Facility hosting the Process that produces this product).
         """
         if hasattr(self, 'produced_by'):
             return self.produced_by.facility.operator
@@ -275,7 +263,7 @@ class ProductModel(Flow):
         
         # Recurse into components
         for input in self.produced_by.prod_exchanges.filter(type__in=['prod', 'waste']):
-            component_bom = input.product.model.calc_composition(main_line)
+            component_bom = input.product.calc_composition(main_line)
             plm = -1 if input.type == 'waste' else 1 # Subtract waste materials
             for material, value in component_bom.items():
                 composition[material] += input.amount * value * plm
@@ -357,7 +345,7 @@ class ProductModel(Flow):
         Add all subcomponents of `component` to this product.
         If a subcomponent already exists, its amount is increased.
         """
-        this_entry = Component.objects.filter(product=self, component=component)
+        this_entry = Component.objects.get(product=self, component=component)
         if not this_entry.exists():
             raise Component.DoesNotExist(
                 f"'{self}' does not contain component '{component}'"
@@ -376,6 +364,22 @@ class ProductModel(Flow):
                     defaults={'amount': models.F('amount') + new_amount},
                 )
             this_entry.delete()
+
+class ProductModel(Flow):
+    """Describes a specific model or version of a product.
+    All items of a product model share the same design, weight, and manufacturer.
+    """
+    name = models.CharField("Model or product name", max_length=100)
+    unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
+    brand = models.CharField(max_length=50, blank=True)
+    description = models.TextField(max_length=200, blank=True)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    taric_code = models.CharField("TARIC code", max_length=20, blank=True, help_text="(customs code)")
+    hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
+
+    def __str__(self):
+        return self.name
 
 class ProductBatch(Flow):
     batch_number = models.PositiveIntegerField()
@@ -525,6 +529,38 @@ class Activity(models.Model):
 
     def __str__(self):
         return self.name
+    
+    def aggregate_biosphere(self, process_demands: pd.Series):
+        """ 
+        Copy and aggregate environmental exchanges to self
+        Args:
+            self (Activity): Process for which to create biosphere
+            process_demands: pd.Series of scaling factors,
+                with as index process IDs (of processes to be aggregated)
+        """
+        EnvExchange.objects.filter(process=self).delete()
+        # Fetch exchanges
+        exchanges = (
+            EnvExchange.objects
+            .filter(process_id__in=process_demands.index)
+            .select_related("process", "substance")
+        )
+        # Copy the exchanges to self
+        with transaction.atomic():
+            for ex in exchanges:
+                try:  #NOTE: amount is always positive
+                    new_ex = EnvExchange.objects.get(
+                        process=self, substance=ex.substance,
+                        compartment=ex.compartment, direction=ex.direction,
+                    )
+                    new_ex.amount += ex.amount * process_demands[ex.process.id]
+                    new_ex.save()
+                except EnvExchange.DoesNotExist: # Copy, edit, save
+                    ex.id = None
+                    ex.pk = None
+                    ex.amount *= process_demands[ex.process.id]
+                    ex.process = self
+                    ex.save()
 
 class ManufacturingProcess(Activity):
     """Aggregated manufacturing process that will be published
@@ -555,7 +591,7 @@ class ProductionLine(models.Model):
 
     def __str__(self):
         return self.name
-    
+
     def check_unused_outputs(self):
         """
         Check which Process functional_flows are not linked to another Process.
@@ -579,6 +615,110 @@ class ProductionLine(models.Model):
             return f"Warning: Products [{product_names}] are not linked to other processes."
         
         return ""  # All good
+
+    def check_missing_origins(self):
+        """Check which inputs are not produced anywhere.
+        """
+        missing = []
+        for input in Flow.objects.filter(exchanged_by__process__in=self.bop.all()):
+            if not (hasattr(input, 'produced_by') or hasattr(input, 'produced_by_other')):
+                missing.append(str(input))
+        if missing:
+            return f"Warning: Production process missing for {missing}"
+        return ""  # All good
+
+    def create_transport(self):
+        """Find all the input products of this production line
+        and create a transport entry with default distance and mode.
+        """
+        processes = self.bop.all()
+        inputs = Flow.objects.filter(
+            exchanged_by__process__in=processes
+        ).exclude(produced_by__in=processes).distinct()
+        for prod in inputs:
+            Transport(production_line=self, product=prod, distance=150).save()
+
+    def aggregate_production(self):
+        """
+        Aggregate all processes in ProductionLine into a ManufacturingProcess.
+        """
+        ## Collect process, product, and exchange info
+        processes = self.bop.all().order_by('id')
+
+        inputs = Flow.objects.filter(
+            exchanged_by__process__in=processes
+        ).distinct()
+        suppliers = ManufacturingProcess.objects.filter(functional_flow__in=inputs)
+        # Inputs that come from another production line: aggregate that pl first 
+        other_source = Process.objects.filter(functional_flow__in=inputs).exclude(production_line=self)
+        pl_map = {}  #FIXME: unused ManufacturingProcess to Process map
+        for p in other_source:
+            pl = p.production_line
+            mp = pl.create_public_tables()
+            suppliers += [mp]
+            pl_map[mp.pk] = p.pk
+        
+        exchanges = (
+            ProductExchange.objects
+            .filter(process__in=processes)
+            .select_related("product", "process")
+        )
+        # Create sorted list of products
+        products = set(ex.product for ex in exchanges)
+        products |= {p.functional_flow for p in processes if p.functional_flow}
+        products = sorted(products, key=lambda p: p.id)
+
+        ## Create technosphere matrix
+        A = pd.DataFrame(
+            0.0, index=[p.id for p in products], columns=[p.id for p in processes]
+        )
+        # Fill with exchanges add functional flows (main outputs)
+        for ex in exchanges:
+            sign = 1 if ex.direction == "in" else -1
+            A.at[ex.product_id, ex.process_id] += sign * ex.amount
+        for process in processes:
+            A.at[process.functional_flow.id, process.id] = -process.amount
+        for sup in suppliers:
+            A[sup.id] = 0.0
+            A.at[sup.functional_flow.id, sup.id] = -sup.amount
+
+        # Label axes for readability
+        A.index.name = "product_id"
+        A.columns.name = "process_id"
+        
+        ## Solve system
+        assert len(A) == len(A.index), "Matrix must be square"
+        f = np.zeros(len(A))
+        fu_loc = A.index.get_loc(self.final_product.id)
+        f[fu_loc] = self.final_product.produced_by.amount  # Functional unit
+        s = -np.linalg.solve(A, f)  # scaling factors or total supply
+        s = pd.Series(s, index=A.columns)
+        
+        ## Create aggregated process + exchanges
+        aggregated, created = ManufacturingProcess.objects.update_or_create(
+            name=self.final_product.model.name + " production",
+            amount=f[fu_loc],
+            facility=self.facility,
+            description=self.description,
+            functional_flow=self.final_product,
+            # production_line=self,
+        )
+        ProductExchange.objects.filter(process=aggregated).delete()
+        for sup in suppliers:
+            value = s[sup.id]
+            ex_type = ProductExchange.objects.filter(product=sup.functional_flow, process__in=processes)[0].type
+            ProductExchange.objects.create(
+                process=aggregated,
+                product=sup.functional_flow,
+                amount=abs(value),
+                direction='in' if value>=0 else 'out',
+                type=ex_type,
+            )
+        
+        aggregated.aggregate_biosphere(s.iloc[:len(processes)])
+        
+        return aggregated
+
 
 class Process(Activity):
     """Internal subprocess, used for convenient modeling of a production line"""
@@ -1104,3 +1244,93 @@ class CircularityTracker(CircularityScore):
         quantity.help_text = "Number of such devices or systems in the product"
         super().__init__(*args, **kwargs)
 
+
+## DPP publication
+class Publisher(models.Model):
+    production_line = models.OneToOneField(ProductionLine, on_delete=models.CASCADE)
+    status = models.PositiveSmallIntegerField(default=0, help_text="Highest successfully completed step (1-5)")
+    last_run = models.DateTimeField(auto_now=True)
+    error_message = models.TextField(blank=True)
+    
+    STEP_NAMES = {
+        0: "Not started",
+        1: "Check completeness",
+        2: "Aggregate manufacturing process",
+        3: "Compute concentrations and components",
+        4: "Create transport table",
+        5: "Do Life Cycle Assessment",
+    }
+    
+    def run_from_step(self, start_step: int):
+        """Do calculations needed to complete a DPP:
+        - Check for missing origins and unused outputs
+        - ManufacturingProcess (aggregates the ProductionLine)
+        - Concentration (of Substances of Concern)
+        - Component (replaceable components)
+        - Transport (distances)
+        - LCA calculations
+        Updates status and triggers consecutive steps.
+        
+        Args:
+            start_step (int): Step (0-5) to start
+        Returns:
+            bool: Whether the 
+        """
+        self.error_message = ""
+        if self.status + 1 < start_step:
+            start_step = self.status + 1
+        else:
+            self.status = start_step - 1
+        pl = self.production_line
+        
+        try:
+            # Step 1: Validation
+            if start_step <= 1:
+                input_status = pl.check_missing_origins()
+                output_status = pl.check_unused_outputs()
+                if message := input_status + output_status:
+                    raise AssertionError(message)
+                else:
+                    self.status = 1
+                    self.save()
+                
+            # Step 2: Aggregate
+            if start_step <= 2:
+                mp = pl.aggregate_production()
+                self.status = 2
+                self.save()
+            
+            # Step 3: Concentrations and components
+            if start_step <= 3:
+                dpp_product = pl.final_product.model
+                dpp_product.add_concentrations()
+                dpp_product.add_components()
+                self.status = 3
+                self.save()
+            
+            # Step 4: Transport
+            if start_step <= 4:
+                pl.create_transport()
+                self.status = 4
+                self.save()
+            
+            # Step 5: LCA
+            if start_step <= 5:
+                result = lca.create_supply_chain_lca(pl.final_product)
+                self.status = 5
+                self.save()
+            
+        except Exception as e:
+            self.error_message = f"Error at step {self.status + 1}: {str(e)}"
+        finally:
+            self.last_run = datetime.datetime.now()
+            self.save()
+        return bool(self.error_message)
+    
+    def show_status(self):
+        """Get human-readable status."""
+        return self.STEP_NAMES.get(self.status, "Unknown")
+    
+    def can_publish(self):
+        """Check if all steps completed successfully."""
+        return self.status == 5 and not self.error_message

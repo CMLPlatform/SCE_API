@@ -1,3 +1,4 @@
+from django.contrib import messages
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -13,7 +14,7 @@ from .models import (
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
     CircularityEvaluation, CircularityIndicator,
-    CircularityScore, CircularityTracker,
+    CircularityScore, CircularityTracker, Publisher
 )
 from .forms import get_model_form_plus
 
@@ -239,17 +240,17 @@ def create_flowchart(processes):
             lines.append('    a%d --> e%d(("%s")):::env' % (exch.process.id, exch.id, exch.substance.name))
     # Add background processes
     for supp in suppliers:
-        prod = supp.productionline.final_product
+        prod = supp.functional_flow
         for exch in ProductExchange.objects.filter(product=prod):
             if exch.direction == 'in':
                 lines.append(
-                    f"    a{supp.id}({supp.operator.name}):::outside -->"
-                    f"|{prod}| a{exch.process.id}"
+                    f"    a{supp.id}({prod}):::outside --> a{exch.process.id}"
+                    # f"    a{supp.id}({supp.facility.operator}):::outside -->"
+                    # f"|{prod}| a{exch.process.id}"
                 )
             else:
                 lines.append(
-                    f"    a{exch.process.id} -->|{prod}| "
-                    f"a{supp.id}({supp.operator.name}):::outside"
+                    f"    a{exch.process.id} --> a{supp.id}({prod}):::outside"
                 )
     # Internal exchanges
     for exch in exchanges:
@@ -277,7 +278,23 @@ class ProductionLineDetailView(DetailView):
         # Add Mermaid flowchart
         mermaid_code = create_flowchart(context['processes'])
         context["mermaid_code"] = mermaid_code
+        # Find Publisher (if available)
+        try:
+            context['publisher'] = self.object.publisher
+        except Publisher.DoesNotExist:
+            context['publisher'] = None
         return context
+    
+    def post(self, request, *args, **kwargs):
+        if request.POST.get('action') == 'create_publisher':
+            # Get or create Publisher
+            publisher, created = Publisher.objects.get_or_create(
+                production_line=self.get_object()
+            )
+            # Redirect to Publisher detail view
+            return redirect('publisher_detail', pk=publisher.pk)
+        
+        return super().post(request, *args, **kwargs)
 
 class ProcessDetailView(AdminTemplateMixin, DetailView):
     model = Process
@@ -347,3 +364,49 @@ class FlowCreateView(CreateView):
     model = Flow
     template_name = "dpp/create_flow.html"
     fields = []  # No user-editable fields
+
+class PublisherDetailView(AdminTemplateMixin, DetailView):
+    model = Publisher
+    template_name = "dpp/publisher_detail.html"
+    
+    def post(self, request, *args, **kwargs):
+        publisher = self.get_object()
+        action = request.POST.get('action')
+        
+        if action == 'run_all':
+            success = publisher.run_from_step(1)
+            if success:
+                messages.success(request, "All steps completed successfully!")
+            else:
+                messages.error(request, f"Error: {publisher.error_message}")
+        
+        elif action == 'rerun_step':
+            step = int(request.POST.get('step'))
+            success = publisher.run_from_step(step)
+            if success:
+                messages.success(request, f"Steps {step}-5 completed successfully!")
+            else:
+                messages.error(request, f"Error: {publisher.error_message}")
+        
+        elif action == 'add_subcomponents':
+            # Special action for step 3
+            publisher.production_line.final_product.add_subcomponents()
+            messages.success(request, "Subcomponents added!")
+        
+        return redirect('dpp:publisher_detail', pk=publisher.pk)
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        publisher = self.get_object()
+        
+        # Build step status for template
+        context['steps'] = [
+            {
+                'number': i,
+                'name': Publisher.STEP_NAMES[i],
+                'completed': i <= publisher.status,
+                'can_rerun': i <= publisher.status + 1
+            }
+            for i in range(1, 6)
+        ]
+        return context

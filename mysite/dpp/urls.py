@@ -12,6 +12,7 @@ urlpatterns = [
     path('product/<int:pk>/', views.ProductDetailView.as_view(), name='product_detail'),
     path('transports/<int:productionline>/', views.TransportSubsetView.as_view(), name='transport_subset'),
     path('flow/add/', views.FlowCreateView.as_view(), name='flow_add'),
+    path('publisher/<int:pk>/', views.PublisherDetailView.as_view(), name='publisher_detail')
 ]
 
 # urlpatterns = []
