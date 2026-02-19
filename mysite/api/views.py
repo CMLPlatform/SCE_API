@@ -3,6 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from dpp.models import ProductionLine, Process
 from .serializers import ProductionLineSerializer, ProcessSerializer
+from dpp.models import *
+from .serializers import *
 
 # This view allows to see all Production Lines.
 class ProductionLinesListCreate(generics.ListCreateAPIView):
@@ -41,8 +43,6 @@ class ProcessSearch(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 from rest_framework.viewsets import ModelViewSet
-from dpp.models import Organization, Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, ProductModel, ProductBatch, ProductProperties, DppDetails, SecondaryProduct, Emission, Composition, ProductItem, Activity, ManufacturingProcess, ProductionLine, Process, SharedProcess, BackgroundProcess, ProductExchange, EnvExchange, Alias, Transport, LifeCycleEvent, InspectionEvent, MaintenanceEvent, ItemExchange, DisassemblyEvent, IndicatorSet, ImpactCategory, ImpactIndicator, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker, CircularityTracker
-from .serializers import OrganizationSerializer, InstitutionSerializer, CompanySerializer, ImporterSerializer, ServiceOperatorSerializer, MetadataSerializer, InstructionSerializer, DocumentSerializer, MaterialSerializer, HazardousMaterialSerializer, ProductModelSerializer, ProductBatchSerializer, ProductPropertiesSerializer, DppDetailsSerializer, SecondaryProductSerializer, EmissionSerializer, CompositionSerializer, ProductItemSerializer, ActivitySerializer, ManufacturingProcessSerializer, ProductionLineSerializer, ProcessSerializer, SharedProcessSerializer, BackgroundProcessSerializer, ProductExchangeSerializer, EnvExchangeSerializer, AliasSerializer, TransportSerializer, LifeCycleEventSerializer, InspectionEventSerializer, MaintenanceEventSerializer, ItemExchangeSerializer, DisassemblyEventSerializer, IndicatorSetSerializer, ImpactCategorySerializer, ImpactIndicatorSerializer, SustainabilityEvaluationSerializer, SustainabilityScoreSerializer, CircularityEvaluationSerializer, CircularityIndicatorSerializer, CircularityScoreSerializer, CircularityTrackerSerializer
 
 
 class OrganizationViewSet(ModelViewSet):
@@ -132,10 +132,6 @@ class ProductionLineViewSet(ModelViewSet):
 class ProcessViewSet(ModelViewSet):
     queryset = Process.objects.all()
     serializer_class = ProcessSerializer
-
-class SharedProcessViewSet(ModelViewSet):
-    queryset = SharedProcess.objects.all()
-    serializer_class = SharedProcessSerializer
 
 class BackgroundProcessViewSet(ModelViewSet):
     queryset = BackgroundProcess.objects.all()

@@ -429,9 +429,8 @@ class DppDetails(models.Model):
     """Detailed info about a product, as required for the Digital Product Passport (DPP).
     Typically needed for final products sold in stores.
     """
-    product = models.OneToOneField(Flow, on_delete=models.CASCADE, primary_key=True)
+    product = models.OneToOneField(Flow, on_delete=models.CASCADE, related_name='details', primary_key=True)
     importer = models.ForeignKey(Importer, blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='imported_products', help_text="Specify if the product is imported from outside the EU.")
-    origin = models.ForeignKey(Company, on_delete=models.SET(get_unknown_company), related_name="manufactured_products")  #FIXME: duplicate info
 
     #Classification
     CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
@@ -746,21 +745,6 @@ class Process(Activity):
     class Meta:
         verbose_name_plural = "Processes"
 
-class SharedProcess(Process):
-    """ Represents a process that is shared across multiple processes or production lines.
-    functional_flow defaults to the final product of the production line.
-    """
-    class Meta:
-        proxy = True
-        verbose_name = "Auxiliary process"
-        verbose_name_plural = "Auxiliary processes"
-
-    def save(self, *args, **kwargs):
-        # If functional flow is not set, default to the final product of production line
-        if self.production_line and not self.functional_flow:
-            self.functional_flow = self.production_line.final_product
-        super().save(*args, **kwargs)
-
 class BackgroundProcess(ManufacturingProcess):
     created_at = models.DateField(auto_now_add=True)
     database = models.CharField(max_length=50, blank=True)
@@ -954,7 +938,6 @@ class Material(models.Model):
 class HazardousMaterial(Material):
     CAS_number = models.CharField(max_length=50, blank=True, unique=True)
     safety_instructions = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_safety_instructions')  # (SafetyDataSheet)
-    # substance_location = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_location')
 
 class Composition(models.Model):
     product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='composition')
@@ -1096,7 +1079,7 @@ class ItemExchange(models.Model):
     Can be used for component replacement, disassembly, and closing a loop.
     """
     item = models.ForeignKey(ProductItem, on_delete=models.CASCADE)
-    event = models.ForeignKey(LifeCycleEvent, on_delete=models.CASCADE)
+    event = models.ForeignKey(LifeCycleEvent, on_delete=models.CASCADE, related_name='item_exchanges')
     amount = models.SmallIntegerField(help_text="Inputs are positive, outputs are negative.")
 
     def clean(self):
@@ -1158,7 +1141,7 @@ class SustainabilityEvaluation(models.Model):
     def get_year():
         return str(datetime.date.today().year)
     
-    product = models.ForeignKey(Flow, on_delete=models.CASCADE)
+    product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='sustainability_evaluation')
     functional_amount = models.FloatField()
     system_boundaries = models.CharField(max_length=200, blank=True)
     geographical_scope = models.CharField(max_length=4, choices=GEO_CHOICES, blank=True)
