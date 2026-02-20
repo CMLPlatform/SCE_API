@@ -1,8 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from dpp.models import ProductionLine, Process
-from .serializers import ProductionLineSerializer, ProcessSerializer
+from rest_framework.viewsets import ModelViewSet
 from dpp.models import *
 from .serializers import *
 
@@ -41,8 +40,6 @@ class ProcessSearch(APIView):
         results = Process.objects.filter(process_name__icontains=query)
         serializer = ProcessSerializer(results, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-from rest_framework.viewsets import ModelViewSet
 
 
 class OrganizationViewSet(ModelViewSet):
@@ -84,6 +81,10 @@ class MaterialViewSet(ModelViewSet):
 class HazardousMaterialViewSet(ModelViewSet):
     queryset = HazardousMaterial.objects.all()
     serializer_class = HazardousMaterialSerializer
+
+class FlowViewSet(ModelViewSet):
+    queryset = Flow.objects.all()
+    serializer_class = FlowSerializer
 
 class ProductModelViewSet(ModelViewSet):
     queryset = ProductModel.objects.all()

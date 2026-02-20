@@ -99,3 +99,44 @@ The app uses forms to create new items, such as products and manufacturing proce
 Required fields that must be filled are indicated with an asterisk, e.g. **Name\***. 
 Some fields ask to link to another item, such as the operator of a process. These fields can be recognized as a drop-down box with a green plus sign (**+**) next to it. If you already created the item you wan to link to, select it in the dropdown list. Otherwise, click the **+** to create it in a pop-up window. 
 After filling the form, click the 'Save' button at the bottom. In case there are any issues with the information, an error message will explain what went wrong and how to correct it. 
+
+
+# API Manual
+Full Digital Product Passports (DPPs) and parts of a DPP can be retrieved using the API functionality. 
+
+A DPP is uniquely identified by its registration number. It can be accessed through **www.company-website.com/api/metadata/<registration_number>**. The API response follows the basic structure of the example below. Note that, for clarity, some 'branches' are left out (indicated by `[]` and `None`).
+
+```JSON
+{
+    'registration_number': '5dc50ff4-d31d-45c5-9c1e-2bc9ba830c63',
+    'issuer': {'id': 1, 'legal_documents': None, 'name': 'Test Certifier AG', 'address': 'Street Name 7', 'country': 'CH', 'contact_email': '', 'website': '', 'type': 'ngo'},
+    'reo': {'id': 2, 'legal_documents': None, 'name': 'Example Manufacturer GmbH', 'address': '', 'country': 'DE', 'contact_email': '', 'website': 'www.example.com', 'vat_number': 'DE812345678'},
+    'product_item': {
+        'id': 1,
+        'product_batch': {
+            'id': 2, 'properties': None, 'concentration': [], 'composed_of': [], 'details': None, 'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None,
+            'model': {
+                'id': 1, 'properties': None, 'concentration': [], 'composed_of': [], 'details': None, 'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None, 'name': 'Test Widget v2', 'unit': 'pcs', 'brand': '', 'description': '', 'unit_price': None, 'taric_code': '01234567890128', 'hs_code': ''
+            },
+            'batch_number': 202507001
+        },
+        'service_events': [],
+        'serial_number': 'WGT-20250715-0042',
+        'GTIN_code': '',
+        'production_date': '2026-02-20',
+        'circularity': 'new'
+    },
+    'creation_date': '2026-02-20',
+    'last_modified': '2026-02-20',
+    'version': '1.0',
+    'language': 'DE',
+    'access_link': '',
+    'access_policy': '',
+    'access_log_enabled': True,
+    'verification_type': 0,
+    'credential_format': 'xml',
+    'storage_location': 0,
+    'audit_trail_mechanism': 0,
+    'update_interval': 'A'
+}
+```

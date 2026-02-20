@@ -187,7 +187,7 @@ class Document(models.Model):  #TODO: security check on files
 
     file = models.FileField(upload_to='documents/')
     type = models.CharField(
-        "Document type", max_length=25, choices=DOCUMENT_TYPES
+        "Document type", max_length=25, choices=DOCUMENT_TYPES, default='other'
     )
     issuer = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.SET_NULL, help_text="Author, issuer or publisher")
     instructions = models.ManyToManyField(Instruction, blank=True, help_text="Select all that apply. Instructions included in this document (ony for manauals)")
@@ -464,7 +464,7 @@ class SecondaryProduct(ProductModel):
 
 class ProductItem(models.Model):
     product_batch = models.ForeignKey(ProductBatch, on_delete=models.PROTECT)
-    DPP_metadata = models.OneToOneField(Metadata, on_delete=models.PROTECT, blank=True)
+    DPP_metadata = models.OneToOneField(Metadata, on_delete=models.PROTECT, blank=True, related_name='product_item')
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
     GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
     production_date = models.DateField(default=datetime.date.today)
@@ -1184,7 +1184,7 @@ class SustainabilityScore(models.Model):
 
 class CircularityEvaluation(models.Model):
     """A circularity evaluation of a certain product model/batch."""
-    product = models.ForeignKey(Flow, on_delete=models.CASCADE)
+    product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='circularity_evaluation')
     assessment_date = models.DateField(default=datetime.date.today, help_text="When the assessment was made or updated.")
     assessed_by = models.ForeignKey(Institution, blank=True, null=True, on_delete=models.PROTECT)
     report = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='circularity_eval', help_text="Report describing the circularity assessment, and manual for monitoring and updating the circularity metrics.")
