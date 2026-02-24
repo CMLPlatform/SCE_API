@@ -67,15 +67,16 @@ class ProductPropertiesSerializer(serializers.ModelSerializer):
         exclude = ['product']
 
 class DppDetailsSerializer(serializers.ModelSerializer):
-    quality_compliance_documents = serializers.SerializerMethodField()
+    compliance_documents = serializers.SerializerMethodField()
+    importer = ImporterSerializer()
 
     class Meta:
         model = DppDetails
         exclude = ['product']
     
-    def get_quality_compliance_documents(self, obj):
+    def get_compliance_documents(self, obj):
         doc_dict = {}
-        for doc in obj.quality_compliance_documents.all():
+        for doc in obj.compliance_documents.all():
             doc_dict.setdefault(doc.type, []).append(doc.file.url)
             #FIXME: could also use DocumentLinkSerializer
         return doc_dict
@@ -106,7 +107,7 @@ class ActivitySerializer(serializers.ModelSerializer):
 class ManufacturingProcessSerializer(ActivitySerializer):
     class Meta(ActivitySerializer.Meta):
         model = ManufacturingProcess
-        exclude = ['functional_flow']
+        fields = ['name', 'amount', 'facility', 'description', 'modified_at']
 
 class BackgroundProcessSerializer(ManufacturingProcessSerializer):
     class Meta(ManufacturingProcessSerializer.Meta):
@@ -162,10 +163,11 @@ class ComponentSerializer(serializers.ModelSerializer):
 class ItemExchangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemExchange
-        exclude = ['event']
+        exclude = ['event', 'id']
 
 class LifeCycleEventSerializer(serializers.ModelSerializer):
     item_exchanges = ItemExchangeSerializer(many=True, read_only=True)
+    activity_data = ManufacturingProcessSerializer()
     class Meta:
         model = LifeCycleEvent
         exclude = ['product']
@@ -278,7 +280,7 @@ class ProductItemSerializer(serializers.ModelSerializer):
     service_events = LifeCycleEventSerializer(many=True, read_only=True)
     class Meta:
         model = ProductItem
-        exclude = ['DPP_metadata']
+        fields = '__all__'
 
 class MetadataSerializer(serializers.ModelSerializer):
     issuer = InstitutionSerializer(read_only=True)

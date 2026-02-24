@@ -123,31 +123,6 @@ class Facility(models.Model):
     def __str__(self):
         return self.address.replace('\r\n', ', ')
 
-class Metadata(models.Model):
-    """Transparency information related to a ProductItem."""
-    registration_number = models.UUIDField(primary_key=True, default=uuid4, editable=False)
-    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
-    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
-    creation_date = models.DateField(auto_now_add=True)
-    last_modified = models.DateField(auto_now=True)
-    version = models.CharField(max_length=20)
-    language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
-    # Data access & governance
-    access_link = models.URLField(max_length=200, blank=True, help_text="URL to full DPP record.")
-    access_policy = models.URLField(max_length=200, blank=True, help_text="URL to data access terms and conditions.")
-    access_log_enabled = models.BooleanField(default=True)
-    verification_type = models.SmallIntegerField(choices={0: 'None', 1: 'Digital signature', 2: 'Third party', 3: 'Blockchain'}, default=0)
-    credential_format = models.CharField(max_length=50, choices={'json_ld': 'JSON-LD', 'verifialble':'Verifiable credential', 'xml': 'XML', 'other': 'Other'})
-    storage_location = models.SmallIntegerField(choices={0: 'Undeclared', 1: 'On-premise server', 2: 'Commercial cloud server', 3: 'Centralized certified server', 4: 'Decentralized storage'}, default=0)
-    audit_trail_mechanism = models.SmallIntegerField(choices={0: 'None', 1: 'Log files', 2: 'Immutable ledger'}, default=0)
-    update_interval = models.CharField(max_length=2, choices={'-': 'never', 'W': 'weekly', 'M': 'monthly', 'Q': 'quarterly', 'A': 'annually', 'E': 'event_driven'}, default='-')
-
-    class Meta:
-        verbose_name_plural = "Metadata"
-
-    def __str__(self):
-        return f"DPP #{self.registration_number} issued by {self.issuer.name}"
-
 ## Documents
 
 INSTRUCTION_TYPES = {
@@ -437,7 +412,7 @@ class DppDetails(models.Model):
     GS1_GPC_code = models.CharField(max_length=20, blank=True, help_text="Global Product Classification code")
 
     # Documents and other quality compliance info
-    quality_compliance_documents = models.ManyToManyField(Document, blank=True)
+    compliance_documents = models.ManyToManyField(Document, blank=True)
     warranty_period = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Warranty period in years")
     spare_parts_availability_duration = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Spare parts availability in years")
     takeback_system = models.CharField(max_length=10, choices={'no': 'No take-back system', 'basic': 'Collection on request', 'active': 'Structured take-back with dedicated channels or collection points', 'advanced': 'Certified, traceable take-back system'}, default='no')
@@ -464,7 +439,6 @@ class SecondaryProduct(ProductModel):
 
 class ProductItem(models.Model):
     product_batch = models.ForeignKey(ProductBatch, on_delete=models.PROTECT)
-    DPP_metadata = models.OneToOneField(Metadata, on_delete=models.PROTECT, blank=True, related_name='product_item')
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
     GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
     production_date = models.DateField(default=datetime.date.today)
@@ -506,6 +480,32 @@ class ProductItem(models.Model):
                 created_items.append(new_item)
         
         return created_items
+
+class Metadata(models.Model):
+    """Transparency information related to a ProductItem."""
+    product_item = models.OneToOneField(ProductItem, on_delete=models.PROTECT, related_name='dpp_metadata')
+    registration_number = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
+    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
+    creation_date = models.DateField(auto_now_add=True)
+    last_modified = models.DateField(auto_now=True)
+    version = models.CharField(max_length=20)
+    language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
+    # Data access & governance
+    access_link = models.URLField(max_length=200, blank=True, help_text="URL to full DPP record.")
+    access_policy = models.URLField(max_length=200, blank=True, help_text="URL to data access terms and conditions.")
+    access_log_enabled = models.BooleanField(default=True)
+    verification_type = models.SmallIntegerField(choices={0: 'None', 1: 'Digital signature', 2: 'Third party', 3: 'Blockchain'}, default=0)
+    credential_format = models.CharField(max_length=50, choices={'json_ld': 'JSON-LD', 'verifialble':'Verifiable credential', 'xml': 'XML', 'other': 'Other'})
+    storage_location = models.SmallIntegerField(choices={0: 'Undeclared', 1: 'On-premise server', 2: 'Commercial cloud server', 3: 'Centralized certified server', 4: 'Decentralized storage'}, default=0)
+    audit_trail_mechanism = models.SmallIntegerField(choices={0: 'None', 1: 'Log files', 2: 'Immutable ledger'}, default=0)
+    update_interval = models.CharField(max_length=2, choices={'-': 'never', 'W': 'weekly', 'M': 'monthly', 'Q': 'quarterly', 'A': 'annually', 'E': 'event_driven'}, default='-')
+
+    class Meta:
+        verbose_name_plural = "Metadata"
+
+    def __str__(self):
+        return f"DPP #{self.registration_number} issued by {self.issuer.name}"
 
 class Emission(models.Model):
     name = models.CharField(max_length=50)
@@ -1034,14 +1034,6 @@ class LifeCycleEvent(models.Model):
         return unknown
     activity_data = models.ForeignKey(ManufacturingProcess, default=get_empty_activity, on_delete=models.SET_DEFAULT, help_text="Activity describing the inputs and outputs (optional).")
 
-    def clean(self):
-        if self.service_type == 'maintenance' and not self.maintenance_plan:
-            raise ValidationError("Maintenance plan must be attached for maintenance services.")
-    
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
     def __str__(self):
         event = self.EVENT_TYPES[self.type]
         return f"{event} of a {self.product.product_batch.name}"
@@ -1062,6 +1054,14 @@ class MaintenanceEvent(LifeCycleEvent):
     root_cause = models.TextField(max_length=300, blank=True)
     diagnostics_performed = models.TextField(max_length=300, blank=True) #FIXME: remove, is a separate event
     corrective_action = models.TextField(max_length=300, blank=True)  #FIXME: remove, same as description
+
+    def clean(self):
+        if self.type == 'maintenance' and not self.maintenance_plan:
+            raise ValidationError("Maintenance plan must be attached for maintenance services.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 class DisassemblyEvent(LifeCycleEvent):
     """Describes detachment of components from a ProductItem.
