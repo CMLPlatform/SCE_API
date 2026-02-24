@@ -93,7 +93,7 @@ To enable easy navigation through the app, use the links provided by the navigat
 - Products
 - Importers #TODO 
 - Sustainability evaluations
-- Profile #TODO 
+- User profile #TODO 
 ## Forms
 The app uses forms to create new items, such as products and manufacturing processes. 
 Required fields that must be filled are indicated with an asterisk, e.g. **Name\***. 
@@ -116,21 +116,68 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
         'product_batch': {
             'id': 2, 'properties': None, 'concentration': [], 'composed_of': [], 'details': {
                 'compliance_documents': {
-                    'manual': ['/documents/LICENSE'],
-                    'compliance': ['/documents/requirements.txt']
+                    'manual': ['/documents/manual_EN.pdf', '/documents/manual_IT.pdf'],
+                    'technical_drawing': ['/documents/design.jpg'],
                 },
                 'CPV_code': '',
                 'GS1_GPC_code': '',
                 'warranty_period': '5.0',
                 'spare_parts_availability_duration': '10.0',
-                'takeback_system': 'no',
+                'takeback_system': 'active',
                 'importer': None,
             },
-            'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None,
+            'latest_sustainability_evaluation': None,
+            'latest_circularity_evaluation': None,
             'model': {
-                'id': 1, 'properties': None, 'concentration': [], 'composed_of': [], 'details': None, 'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None, 'name': 'Test Widget v2', 'unit': 'pcs', 'brand': '', 'description': '', 'unit_price': None, 'taric_code': '01234567890128', 'hs_code': ''
+                'id': 1,
+                'properties': None,
+                'concentration': [],
+                'composed_of': [],
+                'details': None,
+                'latest_sustainability_evaluation': {
+                    'id': 1,
+                    'sustainability_score': [
+                        {
+                            'id': 1,
+                            'impact_category': 1,
+                            'impact_value': 9.2,
+                            'upstream_phase': 0.4,
+                            'manufacturing_phase': 0.3,
+                            'use_phase': 0.2,
+                            'end_of_life_phase': 0.1,
+                            'scope_1_2_3': 7.4,
+                        },
+                        {
+                            'id': 2,
+                            'impact_category': 2,
+                            'impact_value': 9.2,
+                            'upstream_phase': 0.2,
+                            'manufacturing_phase': 0.3,
+                            'use_phase': 0.4,
+                            'end_of_life_phase': 0.1,
+                            'scope_1_2_3': 7.4,
+                        },
+                    ],
+                    'functional_amount': 1.0,
+                    'system_boundaries': 'Cradle to gate',
+                    'geographical_scope': 'EU',
+                    'temporal_scope': '2024',
+                    'impact_assessment_method': 'EF 3.01',
+                    'software_used': '',
+                    'allocation_method': 'mass',
+                    'assessment_date': '2026-01-01',
+                    'assessed_by': 3,
+                },
+                'latest_circularity_evaluation': None,
+                'name': 'Test Widget v2',
+                'unit': 'pcs',
+                'brand': '',
+                'description': 'A widget with many functions',
+                'unit_price': None,
+                'taric_code': '01234567890128',
+                'hs_code': ''
             },
-            'batch_number': 202507001
+            'batch_number': 202507001,
         },
         'service_events': [
             {
@@ -153,7 +200,7 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
         'serial_number': 'WGT-20250715-0042',
         'GTIN_code': '',
         'production_date': '2026-02-20',
-        'circularity': 'new'
+        'circularity': 'new',
     },
     'creation_date': '2026-02-20',
     'last_modified': '2026-02-20',
@@ -166,6 +213,6 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
     'credential_format': 'xml',
     'storage_location': 0,
     'audit_trail_mechanism': 0,
-    'update_interval': 'A'
+    'update_interval': 'A',
 }
 ```

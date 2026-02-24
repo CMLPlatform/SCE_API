@@ -1168,7 +1168,7 @@ class SustainabilityScore(models.Model):
     plus contribution analysis data.
     """
     impact_category = models.ForeignKey(ImpactIndicator, on_delete=models.CASCADE)
-    evaluation = models.ForeignKey(SustainabilityEvaluation, on_delete=models.CASCADE)
+    evaluation = models.ForeignKey(SustainabilityEvaluation, on_delete=models.CASCADE, related_name='sustainability_score')
     impact_value = models.FloatField()  # cradle-to-gate total (unit = impact_category.unit)
     upstream_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
     manufacturing_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)

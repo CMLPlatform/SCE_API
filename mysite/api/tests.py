@@ -8,8 +8,9 @@ from dpp.models import (
     Component, Concentration, Material,
     InspectionEvent, DisassemblyEvent, MaintenanceEvent, ItemExchange,
     ManufacturingProcess, Facility, ProductExchange,
+    SustainabilityEvaluation, SustainabilityScore, ImpactCategory, ImpactIndicator,
 )
-from api.serializers import MetadataSerializer, ProductItemSerializer
+from api.serializers import MetadataSerializer, ProductItemSerializer, SustainabilityEvaluationSerializer
 
 
 class MetadataSerializerTests(TestCase):
@@ -135,7 +136,6 @@ class MetadataSerializerTests(TestCase):
             self.metadata, context=self.serializer_context
         )
         data = serializer.data
-        print(data)
 
         # issuer (InstitutionSerializer)
         self.assertIn("issuer", data)
@@ -317,7 +317,6 @@ class LifeCycleEventSerializerTests(TestCase):
             self.phone, context=self.serializer_context
         )
         data = serializer.data
-        print(data) #FIXME: remove
 
         # Basic fields
         self.assertEqual(data["serial_number"], self.phone.serial_number)
@@ -328,14 +327,6 @@ class LifeCycleEventSerializerTests(TestCase):
         self.assertEqual(len(service_data), 2)
         self.assertIn("activity_data", service_data[0])
         self.assertEqual(service_data[0]['date'], str(date.today()))
-        # self.assertDictEqual(service_data, self.phone.serial_number)
-    
-    def test_attached_documents_serializer(self):
-        serializer = ProductItemSerializer(
-            self.phone, context=self.serializer_context
-        )
-        data = serializer.data
-
 
 
 class SustainabilityEvaluationSerializerTests(TestCase):
@@ -347,5 +338,107 @@ class SustainabilityEvaluationSerializerTests(TestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
 
-        # Minimal institution (issuer)
-        self.issuer = Institution.objects.create()
+        self.product_model = ProductModel.objects.create(
+            name="Cheese grater XL",
+            unit="pcs",
+        )
+        self.issuer = Institution.objects.create(
+            name="LCA consultants 0.2",
+            type="research",
+            address="Street Name 62",
+            country="CH",
+        )
+        self.evaluation = SustainabilityEvaluation.objects.create(
+            product=self.product_model,
+            functional_amount=1,
+            system_boundaries="Cradle to gate",
+            geographical_scope="EU",
+            temporal_scope=2024,
+            impact_assessment_method="EF 3.01",
+            allocation_method='mass',
+            assessed_by=self.issuer,
+        )
+        self.impact_category = ImpactCategory.objects.create(
+            name="Test indicators",
+        )
+        self.gwp = ImpactIndicator.objects.create(
+            method="GWP 100",
+            unit="kg CO2-eq.",
+            is_environmental=True,
+            indicator_set=None,
+            impact_category=self.impact_category,
+        )
+        self.gwp_score = SustainabilityScore.objects.create(
+            impact_category = self.gwp,
+            evaluation=self.evaluation,
+            impact_value=9.2,
+            upstream_phase=0.4,
+            manufacturing_phase=0.3,
+            use_phase=0.2,
+            end_of_life_phase=0.1,
+            scope_1_2_3=7.4,
+        )
+        self.fwt = ImpactIndicator.objects.create(
+            method="FAETP 100",
+            unit="CTUe",
+            is_environmental=True,
+            indicator_set=None,
+            impact_category=self.impact_category,
+        )
+        self.fwt_score = SustainabilityScore.objects.create(
+            impact_category = self.fwt,
+            evaluation=self.evaluation,
+            impact_value=9.2,
+            upstream_phase=0.2,
+            manufacturing_phase=0.3,
+            use_phase=0.4,
+            end_of_life_phase=0.1,
+            scope_1_2_3=7.4,
+        )
+
+        # Inject request into context to make build_absolute_uri work
+        self.request = self.factory.get("/api/")
+        self.serializer_context = {"request": self.request}
+    
+    def test_sustainability_evaluation_serializer(self):
+        serializer = SustainabilityEvaluationSerializer(
+            self.evaluation, context=self.serializer_context
+        )
+        data = serializer.data
+
+        expected_output = {
+            'id': 1,
+            'sustainability_score': [
+                {
+                    'id': 1,
+                    'impact_category': 1,
+                    'impact_value': 9.2,
+                    'upstream_phase': 0.4,
+                    'manufacturing_phase': 0.3,
+                    'use_phase': 0.2,
+                    'end_of_life_phase': 0.1,
+                    'scope_1_2_3': 7.4,
+                },
+                {
+                    'id': 2,
+                    'impact_category': 2,
+                    'impact_value': 9.2,
+                    'upstream_phase': 0.2,
+                    'manufacturing_phase': 0.3,
+                    'use_phase': 0.4,
+                    'end_of_life_phase': 0.1,
+                    'scope_1_2_3': 7.4,
+                },
+            ],
+            'functional_amount': 1.0,
+            'system_boundaries': self.evaluation.system_boundaries,
+            'geographical_scope': 'EU',
+            'temporal_scope': '2024',
+            'impact_assessment_method': 'EF 3.01',
+            'software_used': '',
+            'allocation_method': 'mass',
+            'assessment_date': str(date.today()),
+            'assessed_by': 1,
+        }
+        self.assertDictEqual(expected_output, data)
+

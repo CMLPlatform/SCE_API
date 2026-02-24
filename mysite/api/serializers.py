@@ -204,7 +204,7 @@ class ImpactIndicatorSerializer(serializers.ModelSerializer):
 class SustainabilityScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = SustainabilityScore
-        fields = ['impact_category', 'evaluation', 'impact_value', 'upstream_phase', 'manufacturing_phase', 'use_phase', 'end_of_life_phase', 'scope_1_2_3']
+        exclude = ['evaluation']
 
 class SustainabilityEvaluationSerializer(serializers.ModelSerializer):
     sustainability_score = SustainabilityScoreSerializer(many=True, read_only=True)
