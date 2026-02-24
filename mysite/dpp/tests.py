@@ -2,32 +2,36 @@ from django.test import TestCase
 from django.urls import reverse
 from .models import *
 
-def create_production_system():
-    fprod = ProductModel(
-        name="final product", unit="bottles", brand="brand name"
-    )
-    fprod.save()
-    pl = ProductionLine(
-        name="Production line",
-        description="text",
-        final_product=fprod,
-        operator=get_unknown_company(),
-        facility = "facility id"
-    )
-    pl.save()
-    return pl
-
 # Test create a 
 class ProductionLineTest(TestCase):
+    def setUp(self):
+        self.fprod = ProductModel.objects.create(
+            name="final product", unit="bottles", brand="brand name"
+        )
+        self.operator = Company.objects.create(
+            name="Example Manufacturer GmbH",
+            website="www.example.com",
+            country="DE",
+            vat_number="DE812345678",
+        )
+        facility = Facility.objects.create(
+            operator=self.operator,
+            country='NL',
+            address="Industrieweg 1, Utrecht",
+        )
+        self.pl = ProductionLine.objects.create(
+            name="Production line",
+            description="text",
+            final_product=self.fprod,
+            facility=facility,
+        )
+
     def test_create_transport(self):
-        pl = create_production_system()
-        pl.create_transport()
+        self.pl.create_transport()
         transport = Transport.objects.all()
         self.assertIsNotNone(transport)
 
-class ViewTest(TestCase):
     def test_production_line_list(self):
-        pl = create_production_system()
         response = self.client.get(reverse("dpp:productionline_list"))
-        response = self.client.get(reverse("dpp:production_line_detail", args=(pl.id,)))
+        response = self.client.get(reverse("dpp:production_line_detail", args=(self.pl.id,)))
 

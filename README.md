@@ -114,13 +114,42 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
     'product_item': {
         'id': 1,
         'product_batch': {
-            'id': 2, 'properties': None, 'concentration': [], 'composed_of': [], 'details': None, 'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None,
+            'id': 2, 'properties': None, 'concentration': [], 'composed_of': [], 'details': {
+                'compliance_documents': {
+                    'manual': ['/documents/LICENSE'],
+                    'compliance': ['/documents/requirements.txt']
+                },
+                'CPV_code': '',
+                'GS1_GPC_code': '',
+                'warranty_period': '5.0',
+                'spare_parts_availability_duration': '10.0',
+                'takeback_system': 'no',
+                'importer': None,
+            },
+            'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None,
             'model': {
                 'id': 1, 'properties': None, 'concentration': [], 'composed_of': [], 'details': None, 'latest_sustainability_evaluation': None, 'latest_circularity_evaluation': None, 'name': 'Test Widget v2', 'unit': 'pcs', 'brand': '', 'description': '', 'unit_price': None, 'taric_code': '01234567890128', 'hs_code': ''
             },
             'batch_number': 202507001
         },
-        'service_events': [],
+        'service_events': [
+            {
+                'id': '782e5138-8cea-40da-86f0-692814e42206',
+                'item_exchanges': [],
+                'activity_data': {'name': 'Maintenance process', 'amount': 1.0, 'facility': UUID('ada17b3e-0948-44cc-be24-40fc23a7f663'), 'description': '', 'modified_at': '2026-02-24'},
+                'type': 'test',
+                'date': '2026-02-24',
+                'operator': 3,
+            },
+            {
+                'id': 'ea8119ca-2a11-4675-b32a-3073869b66c8',
+                'item_exchanges': [{'amount': 1, 'item': 2}],
+                'activity_data': {'name': 'Maintenance process', 'amount': 1.0, 'facility': UUID('ada17b3e-0948-44cc-be24-40fc23a7f663'), 'description': '', 'modified_at': '2026-02-24'},
+                'type': 'corrective',
+                'date': '2026-02-24',
+                'operator': 3,
+            }
+        ],
         'serial_number': 'WGT-20250715-0042',
         'GTIN_code': '',
         'production_date': '2026-02-20',
