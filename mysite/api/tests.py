@@ -10,7 +10,7 @@ from dpp.models import (
     ManufacturingProcess, Facility, ProductExchange,
     SustainabilityEvaluation, SustainabilityScore, ImpactCategory, ImpactIndicator,
 )
-from api.serializers import MetadataSerializer, ProductItemSerializer, SustainabilityEvaluationSerializer
+from api.serializers import MetadataSerializer, ProductItemSerializer, ProductModelSerializer, SustainabilityEvaluationSerializer
 
 
 class MetadataSerializerTests(TestCase):
@@ -327,6 +327,83 @@ class LifeCycleEventSerializerTests(TestCase):
         self.assertEqual(len(service_data), 2)
         self.assertIn("activity_data", service_data[0])
         self.assertEqual(service_data[0]['date'], str(date.today()))
+
+
+class ComponentAndConcentrationSerializerTests(TestCase):
+    """
+    Tests for ComponentSerializer and ConcentrationSerializer
+    """
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+        # Create product, component, and materials
+        self.product_model = ProductModel.objects.create(
+            name="Cheese grater XL",
+            unit="pcs",
+        )
+        piece = ProductModel.objects.create(
+            name="Hand piece",
+            unit="pcs",
+        )
+        steel = Material.objects.create(name="Steel", density=7800, criticality_level='m', origin_country='ID')
+        wood = Material.objects.create(name="Oak wood", density=1800)
+
+        self.component = Component.objects.create(
+            product=self.product_model,
+            component=piece,
+            amount=1,
+        )
+        self.concentration1 = Concentration.objects.create(
+            product=piece,
+            material=wood,
+            fraction=1,
+        )
+        self.concentration2 = Concentration.objects.create(
+            product=self.product_model,
+            material=wood,
+            fraction=0.1,
+        )
+        self.concentration3 = Concentration.objects.create(
+            product=self.product_model,
+            material=steel,
+            fraction=0.9,
+        )
+    
+    def test_concentration_component_serializer(self):
+        serializer = ProductModelSerializer(self.product_model)
+        data = serializer.data
+
+        components = data['composed_of']
+        concentrations = data['concentration']
+
+        expected_comp = [{'amount': 1, 'component': 2}]
+        self.assertEqual(len(expected_comp), len(components))
+        self.assertDictEqual(expected_comp[0], components[0])
+
+        expected_conc = [
+            {
+                'material': {
+                    'id': 2,
+                    'name': 'Oak wood',
+                    'chemical_formula': '',
+                    'criticality_level': '',
+                    'origin_country': '',
+                },
+                'fraction': 0.1,
+            },
+            {
+                'material': {
+                    'id': 1,
+                    'name': 'Steel',
+                    'chemical_formula': '',
+                    'criticality_level': 'm',
+                    'origin_country': 'ID',
+                },
+                'fraction': 0.9,
+            }
+        ]
+        self.assertListEqual(expected_conc, concentrations)
 
 
 class SustainabilityEvaluationSerializerTests(TestCase):

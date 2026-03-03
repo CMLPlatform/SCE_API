@@ -114,7 +114,20 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
     'product_item': {
         'id': 1,
         'product_batch': {
-            'id': 2, 'properties': None, 'concentration': [], 'composed_of': [], 'details': {
+            'id': 2,
+            'properties': None,
+            'concentration': [{
+                'material': {
+                    'id': 2,
+                    'name': 'Silver',
+                    'chemical_formula': 'Ag',
+                    'criticality_level': 'h',
+                    'origin_country': 'ID',
+                },
+                'fraction': 0.1,
+            }],
+            'composed_of': [{'amount': 1, 'component': 2}],
+            'details': {
                 'compliance_documents': {
                     'manual': ['/documents/manual_EN.pdf', '/documents/manual_IT.pdf'],
                     'technical_drawing': ['/documents/design.jpg'],

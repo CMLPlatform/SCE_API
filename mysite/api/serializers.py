@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from dpp.models import *
+from django_countries.serializers import CountryFieldMixin
 
 
 class DocumentLinkSerializer(serializers.ModelSerializer):
@@ -14,7 +15,7 @@ class DocumentLinkSerializer(serializers.ModelSerializer):
         file_url = document.file.url
         return request.build_absolute_uri(file_url)
 
-class OrganizationSerializer(serializers.ModelSerializer):
+class OrganizationSerializer(CountryFieldMixin, serializers.ModelSerializer):
     legal_documents = DocumentLinkSerializer()
     class Meta:
         model = Organization
@@ -37,7 +38,7 @@ class ServiceOperatorSerializer(serializers.ModelSerializer):
         model = ServiceOperator
         fields = ['service_description']
 
-class FacilitySerializer(serializers.ModelSerializer):
+class FacilitySerializer(CountryFieldMixin, serializers.ModelSerializer):
     operator = CompanySerializer(read_only=True)
     class Meta:
         model = Facility
@@ -134,10 +135,10 @@ class TransportSerializer(serializers.ModelSerializer):
         model = Transport
         fields = ['production_line', 'product', 'distance', 'mode']
 
-class MaterialSerializer(serializers.ModelSerializer):
+class MaterialSerializer(CountryFieldMixin, serializers.ModelSerializer):
     class Meta:
         model = Material
-        fields = '__all__'
+        exclude = ['density', 'recycled_fraction', 'recyclable_fraction', 'biobased_fraction', 'renewable_fraction']
 
 class HazardousMaterialSerializer(MaterialSerializer):
     safety_instructions = DocumentLinkSerializer()
@@ -148,17 +149,18 @@ class CompositionSerializer(serializers.ModelSerializer):
     material = MaterialSerializer(read_only=True)
     class Meta:
         model = Composition
-        exclude = ['product']
+        exclude = ['product', 'id']
 
 class ConcentrationSerializer(serializers.ModelSerializer):
+    material = MaterialSerializer(read_only=True)
     class Meta:
         model = Concentration
-        exclude = ['product']
+        exclude = ['product', 'id']
 
 class ComponentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Component
-        exclude = ['product']
+        exclude = ['product', 'id']
 
 class ItemExchangeSerializer(serializers.ModelSerializer):
     class Meta:

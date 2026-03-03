@@ -362,11 +362,17 @@ class ProductBatch(Flow):
     
     class Meta:
         verbose_name_plural = 'Product batches'
+    
     def __str__(self):
         return f"{self.model} batch {self.batch_number}"
+    
     def clean(self):
         if not hasattr(self.model, "productmodel"):
             raise ValidationError("Model must be a ProductModel")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 class ProductProperties(models.Model):
     """Physical properties of a product."""
@@ -575,6 +581,10 @@ class ManufacturingProcess(Activity):
             raise ValidationError({
                 'facility': "'Facility' cannot be blank. Please specify it."
             })
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 class ProductionLine(models.Model):
     """Describes a part of a supply chain, operated by one manufacturer.
@@ -984,6 +994,10 @@ class Component(models.Model):
     def clean(self):
         if self.product == self.component:
             raise ValidationError("A product cannot contain itself as a component.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.amount} x {self.component} (in {self.product})"
@@ -1087,6 +1101,10 @@ class ItemExchange(models.Model):
         allowed_events = LifeCycleEvent.EVENT_TYPES['Maintenance'].keys() + LifeCycleEvent.EVENT_TYPES['Closing the loop'].keys() + ['disassembly']
         if self.event.type not in allowed_events:
             raise ValidationError("This life cycle event cannot exchange items.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
     
     def __str__(self):
         arrow = '<-' if self.amount < 0 else '->'
@@ -1207,9 +1225,17 @@ class CircularityIndicator(models.Model):
 class CircularityScore(models.Model):
     evaluation = models.ForeignKey(CircularityEvaluation, on_delete=models.CASCADE)
     indicator = models.ForeignKey(CircularityIndicator, on_delete=models.CASCADE)
-    value = models.FloatField()  #FIXME: validation depends on indicator.unit
+    value = models.FloatField()
     uncertainty = models.CharField(max_length=100, blank=True)
     comment = models.TextField(max_length=200, blank=True)
+
+    def clean(self):
+        if '%' in self.indicator.unit and (self.value<0 or self.value>1):
+            raise ValidationError(f"Value must be between 0 and 1 for fraction indicator '{self.indicator}'.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.indicator.name}: {self.value}"
