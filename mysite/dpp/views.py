@@ -393,6 +393,10 @@ class PublisherDetailView(AdminTemplateMixin, DetailView):
             publisher.production_line.final_product.add_subcomponents()
             messages.success(request, "Subcomponents added!")
         
+        elif action == 'publish':
+            publisher.create_dpps()
+            messages.success(request, f"{publisher.amount} DPPs created!")
+        
         return redirect('dpp:publisher_detail', pk=publisher.pk)
     
     def get_context_data(self, **kwargs):

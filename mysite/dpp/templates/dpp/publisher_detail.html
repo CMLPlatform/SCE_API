@@ -1,0 +1,63 @@
+{% extends "dpp/generic_detail.html" %}
+{% load i18n %}
+
+{% block title %} Publish DPP: {{object.production_line.name}} {% endblock %}
+
+{% block content %}
+<div class="publisher-status">
+    <h2>Publish DPP: {{ object.production_line.name }}</h2>
+    
+    <div class="status-indicator">
+        <p>Current Status: <strong>{{ object.show_status }}</strong></p>
+        <p>Last run: {{ object.last_run|date:"Y-m-d H:i" }}</p>
+        {% if object.error_message %}
+            <div class="alert alert-danger">{{ object.error_message }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="steps-list">
+        {% for step in steps %}
+            <div class="step {% if step.completed %}completed{% endif %}">
+                <span>{% if step.completed %}✅{% elif step.number == object.status|add:1 %}❌{% else %}🔵{% endif %}</span>
+                <span class="step-number">{{ step.number }}</span>
+                <span class="step-name">{{ step.name }}</span>
+                
+                {% if step.can_rerun %}
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="rerun_step">
+                        <input type="hidden" name="step" value="{{ step.number }}">
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            Rerun from here
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    
+    <div class="actions">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="run_all">
+            <button type="submit" class="btn btn-primary">Run All Steps</button>
+        </form>
+        
+        {% if object.status >= 3 %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_subcomponents">
+                <button type="submit" class="btn btn-secondary">Add Subcomponents</button>
+            </form>
+        {% endif %}
+        
+        {% if object.can_publish %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="publish">
+                <button type="submit" class="btn btn-success">Publish DPP</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

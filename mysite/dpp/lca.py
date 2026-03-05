@@ -1,11 +1,9 @@
 """Basic outline and functions for doing LCA calculations,
 and to import and export DPP data to Brightway.
 """
-import brightway2 as bw
 import bw2data as bwd
 import bw2io as bwi
-from bw2io.remote import install_project
-import uuid
+import datetime
 from .models import *
 
 RESOURCE_UNITS = [
@@ -28,22 +26,22 @@ DEFAULT_REMOTE_PROJECT = "ecoinvent-3.10-biosphere"
 def setup_project(project_name: str) -> None:
     """Initialize the project if needed, and check that it is complete."""
     if project_name not in bwd.projects:
-        bwd.projects.set_current(project_name) #Creating/accessing the project
-        bw.bw2setup()
-        # install_project(DEFAULT_REMOTE_PROJECT, project_name=project_name)
-    else:
-        bwd.projects.set_current(project_name)
+        bwi.remote.install_project(DEFAULT_REMOTE_PROJECT, project_name)
+    bwd.projects.set_current(project_name)
 
-def ensure_methods(family):
+def ensure_methods(family: str):
     """
     Make sure that the LCIA family and all its methods exist
     in the DPP database.
     Returns: IndicatorSet
     """
+    # Import here to avoid circular imports
+    from .models import IndicatorSet, ImpactIndicator, ImpactCategory
+
     try:
         method_set = IndicatorSet.objects.get(name=family)
     except IndicatorSet.DoesNotExist:
-        method_set = IndicatorSet.objects.create(name=family, start_date=datetime.today())
+        method_set = IndicatorSet.objects.create(name=family, start_date=datetime.date.today())
     methods = [
         m for m in bwd.methods
         if m[0] == family and m not in EXCLUDED_METHODS
@@ -129,7 +127,7 @@ def find_biosphere_flow(exc, biosphere_db):
         if act["name"].lower() == name and categories == act.get("categories"):
             return (act['database'], act['code'])
 
-    # Last resort: search name
+    # If exact match fails: search name
     act = biosphere_db.search(name)[0]
     return (act['database'], act['code'])
 
@@ -141,7 +139,10 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     :param dpp_process: List of ManufacturingProcess
     :param db_name: Bightway database name, to add the activity to.
     """
-    biosphere = bwd.Database("biosphere3")
+    # Import here to avoid circular imports
+    from .models import ProductExchange, EnvExchange
+
+    biosphere = bwd.Database(DEFAULT_REMOTE_PROJECT)
     bw_activities = {}
     for dpp_process in processes:
         location = str(dpp_process.facility.country) if dpp_process.facility else 'GLO'
@@ -170,11 +171,11 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
                 "unit": exc.product.model.unit,
             })
         for exc in EnvExchange.objects.filter(process=dpp_process):
-            code = biosphere.get(name=exc.substance.name)
+            bioshpere_flow = find_biosphere_flow(exc, biosphere)
             exchanges.append({
-                "input": ('biosphere3', exc.substance.name),
+                "input": bioshpere_flow,
                 "amount": exc.amount,
-                "type": "technosphere",
+                "type": "biosphere",
                 "unit": exc.substance.unit,
             })
         
@@ -191,6 +192,9 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     return bw_activities
 
 def convert_bw_to_dpp(bw_activity):
+    # Import here to avoid circular imports
+    from .models import BackgroundProcess
+    
     raise NotImplementedError()
     (db_name, code), act = bw_activity
     dpp_activity = BackgroundProcess(name=act.name, amount=1, description=act.comment, functional_flow=act.reference_product, database=db_name, db_code=code)
@@ -279,6 +283,9 @@ def create_supply_chain_lca(product):
     :param product: The final product for which to do LCA
     :type product: Flow
     """
+    # Import here to avoid circular imports
+    from .models import SustainabilityEvaluation, SustainabilityScore, ImpactIndicator
+    
     setup_project("L4M-DPP")
     lcia_family = 'EF v3.1'
     method_set = ensure_methods(lcia_family)
@@ -306,7 +313,7 @@ def create_supply_chain_lca(product):
             del bwd.databases[db_name]
         else:
             print("Adding to existing DB.")
-        db = bwd.databases[db_name]
+        db = bwd.Database(db_name)
     else:
         db = bwd.Database(db_name)
         db.register()

@@ -359,6 +359,7 @@ class ProductModel(Flow):
 class ProductBatch(Flow):
     batch_number = models.PositiveIntegerField()
     model = models.ForeignKey(Flow, on_delete=models.RESTRICT, related_name='batch')
+    GTIN_code = models.CharField(max_length=13, unique=True, help_text="Global Trade Item Number (or EAN)")
     
     class Meta:
         verbose_name_plural = 'Product batches'
@@ -446,7 +447,6 @@ class SecondaryProduct(ProductModel):
 class ProductItem(models.Model):
     product_batch = models.ForeignKey(ProductBatch, on_delete=models.PROTECT)
     serial_number = models.CharField(max_length=50, unique=True)  #FIXME: make only the combination of product and manufacturer unique?
-    GTIN_code = models.CharField(max_length=20, help_text="Global Trade Item Number (or comparable)")
     production_date = models.DateField(default=datetime.date.today)
     circularity = models.CharField(max_length=50, default="new")
 
@@ -495,7 +495,7 @@ class Metadata(models.Model):
     reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
     creation_date = models.DateField(auto_now_add=True)
     last_modified = models.DateField(auto_now=True)
-    version = models.CharField(max_length=20)
+    version = models.CharField(max_length=10)
     language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
     # Data access & governance
     access_link = models.URLField(max_length=200, blank=True, help_text="URL to full DPP record.")
@@ -1260,6 +1260,23 @@ class Publisher(models.Model):
     status = models.PositiveSmallIntegerField(default=0, help_text="Highest successfully completed step (1-5)")
     last_run = models.DateTimeField(auto_now=True)
     error_message = models.TextField(blank=True)
+
+    # Metadata info - to be conveyed to Metadata object
+    amount = models.PositiveSmallIntegerField(help_text="How many items need a DPP.")
+    registration_numbers = models.CharField(max_length=500, blank=True, help_text="Range of numbers (comma-separated)")
+    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
+    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
+    version = models.CharField(max_length=10, default='1.0')
+    language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
+    # Data access & governance
+    access_link_base = models.URLField(max_length=200, blank=True, help_text="Base URL to DPP record.")
+    access_policy = models.URLField(max_length=200, blank=True, help_text="URL to data access terms and conditions.")
+    access_log_enabled = models.BooleanField(default=True)
+    verification_type = models.SmallIntegerField(choices={0: 'None', 1: 'Digital signature', 2: 'Third party', 3: 'Blockchain'}, default=0)
+    credential_format = models.CharField(max_length=50, choices={'json_ld': 'JSON-LD', 'verifialble':'Verifiable credential', 'xml': 'XML', 'other': 'Other'})
+    storage_location = models.SmallIntegerField(choices={0: 'Undeclared', 1: 'On-premise server', 2: 'Commercial cloud server', 3: 'Centralized certified server', 4: 'Decentralized storage'}, default=0)
+    audit_trail_mechanism = models.SmallIntegerField(choices={0: 'None', 1: 'Log files', 2: 'Immutable ledger'}, default=0)
+    update_interval = models.CharField(max_length=2, choices={'-': 'never', 'W': 'weekly', 'M': 'monthly', 'Q': 'quarterly', 'A': 'annually', 'E': 'event_driven'}, default='-')
     
     STEP_NAMES = {
         0: "Not started",
@@ -1269,6 +1286,18 @@ class Publisher(models.Model):
         4: "Create transport table",
         5: "Do Life Cycle Assessment",
     }
+
+    def check_details(self, final_product: Flow):
+        message = ""
+        if not hasattr(final_product, "details"):
+            message += "Warning: DPP details missing. "
+        if not hasattr(final_product, "properties"):
+            message += "Warning: Product Properties missing. "
+        if self.registration_numbers:
+            if len(self.registration_numbers.split(',')) < self.amount:
+                message += "Warning: Insufficient registration numbers."
+
+        return message
     
     def run_from_step(self, start_step: int):
         """Do calculations needed to complete a DPP:
@@ -1297,7 +1326,8 @@ class Publisher(models.Model):
             if start_step <= 1:
                 input_status = pl.check_missing_origins()
                 output_status = pl.check_unused_outputs()
-                if message := input_status + output_status:
+                detail_status = self.check_details(pl.final_product)
+                if message := input_status + output_status + detail_status:
                     raise AssertionError(message)
                 else:
                     self.status = 1
@@ -1343,3 +1373,49 @@ class Publisher(models.Model):
     def can_publish(self):
         """Check if all steps completed successfully."""
         return self.status == 5 and not self.error_message
+    
+    def get_registration_nrs(self):
+        """Unpack self.registiration_numbers or generate UUIDs"""
+        if self.registration_numbers:
+            return [nr.strip() for nr in self.registration_numbers.split(',')]
+        else:
+            return [uuid4() for i in range(self.amount)]
+    
+    def create_dpps(self):
+        """Create self.amount number of ProductItem and Metadata objects
+        """
+        if not self.can_publish:
+            print("Please solve all issues before publishing.")
+            return
+        
+        # Create ProductBatch if needed
+        prod = self.production_line.final_product
+        if isinstance(prod, ProductModel):
+            prod = ProductBatch.objects.create(batch_number=1, model=prod)
+        
+        numbers = self.get_registration_nrs()
+        with transaction.atomic():
+            for i, reg_nr in enumerate(numbers):
+                item = ProductItem.objects.create(
+                    product_batch=prod,
+                    serial_number='-'.join(
+                        [str(prod.model.id), str(prod.batch_number), str(i)]
+                    ),
+                )
+                metadata = Metadata.objects.create(
+                    product_item=item,
+                    registration_number=reg_nr,
+                    issuer=self.issuer,
+                    reo=self.reo,
+                    version=self.version,
+                    language=self.language,
+                    # Data access & governance
+                    access_link=self.access_link_base + reg_nr,
+                    access_policy=self.access_policy,
+                    access_log_enabled=self.access_log_enabled,
+                    verification_type=self.verification_type,
+                    credential_format=self.credential_format,
+                    storage_location=self.storage_location,
+                    audit_trail_mechanism=self.audit_trail_mechanism,
+                    update_interval=self.update_interval,
+                )
