@@ -85,7 +85,7 @@ class Company(Organization):
         verbose_name_plural = "Companies"
 
 class Importer(Company):
-    EORI_number = models.CharField(max_length=100, blank=True)
+    EORI_number = models.CharField(max_length=100)
 
 class ServiceOperator(Company):
     service_description = models.CharField(max_length=100)
@@ -110,7 +110,7 @@ class Facility(models.Model):
     Describes a manufacturing facility, 
     i.e. a place where production takes place.
     """
-    uid = models.UUIDField(primary_key=True, default=uuid4, editable=False, help_text="Unique facility identifier")
+    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False, help_text="Unique facility identifier")
     operator = models.ForeignKey(Company, on_delete=models.RESTRICT)
     country = CountryField()
     address = models.TextField(max_length=100)
@@ -157,7 +157,7 @@ class Document(models.Model):  #TODO: security check on files
         "Manuals":
         {'manual': 'User manual', 'maintenance': 'Maintenance manual', 'installation': 'Installation guide', 'eol': 'End-of-life guidelines', 'datasheet': 'Product data sheet'},
         "Labels":
-        {'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'recycling_label': 'Recycling label', 'legal': 'Legal markings'},
+        {'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'circularity_label': 'Circularity label', 'legal': 'Legal markings'},
     }
 
     file = models.FileField(upload_to='documents/')
@@ -348,7 +348,7 @@ class ProductModel(Flow):
     unit = models.CharField(max_length=15, default='pcs', help_text="How the product is counted, e.g. pcs, bottles, sheets, kWh")
     brand = models.CharField(max_length=50, blank=True)
     description = models.TextField(max_length=200, blank=True)
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    # unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     taric_code = models.CharField("TARIC code", max_length=20, blank=True, help_text="(customs code)")
     hs_code = models.CharField("HS code", max_length=10, blank=True, help_text="Harmonized System classification (customs code)")
@@ -359,7 +359,7 @@ class ProductModel(Flow):
 class ProductBatch(Flow):
     batch_number = models.PositiveIntegerField()
     model = models.ForeignKey(Flow, on_delete=models.RESTRICT, related_name='batch')
-    GTIN_code = models.CharField(max_length=13, unique=True, help_text="Global Trade Item Number (or EAN)")
+    GTIN = models.CharField(max_length=13, unique=True, help_text="Global Trade Item Number (or EAN)")
     
     class Meta:
         verbose_name_plural = 'Product batches'
@@ -415,8 +415,8 @@ class DppDetails(models.Model):
     importer = models.ForeignKey(Importer, blank=True, null=True, on_delete=models.SET(get_unknown_importer), related_name='imported_products', help_text="Specify if the product is imported from outside the EU.")
 
     #Classification
-    CPV_code = models.CharField(max_length=20, blank=True, help_text="Common Procurement Vocabulary code")
-    GS1_GPC_code = models.CharField(max_length=20, blank=True, help_text="Global Product Classification code")
+    CPV_code = models.CharField(max_length=8, blank=True, help_text="Common Procurement Vocabulary code")
+    GS1_GPC_code = models.CharField(max_length=9, blank=True, help_text="Global Product Classification code")
 
     # Documents and other quality compliance info
     compliance_documents = models.ManyToManyField(Document, blank=True)
@@ -514,8 +514,11 @@ class Metadata(models.Model):
         return f"DPP #{self.registration_number} issued by {self.issuer.name}"
 
 class Emission(models.Model):
-    name = models.CharField(max_length=50)
+    name = models.CharField(max_length=70, unique=True)
     unit = models.CharField(max_length=10, default='g')
+
+    class Meta:
+        ordering = ['name']
 
     def __str__(self):
         return self.name
@@ -573,8 +576,8 @@ class ManufacturingProcess(Activity):
     """
     functional_flow = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Main product", related_name='produced_by_other', help_text="The output product of this manufacturing process.")
     modified_at = models.DateField(auto_now=True)
-    # mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="A document showing all material exchanges of the process.")
-    # energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="A document showing all energy flows exchanges of the process.")
+    mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="A document showing all material exchanges of the process.")
+    energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="A document showing all energy flows exchanges of the process.")
 
     def clean(self):
         if not self.facility:
@@ -595,8 +598,8 @@ class ProductionLine(models.Model):
     final_product = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Final product", help_text="The output product of this production line")
     facility = models.ForeignKey(Facility, on_delete=models.CASCADE, help_text="Production location", blank=True, null=True)
     modified_at = models.DateField(auto_now=True)
-    mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
-    energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
+    mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='pl_mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
+    energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='pl_energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
 
     def __str__(self):
         return self.name
@@ -780,6 +783,7 @@ class Exchange(models.Model):
     direction = models.CharField(max_length=3, choices={'in': 'Input', 'out': 'Output', 'ff': 'functional flow'})  #NOTE: out means waste
     is_proxy = models.BooleanField("This is an approximation of the actual product", default=False)
     is_observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
+    comment = models.CharField(max_length=100, blank=True)
     uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none', help_text="If the amount is uncertain, how can this uncertainty be described?")
     loc = models.FloatField("Mean or median", blank=True, null=True)
     scale = models.FloatField("Standard deviation", blank=True, null=True)  # or geometric stddev
@@ -904,6 +908,8 @@ class Transport(models.Model):
     product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='transport')
     distance = models.PositiveSmallIntegerField("Transport distance (km)", default=0, validators=[MaxValueValidator(40000)])
     mode = models.CharField("Main mode of transport", max_length=10, choices=VEHICLES, default='NA')
+    utilisation_ratio = models.FloatField(default=0.5, validators=FRACTION_VALIDATOR)
+    #TODO: if mode='car', calculate allocation factor as: min(1, prod.volume / 0.2 m3).
 
     def __str__(self):
         return f"{self.distance} km by {self.VEHICLES[self.mode]}"
@@ -946,7 +952,7 @@ class Material(models.Model):
         return super().save(*args, **kwargs)
 
 class HazardousMaterial(Material):
-    CAS_number = models.CharField(max_length=50, blank=True, unique=True)
+    CAS_number = models.CharField(max_length=50, unique=True)
     safety_instructions = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='material_safety_instructions')  # (SafetyDataSheet)
 
 class Composition(models.Model):
@@ -1053,6 +1059,7 @@ class LifeCycleEvent(models.Model):
         return f"{event} of a {self.product.product_batch.name}"
 
 class InspectionEvent(LifeCycleEvent):
+    description = models.TextField(max_length=300, blank=True, help_text="Diagnostic tools or methods used")
     diagnostic_results = models.ManyToManyField(Document, blank=True)
 
 class MaintenanceEvent(LifeCycleEvent):
@@ -1065,9 +1072,7 @@ class MaintenanceEvent(LifeCycleEvent):
     software_or_hardware = models.BooleanField(choices={True: "Software", False: "Hardware"})
 
     # Repair (i.e. corrective maintenance) fields
-    root_cause = models.TextField(max_length=300, blank=True)
-    diagnostics_performed = models.TextField(max_length=300, blank=True) #FIXME: remove, is a separate event
-    corrective_action = models.TextField(max_length=300, blank=True)  #FIXME: remove, same as description
+    root_cause = models.TextField(max_length=300, blank=True, help_text="For repair only. Specify the root cause of failure.")
 
     def clean(self):
         if self.type == 'maintenance' and not self.maintenance_plan:
@@ -1259,7 +1264,7 @@ class Publisher(models.Model):
     production_line = models.OneToOneField(ProductionLine, on_delete=models.CASCADE)
     status = models.PositiveSmallIntegerField(default=0, help_text="Highest successfully completed step (1-5)")
     last_run = models.DateTimeField(auto_now=True)
-    error_message = models.TextField(blank=True)
+    error_message = models.TextField(max_length=200, blank=True)
 
     # Metadata info - to be conveyed to Metadata object
     amount = models.PositiveSmallIntegerField(help_text="How many items need a DPP.")
