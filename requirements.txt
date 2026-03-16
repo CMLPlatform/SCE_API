@@ -4,4 +4,4 @@ django-countries
 django-extensions
 environs
 pandas
-brightway2
+brightway25

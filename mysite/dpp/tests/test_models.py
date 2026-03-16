@@ -1,8 +1,8 @@
 from django.test import TestCase
 from django.urls import reverse
-from .models import *
+from ..models import *
 
-# Test create a 
+# Test creating a production line and transport
 class ProductionLineTest(TestCase):
     def setUp(self):
         self.fprod = ProductModel.objects.create(

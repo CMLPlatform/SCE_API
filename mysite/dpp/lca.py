@@ -21,7 +21,7 @@ EXCLUDED_METHODS = {
     ("EF v3.1", "ozone depletion", "ozone depletion potential (ODP)"),
     ("EF v3.1", "water use", "user deprivation potential (deprivation-weighted water consumption)"),
 }
-DEFAULT_REMOTE_PROJECT = "ecoinvent-3.10-biosphere"
+DEFAULT_REMOTE_PROJECT = "ecoinvent-3.12-biosphere"
 
 def setup_project(project_name: str) -> None:
     """Initialize the project if needed, and check that it is complete."""
@@ -84,11 +84,29 @@ def get_or_create_bw_process(dpp_product):
     raise NotImplementedError()
     return
 
+def biosphere_to_dpp_flows():
+    """Convert all biosphere flows to Emission objects"""
+    from .models import Emission
+    unit_map = {
+        'cubic meter': 'm3',
+        'cubic meter-year': 'm3-yr',
+        'kilo Becquerel': 'kBq',
+        'kilogram': 'kg',
+        'megajoule': 'MJ',
+        'square meter': 'm2',
+        'square meter-year': 'm2-yr',
+        'standard cubic meter': 'Nm3',
+    }
+    setup_project("L4M-DPP")
+    biosphere_db = bwd.Database(DEFAULT_REMOTE_PROJECT)
+    bio_flows = set((i['name'], i['unit']) for i in list(biosphere_db))
+    if len(bio_flows) <= len(Emission.objects.all()): return
+    for name, unit in bio_flows:
+        if unit in unit_map:
+            unit = unit_map[unit]
+            Emission.objects.update_or_create(name=name, unit=unit)
+
 def find_biosphere_flow(exc, biosphere_db):
-    all_options = [
-        ('natural resource', 'in ground'),  ('natural resource', 'in water'), ('natural resource', 'land'), ('natural resource', 'biotic'), 
-        ('inventory indicator', 'resource use'),  ('inventory indicator', 'waste'), ('inventory indicator', 'output flow'), ('economic', 'primary production factor')
-        ]
     compartment_map = {
         'air-urban': ('air', 'urban air close to ground'),
         'air-rural': ('air', 'non-urban air or from high stacks'),
