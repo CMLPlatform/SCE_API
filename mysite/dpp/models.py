@@ -69,9 +69,6 @@ class Organization(models.Model):
     website = models.URLField(blank=True)
     legal_documents = models.ForeignKey('Document', blank=True, null=True, on_delete=models.SET_NULL, related_name='organization_legal_documents', help_text="Add official legal documentation associated with the company. This may include licenses, registration papers, permits, or other legally mandated certificates.")
 
-    # class Meta:  # If made abstract, cannot link legal_documents here
-    #     abstract = True
-
     def __str__(self):
         return self.name
 
@@ -143,20 +140,21 @@ class Instruction(models.Model):
 
 class Document(models.Model):  #TODO: security check on files
     DOCUMENT_TYPES = {
+        'other': 'Other',
         "Technical document":
-            [
-                ("technical_drawing", "Technical drawing"),
-                ("safety_sheet", "Safety sheet"),
-                ("conformity_certificate", "Conformity certificate"),
-                ("mass_balance", "Mass balance"),
-                ("energy_balance", "Energy balance"),
-                ("other", "Other"),
-            ],
+            {
+                'technical_drawing': 'Technical drawing',
+                'safety_sheet': 'Safety sheet',
+                'conformity_certificate': 'Conformity certificate',
+                'mass_balance': 'Mass balance',
+                'energy_balance': 'Energy balance',
+                'datasheet': 'Product data sheet',
+            },
         "Compliance document":
         {'compliance': 'Compliance report', 'quality_cert': 'Quality certificate', 'safety_data': 'Safety data sheet', 'legal': 'Legal document', 'labor': 'Labor compliance', 'qms': 'Quality Management System certificate', 'warranty': 'Warranty information', 'spare_parts': 'Spare parts availability', 'takeback': 'Return and take-back'},
-        "Manuals":
-        {'manual': 'User manual', 'maintenance': 'Maintenance manual', 'installation': 'Installation guide', 'eol': 'End-of-life guidelines', 'datasheet': 'Product data sheet'},
-        "Labels":
+        "Manual":
+        {'manual': 'User manual', 'maintenance': 'Maintenance manual', 'installation': 'Installation guide', 'eol': 'End-of-life guidelines'}, #FIXME: remove manual types
+        "Label":
         {'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'circularity_label': 'Circularity label', 'legal': 'Legal markings'},
     }
 
@@ -215,9 +213,9 @@ class Flow(models.Model):
         """Get the manufacturer of this product (operator of the
         Facility hosting the Process that produces this product).
         """
-        if hasattr(self, 'produced_by'):
+        try:
             return self.produced_by.facility.operator
-        else:
+        except AttributeError:
             return None
     
     #TODO: only works for linear supply chains. No infinite loop detection. Fix with Leontief matrix.
@@ -305,8 +303,8 @@ class Flow(models.Model):
     def add_components(self):
         """Make a Component table for this product, using exchange data.
         """
-        if hasattr(self, 'produced_by_other'):
-            activity = self.produced_by_other
+        if hasattr(self, 'manufacturing_info'):
+            activity = self.manufacturing_info
         elif hasattr(self, 'produced_by'):
             activity = self.produced_by
         
@@ -422,7 +420,7 @@ class DppDetails(models.Model):
     compliance_documents = models.ManyToManyField(Document, blank=True)
     warranty_period = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Warranty period in years")
     spare_parts_availability_duration = models.DecimalField(default=0, max_digits=3, decimal_places=1, validators=[MinValueValidator(0)], help_text="Spare parts availability in years")
-    takeback_system = models.CharField(max_length=10, choices={'no': 'No take-back system', 'basic': 'Collection on request', 'active': 'Structured take-back with dedicated channels or collection points', 'advanced': 'Certified, traceable take-back system'}, default='no')
+    takeback_system = models.CharField("Take-back system", max_length=10, choices={'no': 'No take-back system', 'basic': 'Collection on request', 'active': 'Structured take-back with dedicated channels or collection points', 'advanced': 'Certified, traceable take-back system'}, default='no')
 
     class Meta:
         verbose_name = verbose_name_plural = "DPP details"
@@ -491,8 +489,8 @@ class Metadata(models.Model):
     """Transparency information related to a ProductItem."""
     product_item = models.OneToOneField(ProductItem, on_delete=models.PROTECT, related_name='dpp_metadata')
     registration_number = models.UUIDField(primary_key=True, default=uuid4, editable=False)
-    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
-    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
+    issuer = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator',related_name='reo_of', help_text="The entity bearing legal responsibility for the DPP and the product.")
     creation_date = models.DateField(auto_now_add=True)
     last_modified = models.DateField(auto_now=True)
     version = models.CharField(max_length=10)
@@ -574,7 +572,7 @@ class ManufacturingProcess(Activity):
     """Aggregated manufacturing process that will be published
     along with a DPP.
     """
-    functional_flow = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Main product", related_name='produced_by_other', help_text="The output product of this manufacturing process.")
+    functional_flow = models.OneToOneField(Flow, on_delete=models.RESTRICT, verbose_name="Main product", related_name='manufacturing_info', help_text="The output product of this manufacturing process.")
     modified_at = models.DateField(auto_now=True)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='mass_balance', help_text="A document showing all material exchanges of the process.")
     energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='energy_balance', help_text="A document showing all energy flows exchanges of the process.")
@@ -633,7 +631,7 @@ class ProductionLine(models.Model):
         """
         missing = []
         for input in Flow.objects.filter(exchanged_by__process__in=self.bop.all()):
-            if not (hasattr(input, 'produced_by') or hasattr(input, 'produced_by_other')):
+            if not (hasattr(input, 'produced_by') or hasattr(input, 'manufacturing_info')):
                 missing.append(str(input))
         if missing:
             return f"Warning: Production process missing for {missing}"
@@ -648,7 +646,8 @@ class ProductionLine(models.Model):
             exchanged_by__process__in=processes
         ).exclude(produced_by__in=processes).distinct()
         for prod in inputs:
-            Transport(production_line=self, product=prod, distance=150).save()
+            if not Transport.objects.filter(production_line=self, product=prod).exists():
+                Transport(production_line=self, product=prod, distance=150).save()
 
     def aggregate_production(self):
         """
@@ -785,13 +784,10 @@ class Exchange(models.Model):
     is_observed = models.BooleanField("Quantity is", choices={True: "Measured", False: "Modeled or calculated"}, default=False)
     comment = models.CharField(max_length=100, blank=True)
     uncertainty_type = models.CharField(max_length=30, choices=UNCERTAINTY_TYPES, default='none', help_text="If the amount is uncertain, how can this uncertainty be described?")
-    loc = models.FloatField("Mean or median", blank=True, null=True)
-    scale = models.FloatField("Standard deviation", blank=True, null=True)  # or geometric stddev
-    shape = models.FloatField(blank=True, null=True, help_text="for lognormal distribution")
+    loc = models.FloatField("Mean or mode", blank=True, null=True, help_text="for (log)normal and triangular distribution")
+    scale = models.FloatField("Standard deviation", blank=True, null=True, help_text="or log-space standard deviation")
     minimum = models.FloatField(blank=True, null=True, help_text="for interval and triangular distribution")
     maximum = models.FloatField(blank=True, null=True, help_text="for interval and triangular distribution")
-    # unit = models.CharField(max_length=20) #product.unit
-    # description = models.TextField(max_length=300, blank=True)
 
     class Meta:
         abstract = True
@@ -939,6 +935,14 @@ class Material(models.Model):
     class Meta:
         # unique_together = ('name', 'origin_country')  # If always the same %'s
         ordering = ['name', 'origin_country']
+    
+    @property
+    def is_hazardous(self):
+        return hasattr(self, 'hazardousmaterial')
+    
+    @property
+    def is_critical(self):
+        return bool(self.criticality_level)
 
     def clean(self):
         if bool(self.criticality_level) != bool(self.origin_country):
@@ -1154,7 +1158,6 @@ class SustainabilityEvaluation(models.Model):
     A sustainability evaluation is defined by a scope definition,
     a functional unit (the final product of a production line), and its amount. 
     """
-    # FIXME: perhaps this should also have a field is_environmental, to avoid mismatches in SustainabilityScore
     GEO_CHOICES = {
         'EU': 'European Union (EU)',
         'c': 'Country-specific',
@@ -1165,6 +1168,7 @@ class SustainabilityEvaluation(models.Model):
         return str(datetime.date.today().year)
     
     product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='sustainability_evaluation')
+    is_environmental = models.BooleanField("Whether this is an environmental sustainability evaluation (LCA).", default=True)
     functional_amount = models.FloatField()
     system_boundaries = models.CharField(max_length=200, blank=True)
     geographical_scope = models.CharField(max_length=4, choices=GEO_CHOICES, blank=True)
@@ -1190,9 +1194,9 @@ class SustainabilityScore(models.Model):
     The indicator results for one impact category in a SustainabilityEvaluation,
     plus contribution analysis data.
     """
-    impact_category = models.ForeignKey(ImpactIndicator, on_delete=models.CASCADE)
+    impact_indicator = models.ForeignKey(ImpactIndicator, on_delete=models.CASCADE)
     evaluation = models.ForeignKey(SustainabilityEvaluation, on_delete=models.CASCADE, related_name='sustainability_score')
-    impact_value = models.FloatField()  # cradle-to-gate total (unit = impact_category.unit)
+    impact_value = models.FloatField()  # cradle-to-gate total (unit = impact_indicator.unit)
     upstream_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
     manufacturing_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
     use_phase = models.FloatField(default=0, validators=FRACTION_VALIDATOR)
@@ -1200,7 +1204,16 @@ class SustainabilityScore(models.Model):
     scope_1_2_3 = models.FloatField("Scope 1+2+3 CO<sub>2</sub> emission", help_text="Total greenhouse gas emissions associated with the product over its lifecycle, expressed as kg CO<sub>2</sub> equivalents.")
 
     def __str__(self):
-        return f"{self.impact_value} {self.impact_category.unit} for {self.evaluation}"
+        return f"{self.impact_value} {self.impact_indicator.unit} for {self.evaluation}"
+    
+    def clean(self):
+        if self.impact_indicator.is_environmental != self.evaluation.is_environmental:
+            is_env = '' if self.evaluation.is_environmental else 'not'
+            raise ValidationError(f"Wrong indicator selected. The indicator must {is_env} be an environmental indicator for this evaluation.")
+    
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 ## Circularity indicators
@@ -1261,16 +1274,17 @@ class CircularityTracker(CircularityScore):
 
 ## DPP publication
 class Publisher(models.Model):
-    production_line = models.OneToOneField(ProductionLine, on_delete=models.CASCADE)
-    status = models.PositiveSmallIntegerField(default=0, help_text="Highest successfully completed step (1-5)")
-    last_run = models.DateTimeField(auto_now=True)
-    error_message = models.TextField(max_length=200, blank=True)
+    # Internal (non-editable) fields
+    production_line = models.OneToOneField(ProductionLine, on_delete=models.CASCADE, editable=False)
+    status = models.PositiveSmallIntegerField(default=0, help_text="Highest successfully completed step (1-5)", editable=False)
+    last_run = models.DateTimeField(auto_now=True, editable=False)
+    error_message = models.TextField(max_length=200, blank=True, editable=False)
 
     # Metadata info - to be conveyed to Metadata object
     amount = models.PositiveSmallIntegerField(help_text="How many items need a DPP.")
     registration_numbers = models.CharField(max_length=500, blank=True, help_text="Range of numbers (comma-separated)")
-    issuer = models.ForeignKey(Institution, on_delete=models.PROTECT)
-    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', help_text="The entity bearing legal responsibility for the DPP and the product.")
+    issuer = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', related_name='responsible_for', help_text="The entity bearing legal responsibility for the DPP and the product.")
     version = models.CharField(max_length=10, default='1.0')
     language = models.CharField(max_length=20, default='EN', help_text="Language used in descriptions")
     # Data access & governance

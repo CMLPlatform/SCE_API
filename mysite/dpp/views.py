@@ -203,7 +203,7 @@ def create_flowchart(processes):
     ).distinct()
     exchanges = ProductExchange.objects.filter(product__produced_by__in=processes).filter(process__in=processes)
     suppliers = ManufacturingProcess.objects.filter(functional_flow__in=inputs)
-    inputs = inputs.exclude(produced_by_other__in=suppliers).exclude(exchanged_by__in=exchanges)
+    inputs = inputs.exclude(manufacturing_info__in=suppliers).exclude(exchanged_by__in=exchanges)
 
     # Build Mermaid string
     lines = ["flowchart LR"]

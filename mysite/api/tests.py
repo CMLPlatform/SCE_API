@@ -446,7 +446,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
             impact_category=self.impact_category,
         )
         self.gwp_score = SustainabilityScore.objects.create(
-            impact_category = self.gwp,
+            impact_indicator = self.gwp,
             evaluation=self.evaluation,
             impact_value=9.2,
             upstream_phase=0.4,
@@ -463,7 +463,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
             impact_category=self.impact_category,
         )
         self.fwt_score = SustainabilityScore.objects.create(
-            impact_category = self.fwt,
+            impact_indicator = self.fwt,
             evaluation=self.evaluation,
             impact_value=9.2,
             upstream_phase=0.2,
@@ -488,7 +488,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
             'sustainability_score': [
                 {
                     'id': 1,
-                    'impact_category': 1,
+                    'impact_indicator': 1,
                     'impact_value': 9.2,
                     'upstream_phase': 0.4,
                     'manufacturing_phase': 0.3,
@@ -498,7 +498,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
                 },
                 {
                     'id': 2,
-                    'impact_category': 2,
+                    'impact_indicator': 2,
                     'impact_value': 9.2,
                     'upstream_phase': 0.2,
                     'manufacturing_phase': 0.3,

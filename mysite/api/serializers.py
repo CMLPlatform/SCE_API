@@ -109,10 +109,12 @@ class ManufacturingProcessSerializer(ActivitySerializer):
     class Meta(ActivitySerializer.Meta):
         model = ManufacturingProcess
         fields = ['name', 'amount', 'facility', 'description', 'modified_at']
+        #, 'prod_exchanges', 'env_exchanges']
 
 class BackgroundProcessSerializer(ManufacturingProcessSerializer):
     class Meta(ManufacturingProcessSerializer.Meta):
         model = BackgroundProcess
+        fields = ['name', 'amount', 'description', 'modified_at', 'database']
 
 class ProcessSerializer(ActivitySerializer):
     class Meta(ActivitySerializer.Meta):
@@ -136,6 +138,8 @@ class TransportSerializer(serializers.ModelSerializer):
         fields = ['production_line', 'product', 'distance', 'mode']
 
 class MaterialSerializer(CountryFieldMixin, serializers.ModelSerializer):
+    is_critical = serializers.Field()  #FIXME: requires `fields = []``
+
     class Meta:
         model = Material
         exclude = ['density', 'recycled_fraction', 'recyclable_fraction', 'biobased_fraction', 'renewable_fraction']
@@ -149,23 +153,23 @@ class CompositionSerializer(serializers.ModelSerializer):
     material = MaterialSerializer(read_only=True)
     class Meta:
         model = Composition
-        exclude = ['product', 'id']
+        exclude = ['id', 'product']
 
 class ConcentrationSerializer(serializers.ModelSerializer):
     material = MaterialSerializer(read_only=True)
     class Meta:
         model = Concentration
-        exclude = ['product', 'id']
+        exclude = ['id', 'product']
 
 class ComponentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Component
-        exclude = ['product', 'id']
+        exclude = ['id', 'product']
 
 class ItemExchangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemExchange
-        exclude = ['event', 'id']
+        exclude = ['id', 'event']
 
 class LifeCycleEventSerializer(serializers.ModelSerializer):
     item_exchanges = ItemExchangeSerializer(many=True, read_only=True)
@@ -206,13 +210,15 @@ class ImpactIndicatorSerializer(serializers.ModelSerializer):
 class SustainabilityScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = SustainabilityScore
-        exclude = ['evaluation']
+        exclude = ['id', 'evaluation']
 
 class SustainabilityEvaluationSerializer(serializers.ModelSerializer):
     sustainability_score = SustainabilityScoreSerializer(many=True, read_only=True)
+    assessed_by = InstitutionSerializer(read_only=True)
+
     class Meta:
         model = SustainabilityEvaluation
-        exclude = ['product']
+        exclude = ['id', 'product']
 
 class CircularityIndicatorSerializer(serializers.ModelSerializer):
     class Meta:
@@ -227,9 +233,10 @@ class CircularityScoreSerializer(serializers.ModelSerializer):
 class CircularityEvaluationSerializer(serializers.ModelSerializer):
     circularility_score = CircularityScoreSerializer(many=True, read_only=True)
     report = DocumentLinkSerializer()
+    assessed_by = InstitutionSerializer(read_only=True)
     class Meta:
         model = CircularityEvaluation
-        exclude = ['product']
+        exclude = ['id', 'product']
 
 class CircularityTrackerSerializer(CircularityScoreSerializer):
     class Meta(CircularityScoreSerializer.Meta):
@@ -246,6 +253,7 @@ class FlowSerializer(serializers.ModelSerializer):
     # circularity_evaluation = CircularityEvaluationSerializer(many=True, allow_null=True)
     latest_sustainability_evaluation = serializers.SerializerMethodField()
     latest_circularity_evaluation = serializers.SerializerMethodField()
+    manufacturing_info = ManufacturingProcessSerializer(allow_null=True)
 
     class Meta:
         model = Flow

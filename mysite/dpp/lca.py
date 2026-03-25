@@ -175,15 +175,15 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
         else:
             stage = 'Manufacturing'
         for exc in ProductExchange.objects.filter(process=dpp_process):
-            if exc.product.produced_by_other not in processes:
+            if exc.product.manufacturing_info not in processes:
                 continue  # Cutoff in case max_depth was used.
             sign = 1 if exc.direction == 'in' else -1
             try:
-                source_db = exc.product.produced_by_other.database
+                source_db = exc.product.manufacturing_info.database
             except AttributeError:
                 source_db = db_name
             exchanges.append({
-                "input": (source_db, exc.product.produced_by_other.pk),
+                "input": (source_db, exc.product.manufacturing_info.pk),
                 "amount": sign * exc.amount,
                 "type": "technosphere",
                 "unit": exc.product.model.unit,
@@ -253,8 +253,8 @@ def select_supply_chain(root_product, max_depth=None):
         visited.add(flow.id)
         
         # Get the production process for this item
-        assert hasattr(flow, 'produced_by_other'), f"Product {flow} has no production process!"
-        process = flow.produced_by_other
+        assert hasattr(flow, 'manufacturing_info'), f"Product {flow} has no production process!"
+        process = flow.manufacturing_info
         processes_to_include.append(process)
         # convert_dpp_to_bw_activity(process, db_name)
         
@@ -345,14 +345,14 @@ def create_supply_chain_lca(product):
     # link_to_background_db(bw_activities, background_db)
     
     # Perform LCA
-    ref_activity = db.get(product.produced_by_other.pk)
+    ref_activity = db.get(product.manufacturing_info.pk)
     results = lca_calculations(ref_activity, lcia_family)
     #TODO: contribution analysis
     # Create SustainabilityScores to store results
     if created:
         for m, value, unit in results:
             SustainabilityScore.objects.create(
-                impact_category=ImpactIndicator.objects.get(method=m,indicator_set=method_set),
+                impact_indicator=ImpactIndicator.objects.get(method=m,indicator_set=method_set),
                 evaluation=evaluation,
                 impact_value=value,
                 upstream_phase=0,
@@ -364,7 +364,7 @@ def create_supply_chain_lca(product):
     else:
         for m, value, unit  in results:
             SustainabilityScore.objects.update_or_create(
-                impact_category=ImpactIndicator.objects.get(method=m,indicator_set=method_set),
+                impact_indicator=ImpactIndicator.objects.get(method=m,indicator_set=method_set),
                 evaluation=evaluation,
                 impact_value=value,
                 upstream_phase=0,

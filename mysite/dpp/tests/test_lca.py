@@ -29,7 +29,7 @@ def make_flow(pk=1, name="product", unit="kg", produced_by=None):
     flow.model.unit = unit
     flow.model.name = name
     if produced_by is not None:
-        flow.produced_by_other = produced_by
+        flow.manufacturing_info = produced_by
     return flow
 
 
@@ -304,7 +304,7 @@ class TestConvertDppToBrightway(TestCase):
         pe.direction = "in"
         pe.amount = 5.0
         pe.product.model.unit = "kg"
-        pe.product.produced_by_other = external_proc   # not in [proc]
+        pe.product.manufacturing_info = external_proc   # not in [proc]
 
         with patch("dpp.lca.models.ProductExchange") as MockPE, \
              patch("dpp.lca.models.EnvExchange") as MockEE:
