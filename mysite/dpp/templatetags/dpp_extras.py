@@ -15,7 +15,8 @@ def get_fields(obj):
         fields.append({
             'name': field.name,
             'verbose_name': field.verbose_name,
-            'value': get_attr(obj, field.name)
+            'value': get_attr(obj, field.name),
+            'editable': field.editable,
         })
     try:  # Try to add related properties fields
         for field in obj.properties._meta.fields:
@@ -23,7 +24,7 @@ def get_fields(obj):
                 fields.append({
                     'name': field.name,
                     'verbose_name': field.verbose_name,
-                    'value': get_attr(obj, field.name)
+                    'value': get_attr(obj, field.name),
                 })
     except:
         pass

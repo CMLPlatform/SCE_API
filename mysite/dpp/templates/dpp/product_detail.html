@@ -26,7 +26,9 @@
       <tr class="{% cycle 'bg-white' 'bg-gray-100' %}">
         <td class="px-4 py-1">{{comp.quantity}} {{comp.unit}}</td>
         <td class="px-4 py-1"><a href="{% url 'dpp:material_detail' comp.material.pk %}">{{comp.material.name}}</a></td>
-        <td class="px-4 py-1">Hazardous or not</td>
+        <td class="px-4 py-1">
+          {% if comp.material.is_hazardous %}⚠️ Hazardous{% elif comp.material.is_critical%}🔴 Critical{% endif %}
+        </td>
         <td class="px-4 py-1"><a href="{% url 'dpp:composition_delete' comp.pk %}"
           class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
           title="Remove this material">
@@ -51,8 +53,10 @@
       {% for flow in missing_bom %}
       <tr>
         <td class="px-3 py-1">Type: {{flow.type}}</td>
-        <td class="px-3 py-1"><a href="{% url app_label|add:':product_detail' flow.product.pk %}">{{flow.product.name}}</a></td>
+        <td class="px-3 py-1"><a href="{% url app_label|add:':product_detail' flow.product.pk %}">{{flow.product.model.name}}</a></td>
       </tr>
+      {% empty%}
+      <tr class="px-3 py-1">None</tr>
       {% endfor %}
     </tbody>
     </table>

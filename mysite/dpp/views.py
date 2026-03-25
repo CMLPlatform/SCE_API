@@ -288,11 +288,16 @@ class ProductionLineDetailView(DetailView):
     def post(self, request, *args, **kwargs):
         if request.POST.get('action') == 'create_publisher':
             # Get or create Publisher
+            pl = self.get_object()
             publisher, created = Publisher.objects.get_or_create(
-                production_line=self.get_object()
+                production_line=pl,
+                amount=100,
+                issuer=pl.facility.operator,
+                reo=pl.facility.operator,
+                credential_format='other',
             )
             # Redirect to Publisher detail view
-            return redirect('publisher_detail', pk=publisher.pk)
+            return redirect('dpp:publisher_detail', pk=publisher.pk)
         
         return super().post(request, *args, **kwargs)
 
@@ -364,6 +369,11 @@ class FlowCreateView(CreateView):
     model = Flow
     template_name = "dpp/create_flow.html"
     fields = []  # No user-editable fields
+
+class PublisherUpdateView(AdminTemplateMixin, PreFillFormMixin, UpdateView):
+        model = Publisher
+        fields = "__all__"
+        template_name = "dpp/generic_form.html"
 
 class PublisherDetailView(AdminTemplateMixin, DetailView):
     model = Publisher
