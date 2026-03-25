@@ -8,11 +8,13 @@ In the sections below, instructions are provided for using the data collector ap
 
 ## Start page
 [-> Try live](http://127.0.0.1:8000/dpp/welcome)
+
 On the start page, you find a list of recently modified production lines. A [production line](#production-line) is a sequence of [manufacturing processes](#process) that produce a consumer [product](#product). To continue working on a production line, click on its name. To create a new production line, click the green button. It is also possible to view a more detailed list of production lines, including older ones, by clicking 'See detailed list'.
 
 ## Production line
 [-> Try live](http://127.0.0.1:8000/dpp/productionline/)
-Creating a production line is simple: click on the button 'Add production line' when you are at the [start page](#start%20page) or at the list of production lines. A [form](#forms) will be shown, which asks to enter some information about the new production line. 
+
+Creating a production line is simple: click on the button 'Add production line' when you are at the [start page](#start-page) or at the list of production lines. A [form](#forms) will be shown, which asks to enter some information about the new production line. 
 - **Name\***: The asterisk indicates that the name must be specified.
 - **Description**: Add a description if you want, or leave it empty.
 - **Final product\***: Select the product produced by this production line. Most likely, the product doesn't exist yet, so it isn't shown in the dropdown list. Instead, click the green **+** to create a new product. 
@@ -30,6 +32,7 @@ A facility is described by 3 fields:
 - **Operator\***: Select the [company](#company) that operates this production line. Click **+** if your company is not in the list. 
 - **Country\***: Select the country where this facility is located.
 - **Address\***: Specify the address.
+
 Multiple production lines can refer to the same facility. The above information needs to be provided only once.
 
 ## Company
@@ -65,7 +68,7 @@ It is possible - and sometimes mandatory - to specify some details about a [prod
 ## Process
 Now it is time to add a production process to the production line. A process is described by:
 - **Name\***
-- **Production line\***: The production line that it belongs to. (Automatically filled when you use the 'Add new process' button in a [production line](production-line)). [[#Production line]]
+- **Production line\***: The production line that it belongs to. (Automatically filled when you use the 'Add new process' button in a [production line](production-line)).
 - **Main output**: The main product produced by this process. It could be an intermediate product or a final product. It is important that each product is only produced by a single process! Even if two processes produce a similar product, you need to define a separate product for each.
 - **Amount**: The number of units of the main output produced by this process. If you set the amount to '10', then you need to specify all [inputs and outputs](#inputs-and-outputs) needed to produce 10 items of the main output. 
 - **Facility**: The location of this process. If you leave this empty, the location of the production line will be set.
@@ -74,15 +77,15 @@ Now it is time to add a production process to the production line. A process is 
 
 After adding a process, you can see the following process details:
 - Inputs to process: shows a list of inputs. The symbol indicates the input type: 
-	🧩 Component of the product
-	🧃 Consumable
-	🔥 Electricity or heat
-	⚙️ Utility or equipment
-	🧑‍🔧 Service
-	📦 Packaging
-	⚗️ Reactant
-	🗑️ Waste (used as feedstock)
-	⛏️ Natural resource extraction
+	- 🧩 Component of the product
+	- 🧃 Consumable
+	- 🔥 Electricity or heat
+	- ⚙️ Utility or equipment
+	- 🧑‍🔧 Service
+	- 📦 Packaging
+	- ⚗️ Reactant
+	- 🗑️ Waste (used as feedstock)
+	- ⛏️ Natural resource extraction
 - Buttons to add a new input.
 - Outputs of process: Shows the main product, waste flows, and emissions.
 - Buttons to add a new output.
