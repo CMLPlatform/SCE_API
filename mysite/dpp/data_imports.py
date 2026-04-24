@@ -1,21 +1,24 @@
 from pathlib import Path
 import pandas as pd
 # from django.contrib.auth.models import User
-from dpp.models import CircularityIndicator
+from dpp.models import CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory
 """NOTE: to run this, use a command, I think manage.py runscript data_imports"""
 
-def csv_to_django(file_path: Path | str, Model):
+def csv_to_django(file_path: Path | str, Model, relations={}):
     """
     Read data from a CSV file into a Django model.
     """
 
     # Convert DataFrame to list of model instances
+    file_path = Path(file_path)
     df = pd.read_csv(file_path)
     fields = set([field.name for field in Model._meta.get_fields()])
     ignored = set(df.columns) - fields
     df = df.drop(columns=ignored)
     if any(ignored):
         print(f"Columns ignored because they can't be linked: {ignored}")
+    for col, val in relations.items():
+        df[col + '_id'] = val
 
     for _, row in df.iterrows():
         # new_object = Model(**row.to_dict())
@@ -25,8 +28,14 @@ def csv_to_django(file_path: Path | str, Model):
     print(f"{file_path.name} has been loaded as {Model.__name__} into the Django database.")
 
 
-circularity_csv = 'init_data/circularity_indicators.csv'
-csv_to_django(circularity_csv, CircularityIndicator)
+def __main__():
+    circularity_csv = 'init_data/circularity_indicators.csv'
+    csv_to_django(circularity_csv, CircularityIndicator)
+    label_csv = 'init_data/document_labels.csv'
+    csv_to_django(label_csv, Instruction)
+    socioecon, _ = ImpactCategory.objects.get_or_create(name="Socio-economic impact")
+    socioecon_csv = 'init_data/socioecon_indicators.csv'
+    csv_to_django(socioecon_csv, ImpactIndicator, relations={'impact_category': socioecon.pk})
 
 """
 R_CHOICES = {

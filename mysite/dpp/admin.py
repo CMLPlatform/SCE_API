@@ -5,7 +5,6 @@ from .models import *
 admin.site.register(Company)
 admin.site.register(Importer)
 admin.site.register(Facility)
-admin.site.register(Document)
 admin.site.register(Activity)
 admin.site.register(ManufacturingProcess)
 admin.site.register(BackgroundProcess)
@@ -21,3 +20,14 @@ admin.site.register(Instruction)
 admin.site.register(Emission)
 admin.site.register(ImpactCategory)
 admin.site.register(CircularityIndicator)
+
+@admin.register(Document)
+class DocumentAdmin(admin.ModelAdmin):
+    list_display = ['filename', 'get_instructions']
+    filter_horizontal = ('instructions',)
+    list_filter = ['instructions']
+    search_fields = ['file']
+
+    def get_instructions(self, obj):
+        return ", ".join(label.name for label in obj.instructions.all())
+    get_instructions.short_description = 'Instructions'

@@ -122,21 +122,11 @@ class Facility(models.Model):
 
 ## Documents
 
-INSTRUCTION_TYPES = {
-    'installation': 'Installation / assembly',
-    'use': 'Use',
-    'repair': 'Repair',
-    'maintenance': 'Maintenance',
-    'refurbishment': 'Refurbishment',
-    'disassembly': 'Disassembly',
-    'disposal': 'Disposal',
-}
-
 class Instruction(models.Model):
-    label = models.CharField(max_length=20, primary_key=True, choices=INSTRUCTION_TYPES, unique=True)
+    label = models.CharField(max_length=20, unique=True)
 
     def __str__(self):
-        return self.get_label_display()
+        return self.label
 
 class Document(models.Model):  #TODO: security check on files
     DOCUMENT_TYPES = {
@@ -1142,7 +1132,7 @@ class ImpactCategory(models.Model):
         return self.name
 
 class ImpactIndicator(models.Model):
-    """Life Cycle Impact Assessment Method"""
+    """Life Cycle Impact Assessment Method or Socio-Economic indicator"""
     method = models.CharField(max_length=50)
     description = models.CharField(max_length=200, blank=True)
     unit = models.CharField(max_length=40)
