@@ -25,7 +25,7 @@ def home(request):
     if len(latest_lines) > 5:
         latest_lines = latest_lines[:5]
     context = {'latest_lines': latest_lines}
-    return render(request, "dpp/index.html", context)
+    return render(request, "dpp/welcome.html", context)
 
 class AdminTemplateMixin:
     """Base class that prepares admin-like context."""

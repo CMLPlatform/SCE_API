@@ -7,7 +7,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Welcome | Lasers4MaaS SCE{% endblock %}</title>
+    <title>Welcome | Lasers4MaaS SCE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style type="text/css">
         .sidenav {
@@ -26,9 +26,9 @@
 {% if not is_popup %}
 {% block header %}
 <div id="header" style="background:#088488; color:white; padding:15px 20px; min-height:60px;">
-    <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+    <div style="max-width:1200px; margin:auto; display:flex">
         <!-- Logo + Title -->
-        <div style="display:flex; align-items:center; gap:15px;">
+        <div style="display:flex; align-items:left; gap:15px;">
             <img src="{% static 'img/L4M_logo.png' %}"
             style="height: 40px; width: auto;"
             alt="Logo">
@@ -42,12 +42,8 @@
 {% endif %}
 
 {% block content %}
-<head>
-  <meta charset="utf-8" />
-  <title>Welcome to the Lasers4MaaS project.</title>
-</head>
-<body class="py-6">
-  <h1 class="text-2xl font-bold">Welcome to the Lasers4MaaS SCE Platform</h1>
+<body class="px-6 py-6">
+  <h1 class="text-2xl py-3 font-bold">Welcome to the Lasers4MaaS SCE Platform</h1>
     {% if latest_lines %}
     <p>Recently modified production lines:</p>
       <div class="overflow-x-auto">
