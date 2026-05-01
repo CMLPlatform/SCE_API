@@ -2,6 +2,11 @@ from django import template
 
 register = template.Library()
 
+# Used for rendering a dict recursively
+@register.inclusion_tag('partials/nested_dict.html')
+def render_dict(data):
+    return {'data': data}
+
 @register.filter
 def get_attr(obj, attr):
     """Get attribute from object"""

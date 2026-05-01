@@ -1,0 +1,17 @@
+<!-- Render one level of a nested dict, provided as `data` -->
+{% load dpp_extras %} <!-- for render_dict -->
+<ul class="pl-4">
+  {% for key, value in data.items %}
+    <li class="my-1">
+      {% if value.items %}
+        <details>
+          <summary class="font-semibold">{{ key }}</summary>
+          {% render_dict value %}
+        </details>
+      {% else %}
+        <span class="text-gray-500 text-sm">{{ key }}:</span>
+        <span class="font-mono text-sm {% if value %}text-gray-900{% else %}text-red-600{% endif %}">{% if value == '' %}N/A{% else %}{{ value }}{% endif %} </span>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>

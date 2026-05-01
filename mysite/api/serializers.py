@@ -293,7 +293,7 @@ class ProductItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class MetadataSerializer(serializers.ModelSerializer):
-    issuer = InstitutionSerializer(read_only=True)
+    issuer = OrganizationSerializer(read_only=True)
     reo = CompanySerializer(read_only=True)
     product_item = ProductItemSerializer()
     class Meta:

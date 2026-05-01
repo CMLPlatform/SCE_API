@@ -1,0 +1,8 @@
+{% extends "dpp/base.html" %}
+{% load dpp_extras %} <!-- for render_dict -->
+
+{% block title %}DPP Data{% endblock %}
+{% block content %}
+  <h1 class="text-2xl font-semibold text-gray-900">DPP Data</h1>
+  {% render_dict dpp_dict %}
+{% endblock %}

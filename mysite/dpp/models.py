@@ -346,7 +346,7 @@ class ProductModel(Flow):
 
 class ProductBatch(Flow):
     batch_number = models.PositiveIntegerField()
-    model = models.ForeignKey(Flow, on_delete=models.RESTRICT, related_name='batch')
+    model = models.ForeignKey(ProductModel, on_delete=models.RESTRICT, related_name='batch')
     GTIN = models.CharField(max_length=13, unique=True, help_text="Global Trade Item Number (or EAN)")
     
     class Meta:
