@@ -1,9 +1,89 @@
 {% extends "dpp/generic_detail.html" %}
 {% load static %}
+{% load dpp_extras %} <!-- contains get_fields filters -->
 
 {% block content %}
-<!-- TODO: move contents below to the 'content' block (append) -->
 {{ block.super }}
+
+<!-- Add related info objects-->
+<div class="grid md:grid-cols-2 gap-8 py-2">
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">DPP details</h2>
+    <div class="border-t border-gray-200">
+      <dl>
+        {% for field in object.details|get_fields %}
+        <div class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500">
+            {{ field.verbose_name|sentencecase }}
+          </dt>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
+            {{ field.value|default:"—" }}
+          </dd>
+        </div>
+        <div class="px-4">
+          <a href="{% url opts.app_label|add:':dppdetails_update' object.pk %}" 
+              class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
+              Edit
+          </a>
+        </div>
+        {% empty %}
+        <div class="add-button">
+          <a href="{% url 'dpp:dppdetails_add' %}?product={{object.pk}}" class="btn btn-primary">Add details for DPP</a>
+        </div>
+        {% endfor %}
+      </dl>
+    </div>
+  </div>
+  <div class="bg-white rounded-lg shadow-md overflow-hidden">
+    <h2 class="px-4 text-xl font-semibold">Physical properties</h2>
+    <div class="border-t border-gray-200">
+      {% if object.properties %}
+      {% with props=object.properties %}
+      <table class="min-w-full divide-y divide-gray-200">
+        <tbody class="bg-white">
+          <tr class="bg-teal-50">
+            <td class="px-4 py-2 text-sm font-medium text-gray-500">Weight</td>
+            <td class="px-4 py-2 text-sm text-gray-900">
+              {{ props.weight|default:"—" }} {{ props.weight_unit }}/{{ object.unit }}
+            </td>
+          </tr>
+          <tr class="bg-white">
+            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">Volume</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+              {{ props.volume|default:"—" }} {{ props.volume_unit }}/{{ object.unit }}
+            </td>
+          </tr>
+          <tr class="bg-teal-50">
+            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">Density</td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+              {{ props.density|default:"—" }} {{ props.weight_unit }}/{{ props.volume_unit }}
+            </td>
+          </tr>
+          <tr class="bg-white">
+            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">
+              The above includes packaging
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+              {{ props.includes_packaging|yesno:"Yes,No,—" }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="px-4">
+        <a href="{% url opts.app_label|add:':productproperties_update' props.pk %}" 
+            class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
+            Edit
+        </a>
+      </div>
+      {% endwith %}
+      {% else %}
+      <div class="add-button">
+        <a href="{% url 'dpp:productproperties_add' %}?product={{object.pk}}" class="btn btn-primary">Add physical properties</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 
 <!-- Manufacturing info-->
 <div class="py-6">

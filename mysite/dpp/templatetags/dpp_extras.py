@@ -16,6 +16,8 @@ def get_attr(obj, attr):
 def get_fields(obj):
     """Get all fields from a model instance"""
     fields = []
+    if not obj:
+        return []
     for field in obj._meta.fields:
         fields.append({
             'name': field.name,
@@ -23,16 +25,6 @@ def get_fields(obj):
             'value': get_attr(obj, field.name),
             'editable': field.editable,
         })
-    try:  # Try to add related properties fields
-        for field in obj.properties._meta.fields:
-            if not field.name.endswith('_ptr'):
-                fields.append({
-                    'name': field.name,
-                    'verbose_name': field.verbose_name,
-                    'value': get_attr(obj, field.name),
-                })
-    except:
-        pass
     return fields
 
 @register.filter

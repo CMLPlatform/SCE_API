@@ -1,3 +1,9 @@
+# Installation
+To install the application on your computer, open a command line and run:
+```bash
+pip install sce@git+https://github.com/CMLPlatform/SCE_API.git
+```
+
 # User Manual
 ## Key features
 This software helps you to create Digital Product Passports in a streamlined way, to comply with the EU ESPR regulations. It is designed for manufacturers of consumer goods such as clothes, electronics, and batteries.

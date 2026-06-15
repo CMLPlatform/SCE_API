@@ -899,6 +899,9 @@ class Transport(models.Model):
 
     def __str__(self):
         return f"{self.distance} km by {self.VEHICLES[self.mode]}"
+    
+    class Meta:
+        unique_together = ('production_line', 'product')
 
 
 ## Composition and Materials

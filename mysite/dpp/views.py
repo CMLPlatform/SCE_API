@@ -8,7 +8,7 @@ from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
     Document, Material, HazardousMaterial,
     Flow, ProductModel, ProductBatch, ProductItem, SecondaryProduct, 
-    Emission, Composition, DppDetails,
+    Emission, Composition, DppDetails, ProductProperties,
     Activity, ManufacturingProcess, ProductionLine, Process, BackgroundProcess, 
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
@@ -167,9 +167,10 @@ def make_crud_views(model):
 views = {}
 for model in [
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
-    Document, Material, HazardousMaterial, Flow, ProductModel, ProductBatch,
-    SecondaryProduct, Emission, Composition, ProductItem, DppDetails,
-    Activity, ManufacturingProcess, ProductionLine, Process,
+    Document, Material, HazardousMaterial, Emission,
+    Flow, ProductModel, ProductBatch, SecondaryProduct, Composition,
+    ProductItem, DppDetails, ProductProperties,
+    Activity, ProductionLine, ManufacturingProcess, Process,
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
