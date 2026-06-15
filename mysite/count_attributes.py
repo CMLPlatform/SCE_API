@@ -48,7 +48,7 @@ def write_csv(results, filename=DATA_PATH + 'model_attributes.csv'):
 def read_excel_models(filepath='DPP_Structure.xlsx', columns=[]):
     use_sheets = [
         'Metadata', 'ProductInformation', 'DesignAndMaterials',
-        'ManufacturingInformation', 'SustainabilityEvaluation', 'Circularity',
+        'ManufacturingInformation', 'Sustainability', 'Circularity',
         'SustainabilityIndicators', 'CircularityIndicators',  # No attributes here
         'ServiceEvents', 'Operators',
     ]
@@ -58,7 +58,7 @@ def read_excel_models(filepath='DPP_Structure.xlsx', columns=[]):
     columns = columns or [
             'Class', 'Attribute', 'dataType', 'dataSchema',
             'ESPR[Optional|Mandatory]', 'Data Source', 'MCDA Applicable',
-            'MCDA Datatype', 'Global?', 'Output layer',
+            'Scale Type', 'Application Context', 'Output layer',
         ]
 
     for sheet in structure:
@@ -70,10 +70,10 @@ def read_excel_models(filepath='DPP_Structure.xlsx', columns=[]):
         # Select first part of MCDA columns
         if 'MCDA Applicable' in df.columns:
             df['MCDA Applicable'] = df['MCDA Applicable'].str[0]
-        if 'MCDA Datatype' in df.columns:
-            df['MCDA type'] = df['MCDA Datatype'].str.split('[:, ]', n=1).str[0]
-        if 'Global?' in df.columns:
-            df['Global?'] = df['Global?'].str.lower()
+        if 'Scale Type' in df.columns:
+            df['MCDA type'] = df['Scale Type'].str.split('[:, ]', n=1).str[0]
+        if 'Application Context' in df.columns:
+            df['Application Context'] = df['Application Context'].str.lower()
         # Drop if Attribute is empty
         df = df.loc[df.Attribute.notna()]
 
@@ -83,7 +83,10 @@ def read_excel_models(filepath='DPP_Structure.xlsx', columns=[]):
     return pd.concat(data)
 
 def attribute_overview():
-    groups = {'Activity': 'Manufacturing', 'Alias': 'Administrative', 'BackgroundProcess': 'Manufacturing', 'CircularityEvaluation': 'Sustainability', 'CircularityIndicator': 'Sustainability', 'CircularityScore': 'Sustainability', 'CircularityTracker': 'Sustainability', 'Company': 'Manufacturing', 'Component': 'Material', 'Composition': 'Material', 'Concentration': 'Material', 'DisassemblyEvent': 'Service events', 'Document': 'Administrative', 'Document.type': 'Administrative', 'DppDetails': 'Product', 'Emission': 'Sustainability', 'EnvExchange': 'Sustainability', 'Exchange': 'Sustainability', 'Facility': 'Manufacturing', 'Flow': 'Product', 'HazardousMaterial': 'Material', 'ImpactCategory': 'Sustainability', 'ImpactIndicator': 'Sustainability', 'Importer': 'Manufacturing', 'IndicatorSet': 'Sustainability', 'InspectionEvent': 'Service events', 'Institution': 'Administrative', 'Instruction': 'Administrative', 'ItemExchange': 'Service events', 'LifeCycleEvent': 'Service events', 'MaintenanceEvent': 'Service events', 'ManufacturingProcess': 'Manufacturing', 'Material': 'Material', 'Metadata': 'Administrative', 'Organization': 'Administrative', 'Process': 'Manufacturing', 'ProductBatch': 'Product', 'ProductExchange': 'Sustainability', 'ProductItem': 'Product', 'ProductModel': 'Product', 'ProductProperties': 'Product', 'ProductionLine': 'Manufacturing', 'Publisher': 'Administrative', 'SecondaryProduct': 'Manufacturing', 'ServiceOperator': 'Service events', 'SustainabilityEvaluation': 'Sustainability', 'SustainabilityScore': 'Sustainability', 'Transport': 'Manufacturing'}
+    """Count the number of attributes of all Django models.
+    Returns the result (as DataFrame), and prints it as CSV.
+    """
+    groups = {'Activity': 'Manufacturing', 'Alias': 'Administrative', 'BackgroundProcess': 'Manufacturing', 'CircularityEvaluation': 'Sustainability', 'CircularityIndicator': 'Sustainability', 'CircularityScore': 'Sustainability', 'CircularityTracker': 'Sustainability', 'Company': 'Administrative', 'Component': 'Material', 'Composition': 'Material', 'Concentration': 'Material', 'DisassemblyEvent': 'Service events', 'Document': 'Administrative', 'Document.type': 'Administrative', 'DppDetails': 'Product', 'Emission': 'Manufacturing', 'EnvExchange': 'Manufacturing', 'Exchange': 'Manufacturing', 'Facility': 'Manufacturing', 'Flow': 'Product', 'HazardousMaterial': 'Material', 'ImpactCategory': 'Sustainability', 'ImpactIndicator': 'Sustainability', 'Importer': 'Product', 'IndicatorSet': 'Sustainability', 'InspectionEvent': 'Service events', 'Institution': 'Sustainability', 'Instruction': 'Administrative', 'ItemExchange': 'Service events', 'LifeCycleEvent': 'Service events', 'MaintenanceEvent': 'Service events', 'ManufacturingProcess': 'Manufacturing', 'Material': 'Material', 'Metadata': 'Administrative', 'Organization': 'Administrative', 'Process': 'Manufacturing', 'ProductBatch': 'Product', 'ProductExchange': 'Manufacturing', 'ProductItem': 'Product', 'ProductModel': 'Product', 'ProductProperties': 'Product', 'ProductionLine': 'Manufacturing', 'Publisher': 'Administrative', 'SecondaryProduct': 'Product', 'ServiceOperator': 'Service events', 'SustainabilityEvaluation': 'Sustainability', 'SustainabilityScore': 'Sustainability', 'Transport': 'Manufacturing'}
     rows = []
     for model in apps.get_models():
         model_name = model.__name__
@@ -139,7 +142,7 @@ def attribute_overview():
 def analyze_excel(filepath='DPP_Structure.xlsx'):
     use_sheets = [
         'Metadata', 'ProductInformation', 'DesignAndMaterials',
-        'ManufacturingInformation', 'SustainabilityEvaluation', 'Circularity',
+        'ManufacturingInformation', 'Sustainability', 'Circularity',
         # 'SustainabilityIndicators', 'CircularityIndicators',  # No attributes here
         'ServiceEvents', 'Operators',
     ]
@@ -186,11 +189,10 @@ def analyze_excel(filepath='DPP_Structure.xlsx'):
         data.fillna(0).to_csv(f"{name}_count.csv")
 
 def expand_hierarchy():
-	columns = ['Class', 'Attribute', 'MCDA Applicable', 'MCDA Datatype', 'Global?']
+	columns = ['Class', 'Attribute', 'MCDA Applicable', 'Scale Type', 'ESPR[Optional|Mandatory]', 'Performance Type', 'MCDA Role'] #, 'Output layer', 'Data Source']
 	structure = read_excel_models(DPP_PATH, columns)
-	# len(structure[structure['Global?'].str.contains('?', regex=False, na=False)])
 
-	structure['Global?'] = structure['Global?'].str.strip(' ?')
+	# structure['Application Context'] = structure['Application Context'].str.strip(' ?')
 	structure = structure[structure['MCDA Applicable'] == 'Y'].copy()
 	structure['Attributes'] = 'All'
 
@@ -200,7 +202,7 @@ def expand_hierarchy():
 	joined['Attribute'] = joined['Attribute'].fillna(joined['Attributes'])
 	joined = joined[joined.Attribute.notna() & (joined.Attribute != 'All')]
 	joined = joined.drop(columns=['Attributes'])
-	joined['Attribute'] = joined['Attribute'].str.split(',\s*')
+	joined['Attribute'] = joined['Attribute'].str.split(r',\s*')
 	joined = joined.explode('Attribute')
 
 	joined = joined.merge(structure, 'left')
@@ -211,11 +213,11 @@ def expand_hierarchy():
 	joined = pd.concat([joined, circ_ind], ignore_index=True)
 	
 	joined = joined.drop(columns=['MCDA Applicable', 'Attributes'])
-	print(joined.columns)
 	joined.drop_duplicates(inplace=True)
-	#for col in ['Global?', 'MCDA type', 'MCDA Datatype', 'Sheet']:
+	#for col in ['Application Context', 'MCDA type', 'Scale Type', 'Sheet']:
 	#	joined[col] = joined[col].ffill()
 
+	print("Columns exported:", list(joined.columns))
 	joined.to_csv(DATA_PATH + 'joined.csv', index=False)
 
 if __name__ == '__main__':
