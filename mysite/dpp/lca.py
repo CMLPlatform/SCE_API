@@ -4,7 +4,9 @@ and to import and export DPP data to Brightway.
 import bw2data as bwd
 import bw2io as bwi
 import datetime
-from .models import *
+import logging
+
+logger = logging.getLogger(__name__)
 
 RESOURCE_UNITS = [
     'kg', 'g', 'lb', 'oz', 'l', 'cm3', 'dm3', 'm3', 'ft3', 'gal',
@@ -14,18 +16,22 @@ RESOURCE_UNITS = [
 # for cat in ['Mass', 'Volume', 'Energy']:
 #     RESOURCE_UNITS += list(UNIT_CHOICES[cat].keys()) + list(UNIT_CHOICES[cat].values())
 
-# Methods that are known to have zero calculated impact
+# Methods that are too detailed (for (in)organics)
 EXCLUDED_METHODS = {
-    ("EF v3.1", "climate change: land use and land use change", "global warming potential (GWP100)"),
-    ("EF v3.1", "ionising radiation: human health", "human exposure efficiency relative to u235"),
-    ("EF v3.1", "ozone depletion", "ozone depletion potential (ODP)"),
-    ("EF v3.1", "water use", "user deprivation potential (deprivation-weighted water consumption)"),
+    "ecotoxicity: freshwater, inorganics', 'comparative toxic unit for ecosystems (CTUe)",
+	"ecotoxicity: freshwater, organics', 'comparative toxic unit for ecosystems (CTUe)",
+	"human toxicity: carcinogenic, inorganics', 'comparative toxic unit for human (CTUh)",
+	"human toxicity: carcinogenic, organics', 'comparative toxic unit for human (CTUh)",
+	"human toxicity: non-carcinogenic, inorganics', 'comparative toxic unit for human (CTUh)",
+	"human toxicity: non-carcinogenic, organics', 'comparative toxic unit for human (CTUh)')",
 }
 DEFAULT_REMOTE_PROJECT = "ecoinvent-3.12-biosphere"
+ECOINVENT = "ecoinvent-3-12-cutoff"
 
 def setup_project(project_name: str) -> None:
     """Initialize the project if needed, and check that it is complete."""
     if project_name not in bwd.projects:
+        logger.debug("Creating a new Brightway project setup.")
         bwi.remote.install_project(DEFAULT_REMOTE_PROJECT, project_name)
     bwd.projects.set_current(project_name)
 
@@ -41,17 +47,18 @@ def ensure_methods(family: str):
     try:
         method_set = IndicatorSet.objects.get(name=family)
     except IndicatorSet.DoesNotExist:
+        logger.debug("Creating a set of environmental indicators.")
         method_set = IndicatorSet.objects.create(name=family, start_date=datetime.date.today())
     methods = [
         m for m in bwd.methods
-        if m[0] == family and m not in EXCLUDED_METHODS
+        if family in m and m[-2:] not in EXCLUDED_METHODS
     ]
     if len(methods) < len(ImpactIndicator.objects.filter(indicator_set=method_set)):
         return method_set
     unknown_category, _ = ImpactCategory.objects.get_or_create(name='Unknown')
     for m in methods:
         ImpactIndicator.objects.update_or_create(
-            method=m[1],
+            method=m[-2],
             unit=bwd.methods[m].get('unit'),
             indicator_set=method_set,
             impact_category=unknown_category,
@@ -149,6 +156,44 @@ def find_biosphere_flow(exc, biosphere_db):
     act = biosphere_db.search(name)[0]
     return (act['database'], act['code'])
 
+def make_transport_exchange(transports, product, amount):
+    """Create an exchange that represent the transport service
+    of `amount` of `product`, with distance specified in `transports`.
+
+    Parameters:
+        transports: QuerySet of Transport table
+        product: ProductModel, input to some process
+        amount: int, amount of product transported
+    """
+    # Import here to avoid circular imports
+    from .models import UNIT_CHOICES, CONVERSIONS
+    ecoinvent_codes = {
+        "train": '44760b3d59b51d5aaffecedeba08e3fa', # freight train, average, EU
+        "ocean ship": '1d2cb4018daf428aebf419380c6a2975', # sea freight container ship, GLO
+        "truck": 'dd736ab7d965646d04b091ae5fa68d97',  # lorry, unspecified, RER
+        "inland ship": '1d510fd336c629c3687f812967538191', # inland waterways, RER
+        "airplane": '96a835b204d1d9327b56bca7995dc24f', # aircraft, unspecified, GLO
+        "delivery van": '558949a7ddfcccba760eab39bda68e88', # light commercial vehicle, EU
+        "NA": 'dd736ab7d965646d04b091ae5fa68d97', #FIXME defaults to truck for now
+    }
+    transport = transports.filter(product=product).first()
+    if transport is None:
+        raise LookupError(f"No transport specified for {product}")
+    # Determine the mass of one unit of product (kg)
+    input_prod = transport.product
+    if hasattr(input_prod, 'properties'):
+        mass = input_prod.properties.weight * CONVERSIONS[input_prod.properties.weight_unit]
+    elif input_prod.unit in UNIT_CHOICES['Mass']:
+        mass = CONVERSIONS[input_prod.unit]
+    else:
+        mass = 1
+
+    return {  # Calculate transport distance (t-km)
+        "input": (ECOINVENT, ecoinvent_codes[transport.mode]),
+        "amount": mass / 1000 * amount * transport.distance,
+        "type": "technosphere",
+        "unit": 'ton kilometer',
+    }
 
 def convert_dpp_to_brightway(processes: list, db_name: str):
     """
@@ -164,6 +209,7 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     bw_activities = {}
     for dpp_process in processes:
         location = str(dpp_process.facility.country) if dpp_process.facility else 'GLO'
+        transports = dpp_process.functional_flow.productionline.transport
         exchanges = [{
             "input": (db_name, dpp_process.pk),
             "amount": dpp_process.amount,
@@ -180,14 +226,21 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
             sign = 1 if exc.direction == 'in' else -1
             try:
                 source_db = exc.product.manufacturing_info.database
+                db_code = exc.product.manufacturing_info.db_code
             except AttributeError:
                 source_db = db_name
+                db_code = exc.product.manufacturing_info.pk
             exchanges.append({
-                "input": (source_db, exc.product.manufacturing_info.pk),
+                "input": (source_db, db_code),
                 "amount": sign * exc.amount,
                 "type": "technosphere",
                 "unit": exc.product.model.unit,
             })
+            # Add transport exchange for this input product
+            if sign == 1:
+                exchanges.append(
+                    make_transport_exchange(transports, exc.product, exc.amount)
+                )
         for exc in EnvExchange.objects.filter(process=dpp_process):
             bioshpere_flow = find_biosphere_flow(exc, biosphere)
             exchanges.append({
@@ -252,8 +305,8 @@ def select_supply_chain(root_product, max_depth=None):
             return
         visited.add(flow.id)
         
-        # Get the production process for this item
-        assert hasattr(flow, 'manufacturing_info'), f"Product {flow} has no production process!"
+        # Get the ManufacturingProcess for this flow
+        assert hasattr(flow, 'manufacturing_info'), f"Product {flow} has no manufacturing process!"
         process = flow.manufacturing_info
         processes_to_include.append(process)
         # convert_dpp_to_bw_activity(process, db_name)
@@ -275,22 +328,20 @@ def lca_calculations(activity, family: str = 'EF v3.1'):
     # Select methods belonging to family
     methods = [
         m for m in bwd.methods
-        if m[0] == family and m not in EXCLUDED_METHODS
+        if family in m and m[-2:] not in EXCLUDED_METHODS
     ]
+    logger.debug(f"{len(methods)} EF methods found")
     if not methods:
-        print(f"⚠️  No {family} methods available.")
-        return
+        logger.warning(f"No {family} methods available.")
+        raise RuntimeError(f"No {family} methods available.")
     methods = sorted(methods)
     # Calculate LCA results
     lca = activity.lca(methods[0])
-    results = [(methods[0], lca.score, bwd.methods[methods[0]].get('unit'))]
+    results = [(methods[0][-2], lca.score, bwd.methods[methods[0]].get('unit'))]
     for m in methods[1:]:
         lca.switch_method(m)
         lca.lcia()
-        results.append((m, lca.score, bwd.methods[m].get("unit")))
-    print(f"\n{family} results for {activity['name']}:")
-    for m, val, unit in results:
-        print(f"  {m[1]} -> {val:.6g} {unit}")
+        results.append((m[-2], lca.score, bwd.methods[m].get("unit")))
     return results
 
 def create_supply_chain_lca(product):
@@ -322,11 +373,12 @@ def create_supply_chain_lca(product):
     # Create unique Brightway database
     db_name = f"dpp_{product.model.name}_{product.pk}"
     if db_name in bwd.databases:
-        merge_choice = prompt_choice(
-            f"Foreground DB '{db_name}' exists. Choose action:",
-            ["Add data", "Overwrite"],
-            default_index=0,
-        )
+        merge_choice = "Overwrite"
+        # merge_choice = prompt_choice(
+        #     f"Foreground DB '{db_name}' exists. Choose action:",
+        #     ["Add data", "Overwrite"],
+        #     default_index=0,
+        # )
         if merge_choice == "Overwrite":
             del bwd.databases[db_name]
         else:
@@ -364,7 +416,7 @@ def create_supply_chain_lca(product):
     else:
         for m, value, unit  in results:
             SustainabilityScore.objects.update_or_create(
-                impact_indicator=ImpactIndicator.objects.get(method=m,indicator_set=method_set),
+                impact_indicator=ImpactIndicator.objects.get(method=m, indicator_set=method_set),
                 evaluation=evaluation,
                 impact_value=value,
                 upstream_phase=0,
@@ -374,4 +426,4 @@ def create_supply_chain_lca(product):
                 scope_1_2_3=0,
             )
     
-    return
+    return evaluation

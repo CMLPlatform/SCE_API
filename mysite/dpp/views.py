@@ -425,6 +425,7 @@ class PublisherDetailView(AdminTemplateMixin, DetailView):
             }
             for i in range(1, 6)
         ]
+        context['lca_results'] = SustainabilityEvaluation.objects.filter(is_environmental=True, product=publisher.production_line.final_product)
         return context
 
 class DppFullView(DetailView):
