@@ -17,7 +17,7 @@ from .models import (
     CircularityScore, CircularityTracker, Publisher
 )
 from .forms import get_model_form_plus
-from api.serializers import MetadataSerializer
+from . import utils
 
 
 def home(request):
@@ -432,10 +432,10 @@ class DppFullView(DetailView):
     template_name = 'dpp/dpp_full.html'
 
     def get_context_data(self, **kwargs):
-        serialized_data = MetadataSerializer(self.object).data
+        # serialized_data = MetadataSerializer(self.object).data
         context = {
             'opts': self.model._meta,
-            'dpp_dict': MetadataSerializer(self.object).data,
-            # 'dpp_dict': self.object.dpp_as_dict(),
+            # 'dpp_dict': utils.prepare_dict(serialized_data, self.model),
+            'dpp_dict': utils.dpp_as_dict(self.object),
         }
         return context
