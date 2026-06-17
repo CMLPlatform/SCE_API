@@ -96,11 +96,28 @@
                     <object data="/static/img/leaf-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Sustainability evaluations
                 </a>
-                <a href="#" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
-                    <object data="/static/img/user-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
-                    User profile
-                </a>
             </nav>
+        </div>
+        <div class="text-gray-100 px-4 py-2 mt-2">
+            {% if user.is_authenticated %}
+            <div class="flex items-center hover:bg-gray-700">
+                <a href="{% url 'accounts:profile' %}" class="flex items-center">
+                    <object data="/static/img/user-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    <span class="ml-2">{{ user.username }}</span>
+                </a>
+                <form action="{% url 'logout' %}" method="post" class="ml-auto">
+                    {% csrf_token %}
+                    <button type="submit" class="hover:underline">
+                        Log Out
+                    </button>
+                </form>
+            </div>
+            {% else %}
+            <a href="{% url 'login' %}" class="flex items-center hover:bg-gray-700">
+                <object data="/static/img/user-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                <span class="ml-2">Log In</span>
+            </a>
+            {% endif %}
         </div>
     </aside>
     {% endif %} <!-- End of sidebar-->
