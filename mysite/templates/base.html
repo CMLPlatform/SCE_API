@@ -1,0 +1,36 @@
+{% load i18n %}
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/components.css' %}">
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Lasers4MaaS authentication{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+{% block header %}
+<div id="header" style="background:#088488; color:white; padding:15px 20px; min-height:60px;">
+  <div style="max-width:1200px; margin:auto; display:flex">
+    <!-- Logo + Title -->
+    <div style="display:flex; align-items:left; gap:15px;">
+      <img src="{% static 'img/L4M_logo.png' %}"
+      style="height: 40px; width: auto;"
+      alt="Logo">
+      <a href="/" style="color:white; text-decoration:none; font-size:22px; font-weight:bold;">
+        Lasers4MaaS Sustainability Cost Evaluation
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+<body class="px-6 py-6">
+  <main>
+    {% block content %}
+    {% endblock %}
+  </main>
+</body>
+
+</html>

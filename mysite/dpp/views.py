@@ -22,9 +22,10 @@ from api.serializers import MetadataSerializer
 
 def home(request):
     """Welcome page """
-    latest_lines = ProductionLine.objects.order_by("-modified_at")[:5]
-    if len(latest_lines) > 5:
-        latest_lines = latest_lines[:5]
+    if request.user.is_authenticated:
+        latest_lines = ProductionLine.objects.filter(created_by=request.user).order_by("-modified_at")[:5]
+    else:
+        latest_lines = ProductionLine.objects.order_by("-modified_at")[:5]
     context = {'latest_lines': latest_lines}
     return render(request, "dpp/welcome.html", context)
 
