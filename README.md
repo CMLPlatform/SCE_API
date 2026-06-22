@@ -210,9 +210,10 @@ In various forms, documents can be selected or uploaded. These documents contain
 To enable easy navigation through the app, use the links provided by the navigation panel on the left:
 - Production lines
 - Products
-- Importers #TODO 
+- Importers
 - Sustainability evaluations
-- User profile #TODO 
+- Published DPPs
+- User profile settings
 
 ## Forms
 The app uses forms to create new items, such as products and manufacturing processes. 
