@@ -7,6 +7,7 @@ from uuid import uuid4
 from django.db import models, transaction
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
+from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django_countries.fields import CountryField
@@ -588,6 +589,7 @@ class ProductionLine(models.Model):
     modified_at = models.DateField(auto_now=True)
     mass_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='pl_mass_balance', help_text="Add a document showing all material flows going in and out of the production line. (Optional)")
     energy_balance = models.ForeignKey(Document, blank=True, null=True, on_delete=models.SET_NULL, related_name='pl_energy_balance', help_text="Add a document showing all energy flows going in and out of the production line. (Optional)")
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='production_lines')
 
     def __str__(self):
         return self.name
