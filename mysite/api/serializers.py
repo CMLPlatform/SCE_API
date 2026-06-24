@@ -251,7 +251,8 @@ class FlowSerializer(serializers.ModelSerializer):
     details = DppDetailsSerializer(read_only=True, allow_null=True)
     # sustainability_evaluation = SustainabilityEvaluationSerializer(many=True, allow_null=True)
     # circularity_evaluation = CircularityEvaluationSerializer(many=True, allow_null=True)
-    latest_sustainability_evaluation = serializers.SerializerMethodField()
+    latest_socioecon_evaluation = serializers.SerializerMethodField()
+    latest_environmental_evaluation = serializers.SerializerMethodField()
     latest_circularity_evaluation = serializers.SerializerMethodField()
     manufacturing_info = ManufacturingProcessSerializer(allow_null=True)
 
@@ -260,7 +261,13 @@ class FlowSerializer(serializers.ModelSerializer):
         fields = '__all__'
         depth = 1
 
-    def get_latest_sustainability_evaluation(self, obj):
+    def get_latest_socioecon_evaluation(self, obj):
+        latest = obj.sustainability_evaluation.order_by('-assessment_date').first()
+        if latest is None:
+            return None
+        return SustainabilityEvaluationSerializer(latest).data
+
+    def get_latest_environmental_evaluation(self, obj):
         latest = obj.sustainability_evaluation.order_by('-assessment_date').first()
         if latest is None:
             return None
