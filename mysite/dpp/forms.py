@@ -7,8 +7,7 @@ class CustomRFWidget(RelatedFieldWidgetWrapper):
     def get_related_url(self, info, action, *args):
         return reverse_lazy("%s:%s_%s" % (info + (action,)))
 
-def get_model_form_plus(thismodel, used_fields):
-
+def get_model_form_plus(thismodel):
     class FormWithAutoAdd(forms.ModelForm):
         """
         A ModelForm mixin that automatically adds a "+" (add another) button
@@ -16,7 +15,7 @@ def get_model_form_plus(thismodel, used_fields):
         """
         class Meta:
             model = thismodel
-            fields = used_fields
+            exclude = ['created_by']
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)

@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -101,43 +102,30 @@ def make_crud_views(model):
         model = model
         paginate_by = 40
         template_name = "dpp/generic_list.html"
-        # template_name = "adminlike/change_list.html"
 
     class Detail(AdminTemplateMixin, DetailView):
         model = model
         template_name = "dpp/generic_detail.html"
-        # template_name = "adminlike/change_form.html"
 
-    class Create(AdminTemplateMixin, PreFillFormMixin, CreateView):
+    class Create(LoginRequiredMixin, AdminTemplateMixin, PreFillFormMixin, CreateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
-        # template_name = "adminlike/change_form.html"
-        # form_class = FormWithAutoAdd
     
         def get_form_class(self):
-            return get_model_form_plus(self.model, self.fields)
-            # return forms.modelform_factory(
-            #     self.model,
-            #     fields=self.fields,
-            #     formfield_callback=customize_form
-            # )
+            return get_model_form_plus(self.model)
 
-        # def form_valid(self, form):
-        #     self.object = form.save(commit=False)
-        #     self.object.save()
-        #     form.save_m2m()
-        #     return HttpResponseRedirect(self.get_success_url())
-
-        # def get_success_url(self):  # Return to previous page
-        #     return self.request.META.get('HTTP_REFERER')
+        def form_valid(self, form):
+            # Auto-fill the 'created_by' field with the current user
+            for field in model._meta.get_fields():
+                if field.name == 'created_by':
+                    form.instance.created_by = self.request.user
+            return super().form_valid(form)
 
     class Update(AdminTemplateMixin, PreFillFormMixin, UpdateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
-        # template_name = "adminlike/change_form.html"
-        # form_class = FormWithAutoAdd
 
         def get_form_class(self):
             return get_model_form_plus(self.model, self.fields)

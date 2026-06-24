@@ -42,7 +42,7 @@ class FacilitySerializer(CountryFieldMixin, serializers.ModelSerializer):
     operator = CompanySerializer(read_only=True)
     class Meta:
         model = Facility
-        fields = ['uid', 'operator', 'address']
+        fields = ['uuid', 'operator', 'country', 'address']
 
 class InstructionSerializer(serializers.ModelSerializer):
     class Meta:
