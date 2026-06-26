@@ -128,7 +128,7 @@ def make_crud_views(model):
         template_name = "dpp/generic_form.html"
 
         def get_form_class(self):
-            return get_model_form_plus(self.model, self.fields)
+            return get_model_form_plus(self.model)
 
     class Delete(AdminTemplateMixin, DeleteView):
         model = model
