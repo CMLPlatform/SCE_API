@@ -129,6 +129,13 @@ def make_crud_views(model):
 
         def get_form_class(self):
             return get_model_form_plus(self.model)
+        
+        def form_valid(self, form):
+            result = super().form_valid(form)
+            # If this is a pop-up window, close it
+            if self.request.POST.get('is_popup'):
+                return HttpResponse('<script>window.close();</script>')
+            return result
 
     class Delete(AdminTemplateMixin, DeleteView):
         model = model

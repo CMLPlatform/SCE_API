@@ -1,6 +1,6 @@
 {% extends "dpp/generic_detail.html" %}
 {% load static %}
-{% load dpp_extras %} <!-- contains get_fields filters -->
+{% load dpp_extras %} <!-- contains get_fields filter -->
 
 {% block content %}
 {{ block.super }}
@@ -9,30 +9,38 @@
 <div class="grid md:grid-cols-2 gap-8 py-2">
   <div class="bg-white rounded-lg shadow-md overflow-hidden">
     <h2 class="px-4 text-xl font-semibold">DPP details</h2>
-    <div class="border-t border-gray-200">
-      <dl>
-        {% for field in object.details|get_fields %}
-        <div class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-          <dt class="text-sm font-medium text-gray-500">
-            {{ field.verbose_name|sentencecase }}
-          </dt>
-          <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
-            {{ field.value|default:"—" }}
-          </dd>
-        </div>
-        <div class="px-4">
-          <a href="{% url opts.app_label|add:':dppdetails_update' object.pk %}" 
-              class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
-              Edit
+    <table>
+      {% for field in object.details|get_fields %}
+      {% if field.name != "product" %}
+      <tr class="{% cycle 'bg-teal-50' 'bg-white' %}">
+        <td class="px-4 py-2 text-sm font-medium text-gray-500 sm:px-6">
+          {{ field.verbose_name|sentencecase }}
+        </td>
+        <td class="px-4 py-2 text-sm text-gray-900">
+          {{ field.value|default:"—" }}
+        </td>
+      </tr>
+      {% endif %}
+      {% empty %}
+      <tr>
+        <td colspan="2" class="add-button px-4 py-2">
+          <a href="{% url 'dpp:dppdetails_add' %}?product={{object.pk}}&_popup=1" onclick="window.open(this.href, 'dppdetails-popup', 'width=400,height=600,toolbar=no,scrollbars=yes,resizable=yes'); return false;" class="btn btn-primary">
+            Add details for DPP
           </a>
-        </div>
-        {% empty %}
-        <div class="add-button">
-          <a href="{% url 'dpp:dppdetails_add' %}?product={{object.pk}}" class="btn btn-primary">Add details for DPP</a>
-        </div>
-        {% endfor %}
-      </dl>
-    </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if object.details|get_fields %}
+      <tr>
+        <td colspan="2" class="px-4">
+          <a href="{% url opts.app_label|add:':dppdetails_update' object.pk %}"
+            class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
+            Edit
+          </a>
+        </td>
+      </tr>
+      {% endif %}
+    </table>
   </div>
   <div class="bg-white rounded-lg shadow-md overflow-hidden">
     <h2 class="px-4 text-xl font-semibold">Physical properties</h2>
@@ -78,7 +86,9 @@
       {% endwith %}
       {% else %}
       <div class="add-button">
-        <a href="{% url 'dpp:productproperties_add' %}?product={{object.pk}}" class="btn btn-primary">Add physical properties</a>
+        <a href="{% url 'dpp:productproperties_add' %}?product={{object.pk}}&_popup=1" onclick="window.open(this.href, 'productproperties-popup', 'width=400,height=600,toolbar=no,scrollbars=yes,resizable=yes'); return false;" class="btn btn-primary">
+          Add physical properties
+        </a>
       </div>
       {% endif %}
     </div>
