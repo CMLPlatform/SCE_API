@@ -58,18 +58,6 @@ CONVERSIONS = {
     'GJ': 1000 / 3.6,
 }
 
-def safe(func):
-    """Safely call `func` (any database query), ignoring errors.
-    """
-    try:
-        result = func()
-        if result in (None, '', []):
-            return 'N/A'
-        if hasattr(result, 'exists') and not result.exists(): # empty queryset
-            return 'N/A'
-        return str(result)
-    except Exception:
-        return 'N/A'
 
 ## Organizations and companies
 
@@ -471,7 +459,7 @@ class ProductItem(models.Model):
         """
         created_items = []
         
-        for i, component in enumerate(self.components.all()):  #TODO: make this table
+        for i, component in enumerate(self.components.all()):
             component_serial = f"{self.serial_number}-C{i}"
             for j in range(component.amount):
                 # Generate unique serial number for each component
