@@ -25,6 +25,25 @@ SECRET_KEY = 'django-insecure-4(nj$n*iw98^--gz@^1p-)!&4xi12y_wy5!=d86w9i=njb(aih
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "file": {
+            "level": "DEBUG",
+            "class": "logging.FileHandler",
+            "filename": "logs/debug.log",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["file"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+    },
+}
+
 ALLOWED_HOSTS = []
 
 

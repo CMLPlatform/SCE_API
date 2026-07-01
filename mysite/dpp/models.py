@@ -59,6 +59,7 @@ CONVERSIONS = {
     'GJ': 1000 / 3.6,
 }
 
+
 ## Organizations and companies
 
 class Organization(models.Model):
@@ -253,7 +254,7 @@ class Flow(models.Model):
         """Returns a dict with the concentration of each hazardous material"""
         concentrations = defaultdict(float)
         try:
-            product_weight = self.properties.weight * CONVERSIONS[self.properties.weight_unit.unit]
+            product_weight = self.properties.weight * CONVERSIONS[self.properties.weight_unit]
         except ProductProperties.DoesNotExist:
             print(f"Weight of {self} unknown; cannot calculate concentration.")
         bom = self.get_composition()
@@ -283,7 +284,7 @@ class Flow(models.Model):
             Concentration.objects.update_or_create(
                 product=self, material=material, fraction=frac
             )
-        packaging = Material.objects.update_or_create(name='Total packaging material')
+        packaging = Material.objects.update_or_create(name='Total packaging material')[0]
         if hasattr(self, 'properties'):
             Concentration.objects.update_or_create(
                 product=self,
@@ -382,7 +383,7 @@ class ProductProperties(models.Model):
         if self.weight == 0:
             return 0
         package_weight = 0
-        for pack in self.produced_by.prod_exchanges.filter(type='pack'):
+        for pack in self.product.produced_by.prod_exchanges.filter(type='pack'):
             package_weight += pack.properties.weight * CONVERSIONS[pack.weight_unit]
         if self.includes_packaging:
             return package_weight / (self.weight - package_weight)
@@ -459,7 +460,7 @@ class ProductItem(models.Model):
         """
         created_items = []
         
-        for i, component in enumerate(self.components.all()):  #TODO: make this table
+        for i, component in enumerate(self.components.all()):
             component_serial = f"{self.serial_number}-C{i}"
             for j in range(component.amount):
                 # Generate unique serial number for each component
@@ -889,15 +890,20 @@ class Transport(models.Model):
     for inputs to a production line.
     """
     VEHICLES = {
-        'ocean': 'Ship (ocean)',
-        'NA': 'Unspecified',
+        "train": "Freight train",
+        "ocean ship": "Sea freight container ship",
+        "truck": "Lorry / truck, average",
+        "inland ship": "Inland waterway ship",
+        "airplane": "Aircraft",
+        "delivery van": "Light commercial vehicle (delivery van)",
+        "NA": "Unspecified",
     }
     production_line = models.ForeignKey(ProductionLine, on_delete=models.CASCADE, related_name='transport')
     product = models.ForeignKey(Flow, on_delete=models.CASCADE, related_name='transport')
     distance = models.PositiveSmallIntegerField("Transport distance (km)", default=0, validators=[MaxValueValidator(40000)])
-    mode = models.CharField("Main mode of transport", max_length=10, choices=VEHICLES, default='NA')
+    mode = models.CharField("Main mode of transport", max_length=12, choices=VEHICLES, default='NA')
     utilisation_ratio = models.FloatField(default=0.5, validators=FRACTION_VALIDATOR)
-    #TODO: if mode='car', calculate allocation factor as: min(1, prod.volume / 0.2 m3).
+    #NOTE: if mode='car', calculate allocation factor as: min(1, prod.volume / 0.2 m3).
 
     def __str__(self):
         return f"{self.distance} km by {self.VEHICLES[self.mode]}"
@@ -1199,7 +1205,7 @@ class SustainabilityScore(models.Model):
     scope_1_2_3 = models.FloatField("Scope 1+2+3 CO<sub>2</sub> emission", help_text="Total greenhouse gas emissions associated with the product over its lifecycle, expressed as kg CO<sub>2</sub> equivalents.")
 
     def __str__(self):
-        return f"{self.impact_value} {self.impact_indicator.unit} for {self.evaluation}"
+        return f"{self.impact_value:.3g} {self.impact_indicator.unit} for {self.evaluation}"
     
     def clean(self):
         if self.impact_indicator.is_environmental != self.evaluation.is_environmental:
@@ -1326,7 +1332,7 @@ class Publisher(models.Model):
         Args:
             start_step (int): Step (0-5) to start
         Returns:
-            bool: Whether the 
+            bool: Whether an error was encountered or not
         """
         self.error_message = ""
         if self.status + 1 < start_step:
@@ -1346,7 +1352,7 @@ class Publisher(models.Model):
                 else:
                     self.status = 1
                     self.save()
-                
+            
             # Step 2: Aggregate
             if start_step <= 2:
                 mp = pl.aggregate_production()
@@ -1372,7 +1378,7 @@ class Publisher(models.Model):
                 result = lca.create_supply_chain_lca(pl.final_product)
                 self.status = 5
                 self.save()
-            
+        
         except Exception as e:
             self.error_message = f"Error at step {self.status + 1}: {str(e)}"
         finally:

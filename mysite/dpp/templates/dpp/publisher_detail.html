@@ -77,7 +77,7 @@
 </div>
 
 <div class="bg-white shadow overflow-hidden sm:rounded-lg">
-    <div class="px-4 py-5 sm:px-6">
+    <div class="px-4 py-5">
         <h3 class="px-4 text-lg font-medium">Details</h3>
     </div>
     <div class="border-t border-gray-200">
@@ -96,5 +96,36 @@
         {% endfor %}
         </dl>
     </div>
+</div>
+
+<div class="bg-white shadow overflow-hidden">
+    <h3 class="font-semibold font-large">LCA results</h3>
+    <table class="table table-striped">
+        <thead>
+            <tr class="px-4 py-2">
+                <th>Assessment date</th>
+                <th>Assessed by</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for result in lca_results %}
+            <tr class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2">
+                <td>{{ result.assessment_date }}</td>
+                <td>{{ result.assessed_by }}</td>
+                <td>
+                    <a href="{% url 'dpp:sustainabilityevaluation_detail' result.pk %}"
+                        class="btn btn-sm btn-outline-primary">
+                        See results
+                    </a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="3">No LCA results available.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 </div>
 {% endblock %}
