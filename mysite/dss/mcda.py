@@ -53,7 +53,9 @@ def preference_difference(x_a: float, x_b: float, direction: str) -> float:
     For cost criteria:
         lower values are better, so difference = x_b - x_a
     """
-    if direction == "max":
+    if isinstance(direction, (int, float)):
+        return abs(x_b - direction) - abs(x_a - direction)
+    elif direction == "max":
         return x_a - x_b
     elif direction == "min":
         return x_b - x_a
@@ -107,18 +109,6 @@ def promethee_linear_preference(d: float, q: float, p: float) -> float:
     return (d - q) / (p - q)
 
 
-def disadvantage_difference(x_a: float, x_b: float, direction: str) -> float:
-    """
-    Returns a positive value when a is worse than b.
-    """
-    if direction == "max":
-        return x_b - x_a
-    elif direction == "min":
-        return x_a - x_b
-    else:
-        raise ValueError(f"Unknown direction: {direction}")
-
-
 def veto_is_triggered(
     a, b, df_current, directions_dict, veto_thresholds_dict
 ):
@@ -127,7 +117,8 @@ def veto_is_triggered(
     on at least one criterion with a veto threshold.
     """
     for c, v in veto_thresholds_dict.items():
-        disadvantage = disadvantage_difference(
+        # disadvantage is the inverse of preference
+        disadvantage = -preference_difference(
             df_current.loc[a, c],
             df_current.loc[b, c],
             directions_dict[c]
