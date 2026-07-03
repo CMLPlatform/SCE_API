@@ -3,6 +3,7 @@
 
 import pandas as pd
 import numpy as np
+from . import plot
 
 
 # ============================================================
@@ -165,6 +166,9 @@ def run_performance_uncertainty(
         columns=[f"rank_{r}" for r in range(1, n_alts + 1)],
         dtype=int
     )
+    outrank_counts = pd.DataFrame(
+        0, index=alts, columns=alts, dtype=int
+    )
 
     win_counts = pd.Series(0, index=alts, dtype=int)
 
@@ -197,8 +201,14 @@ def run_performance_uncertainty(
 
         win_counts[order[0]] += 1
 
+        for a in alts:
+            for b in alts:
+                if a != b and nfs[a] > nfs[b]:
+                    outrank_counts.loc[a, b] += 1
+
     rank_accept = rank_counts / n_samples
     win_prob = win_counts / n_samples
+    outrank_prob = outrank_counts / n_samples
 
     ranks = np.arange(1, n_alts + 1, dtype=float)
 
@@ -226,6 +236,7 @@ def run_performance_uncertainty(
         "rank_acceptability": rank_accept,
         "expected_rank": exp_rank,
         "win_probability": win_prob.sort_values(ascending=False),
+        "outrank_probability": outrank_prob,
         "mean_nfs": mean_nfs,
         "n_samples": n_samples,
         "simulations": sim_df
@@ -277,7 +288,7 @@ def get_fixed_weights(weight_mode, criteria, groups, group_weights, local_weight
     return weights
 
 
-def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, weights, penalty_factor):
+def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, veto_thresholds, weights, penalty_factor):
     """
     This function is applicable when:
         scenario = "deterministic"
@@ -317,7 +328,9 @@ def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_t
                     )
                 score += weights[c] * pref
 
-            if use_veto and veto_is_triggered(a, b):
+            if use_veto and veto_is_triggered(
+                a, b, df, directions, veto_thresholds
+            ):
                 if veto_type == "hard":
                     score = 0.0
                 elif veto_type == "soft":
@@ -342,7 +355,7 @@ def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_t
         "AGAINST (phi-)": phi_minus,
         "NFS (phi)": nfs
     }).sort_values("NFS (phi)", ascending=False)
-    return results, S
+    return results, {"S": S, "phi_plus": phi_plus, "phi_minus": phi_minus}
 
 
 # ============================================================
@@ -417,6 +430,21 @@ def get_active_constraints(
             for g, crits in groups.items()
         }
         active_local_order = local_order_constraints
+
+    elif sampling_mode == "bounded_ordered":
+        active_group_lb = group_lb
+        active_group_ub = group_ub
+        active_group_order = group_order_constraints
+
+        active_local_lb = local_lb
+        active_local_ub = local_ub
+        active_local_order = local_order_constraints
+
+    else:
+        raise ValueError(
+            "sampling_mode must be either "
+            "'random', 'bounded', 'ordered', or 'bounded_ordered'"
+        )
 
     return active_group_lb, active_group_ub, active_group_order, active_local_lb, active_local_ub, active_local_order
 
@@ -1109,18 +1137,20 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
     # ============================================================
 
     if analysis_type == "deterministic":
-        results, pairwise = deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, weights, penalty_factor)
+        results, intermediates = deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, weights, penalty_factor)
 
         pd.set_option("display.precision", 6)
         print("\n--- DETERMINISTIC SCENARIO ---")
         print("\nDecision matrix (numeric):")
         print(df)
         print("\nPairwise preference matrix S(a,b):")
-        print(pairwise)
+        print(intermediates["S"])
         print("\nPROMETHEE flows and NFS:")
         print(results)
         print("\nRanking (best to worst):")
         print(list(results.index))
+
+        plot.deterministic_promethee_figures(**intermediates)
 
     # ============================================================
     # CASE 2: PERFORMANCE UNCERTAINTY ANALYSIS
@@ -1170,6 +1200,8 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
 
         print("\nMean NFS:")
         print(perf_out["mean_nfs"])
+
+        plot.performance_uncertainty_figures(perf_out)
     
     # ============================================================
     # UNCERTAIN SCENARIO EXECUTION
@@ -1236,7 +1268,7 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
             alpha_local=1.0
         )
 
-        print("\n--- SMAA RESULTS (Scenario 2) ---")
+        print("\n--- SMAA SCENARIO ---")
         print(f"Samples used: {smaa_out['n_samples']}")
 
         print("\nWinning probabilities (P[rank=1]):")
@@ -1256,3 +1288,5 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
 
         print("\nPairwise outranking probabilities P(i outranks j) based on NFS:")
         print(smaa_out["outrank_probability"])
+
+        plot.smaa_figures(smaa_out)

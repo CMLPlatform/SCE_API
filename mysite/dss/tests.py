@@ -286,6 +286,9 @@ class McdaTest(TestCase):
     ordered:
         ordinal constraints and preference intensities are imposed,
         but specific lower/upper bounds are not imposed.
+    bounded_ordered:
+        lower/upper bounds and ordinal/intensity constraints are
+        imposed simultaneously.
     """
 
     weight_mode = "flat"

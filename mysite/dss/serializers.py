@@ -5,7 +5,7 @@ class McdaRequestSerializer(serializers.Serializer):
     WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
     METHOD_CHOICES = ["promethee", "promethee_like"]
     VETO_CHOICES = ["no", "soft", "hard"]
-    SAMPLING_CHOICES = ["random", "bounded", "ordered"]
+    SAMPLING_CHOICES = ["random", "bounded", "ordered", "bounded_ordered"]
 
     decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value},}
     directions = serializers.DictField()  # {"criterion": "min|max|<value>"}
