@@ -8,21 +8,26 @@ class McdaRequestSerializer(serializers.Serializer):
     SAMPLING_CHOICES = ["random", "bounded", "ordered", "bounded_ordered"]
 
     decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value},}
-    directions = serializers.DictField()  # {"criterion": "min|max|<value>"}
+    directions = serializers.DictField()  # {"criterion": "min"|"max"|value}
 
     scenario = serializers.ChoiceField(choices=SCENARIO_CHOICES)
     method = serializers.ChoiceField(choices=METHOD_CHOICES, default=METHOD_CHOICES[1])
-    weight_mode = serializers.ChoiceField(choices=WEIGHT_CHOICES, default=WEIGHT_CHOICES[0], required=False)  # Relevant if scenario=="deterministic"
+    weight_mode = serializers.ChoiceField(choices=WEIGHT_CHOICES, default=WEIGHT_CHOICES[0])
 
     groups = serializers.DictField(required=False)  # {"group": [criteria]}
     group_weights = serializers.DictField(required=False)  # {"group": weight}
+    local_weights = serializers.DictField(required=False)  # {"group": {"criterion": weight}}
 
     thresholds = serializers.DictField(required=False)  # Promethee parameters: {"criterion": (q, p)} or {"criterion": q}, where q=indifference, p=preference
-    veto_type = serializers.ChoiceField(choices=VETO_CHOICES, defaul="no")
-    veto_thesholds = serializers.DictField(required=False)  # {"criterion": value}
-    penalty_factor = serializers.FloatField(required=False, default=0.5)  # used if veto_type=="soft"
+    veto_type = serializers.ChoiceField(choices=VETO_CHOICES, default="no")
+    veto_thresholds = serializers.DictField(required=False)  # {"criterion": value}
+    penalty_factor = serializers.FloatField(default=0.5)  # used if veto_type=="soft"
 
-    sampling_mode = serializers.ChoiceField(SAMPLING_CHOICES, requred=False)
+    sampling_mode = serializers.ChoiceField(SAMPLING_CHOICES, required=False)
+    n_samples = serializers.IntegerField(required=False)
+    alpha = serializers.FloatField(required=False)
+    alpha_group = serializers.FloatField(required=False)
+    alpha_local = serializers.FloatField(required=False)
     group_lb = serializers.DictField(required=False)  # {"group": lower_bound}
     group_ub = serializers.DictField(required=False)  # {"group": upper_bound}
     group_order_constraints = serializers.ListField(required=False)  # [("group1", "group2", intensity)]

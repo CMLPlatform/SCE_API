@@ -1,9 +1,63 @@
 # Generated from: Promethee_Smaa.ipynb
 # Converted at: 2026-06-30
 
-import pandas as pd
+from dataclasses import dataclass
 import numpy as np
+import pandas as pd
+from typing import Literal, Optional
+
 from . import plot
+from .serializers import McdaRequestSerializer
+
+# Aliases for reused data structures
+Criteria = dict[str, float | tuple[float, float]]
+Bounds = dict[str, float]
+OrderConstraint = list[tuple[str, str, float]]
+
+@dataclass(slots=True)
+class WeightConstraints:
+    """
+    Class for storing weight costraints in terms of
+    upper and lower bounds for (groups of) criteria.
+    """
+    group_lb: Optional[Bounds]
+    group_ub: Optional[Bounds]
+    group_order: Optional[OrderConstraint]
+    local_lb: Optional[dict[str, Bounds]]
+    local_ub: Optional[dict[str, Bounds]]
+    local_order: Optional[dict[str, OrderConstraint]]
+
+@dataclass(slots=True)
+class McdaConfig:
+    # General
+    df = pd.DataFrame
+    # decision_matrix: dict[str, Criteria]
+    directions: dict[str, Literal["min", "max"] | float]
+    scenario: str
+    method: str
+    criteria: Optional[list[str]]
+
+    # Weighing and grouping
+    weight_mode: str = McdaRequestSerializer.WEIGHT_CHOICES[0]
+    groups: Optional[dict[str, list[str]]]
+    group_weights: Optional[dict[str, float]]
+    local_weights: Optional[dict[str, float]]
+
+    # PROMETHEE parameters
+    thresholds: Optional[Criteria]
+    veto_type: str = "no"
+    veto_thresholds: Optional[Bounds]
+    penalty_factor: float = 0.5
+
+    # Sampling
+    sampling_mode: Optional[str]
+    n_samples: int = 10000
+    alpha: float = 1.0
+    alpha_group: float = 1.0
+    alpha_local: float = 1.0
+
+    # Weight constraints
+    constraints: Optional[WeightConstraints]
 
 
 # ============================================================
@@ -129,19 +183,7 @@ def veto_is_triggered(
     return False
 
 
-def run_performance_uncertainty(
-    df,
-    directions_dict,
-    weights_dict,
-    n_samples=10000,
-    rng=None,
-    method="promethee_like",
-    thresholds_dict=None,
-    use_veto=False,
-    veto_thresholds_dict=None,
-    veto_type="hard",
-    penalty_factor=0.5
-):
+def run_performance_uncertainty(config: McdaConfig, rng=None):
     """
     Run a Monte Carlo analysis with uncertainty only on alternative
     performances.
@@ -157,7 +199,8 @@ def run_performance_uncertainty(
     if rng is None:
         rng = np.random.default_rng()
 
-    alts = df.index.tolist()
+    n_samples = config.n_samples
+    alts = config.df.index.tolist()
     n_alts = len(alts)
 
     rank_counts = pd.DataFrame(
@@ -176,18 +219,8 @@ def run_performance_uncertainty(
     rank_samples = {a: [] for a in alts}
 
     for s in range(n_samples):
-        current_df = sample_performance_matrix(df, rng)
-        nfs = promethee_nfs(
-            df=current_df,
-            directions_dict=directions_dict,
-            weights_dict=weights_dict,
-            method=method,
-            thresholds_dict=thresholds_dict,
-            use_veto=use_veto,
-            veto_thresholds_dict=veto_thresholds_dict,
-            veto_type=veto_type,
-            penalty_factor=penalty_factor
-        )
+        current_df = sample_performance_matrix(config.df, rng)
+        nfs = promethee_nfs(config, decision_matrix=current_df)
 
         order = nfs.sort_values(ascending=False).index.tolist()
         rank_map = {a: r for r, a in enumerate(order, start=1)}
@@ -238,7 +271,6 @@ def run_performance_uncertainty(
         "win_probability": win_prob.sort_values(ascending=False),
         "outrank_probability": outrank_prob,
         "mean_nfs": mean_nfs,
-        "n_samples": n_samples,
         "simulations": sim_df
     }
     
@@ -246,7 +278,7 @@ def run_performance_uncertainty(
 # ============================================================
 # FIXED CRITERION WEIGHTS
 # ============================================================
-def get_fixed_weights(weight_mode, criteria, groups, group_weights, local_weights):
+def set_fixed_weights(config: McdaConfig):
     """
     The dictionary `weights` contains the final weight assigned to
     each criterion.
@@ -266,29 +298,29 @@ def get_fixed_weights(weight_mode, criteria, groups, group_weights, local_weight
         where local weights are normalized within each group.
     """
 
-    if weight_mode == "flat":
-        weights = {c: 1 / len(criteria) for c in criteria}
+    if config.weight_mode == "flat":
+        weights = {c: 1 / len(config.criteria) for c in config.criteria}
 
-    elif weight_mode == "group":
+    elif config.weight_mode == "group":
         weights = {}
-        for g, crits in groups.items():
-            wg = group_weights[g]
+        for g, crits in config.groups.items():
+            wg = config.group_weights[g]
             for c in crits:
                 weights[c] = wg / len(crits)
 
-    elif weight_mode == "hierarchical":
+    elif config.weight_mode == "hierarchical":
         weights = {}
-        for g, crits in groups.items():
-            Wg = group_weights[g]
-            total_local = sum(local_weights[g].values())
+        for g, crits in config.groups.items():
+            Wg = config.group_weights[g]
+            total_local = sum(config.local_weights[g].values())
             for c in crits:
-                w_local = local_weights[g][c] / total_local
+                w_local = config.local_weights[g][c] / total_local
                 weights[c] = Wg * w_local
 
-    return weights
+    config.weights = weights
 
 
-def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, veto_thresholds, weights, penalty_factor):
+def deterministic_promethee(config: McdaConfig):
     """
     This function is applicable when:
         scenario = "deterministic"
@@ -300,8 +332,7 @@ def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_t
     - one PROMETHEE evaluation is performed;
     - the final output is a deterministic ranking.
     """
-    criteria = df.columns.tolist()
-    alts = df.index.tolist()
+    alts = config.df.index.tolist()
     S = pd.DataFrame(0.0, index=alts, columns=alts)
 
     for a in alts:
@@ -311,30 +342,30 @@ def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_t
 
             score = 0.0
 
-            for c in criteria:
+            for c in config.criteria:
                 d = preference_difference(
-                    df.loc[a, c], df.loc[b, c], directions[c]
+                    config.df.loc[a, c], config.df.loc[b, c], config.directions[c]
                 )
 
-                if method == "promethee_like":
-                    q = thresholds[c]
+                if config.method == "promethee_like":
+                    q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
-                elif method == "promethee":
-                    q, p = thresholds[c]
+                elif config.method == "promethee":
+                    q, p = config.thresholds[c]
                     pref = promethee_linear_preference(d, q, p)
                 else:
                     raise ValueError(
                         "method must be either 'promethee_like' or 'promethee'"
                     )
-                score += weights[c] * pref
+                score += config.weights[c] * pref
 
-            if use_veto and veto_is_triggered(
-                a, b, df, directions, veto_thresholds
+            if config.use_veto and veto_is_triggered(
+                a, b, config.df, config.directions, config.veto_thresholds
             ):
-                if veto_type == "hard":
+                if config.veto_type == "hard":
                     score = 0.0
-                elif veto_type == "soft":
-                    score *= penalty_factor
+                elif config.veto_type == "soft":
+                    score *= config.penalty_factor
                 else:
                     raise ValueError(
                         "veto_type must be either 'hard' or 'soft'"
@@ -355,15 +386,13 @@ def deterministic_promethee(df, directions, method, thresholds, use_veto, veto_t
         "AGAINST (phi-)": phi_minus,
         "NFS (phi)": nfs
     }).sort_values("NFS (phi)", ascending=False)
-    return results, {"S": S, "phi_plus": phi_plus, "phi_minus": phi_minus}
+    return results, S
 
 
 # ============================================================
 # ACTIVATE CONSTRAINTS ACCORDING TO SAMPLING MODE
 # ============================================================
-def get_active_constraints(
-        sampling_mode, groups, group_lb, group_ub, group_order_constraints, local_lb, local_ub, local_order_constraints,
-    ):
+def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     """
     This block translates the selected sampling_mode into the
     actual constraints used by the rejection sampler.
@@ -391,54 +420,46 @@ def get_active_constraints(
     - specific lower/upper bounds are not activated;
     - only natural simplex bounds 0 <= w <= 1 are used.
     """
+    groups = config.groups
+    active = WeightConstraints()
 
-    if sampling_mode == "random":
-        active_group_lb = {g: 0.0 for g in groups}
-        active_group_ub = {g: 1.0 for g in groups}
-        active_group_order = []
+    if config.sampling_mode == "random":
+        active.group_lb = {g: 0.0 for g in groups}
+        active.group_ub = {g: 1.0 for g in groups}
+        active.group_order = []
 
-        active_local_lb = {
+        active.local_lb = {
             g: {c: 0.0 for c in crits}
             for g, crits in groups.items()
         }
-        active_local_ub = {
+        active.local_ub = {
             g: {c: 1.0 for c in crits}
             for g, crits in groups.items()
         }
-        active_local_order = {g: [] for g in groups}
+        active.local_order = {g: [] for g in groups}
 
-    elif sampling_mode == "bounded":
-        active_group_lb = group_lb
-        active_group_ub = group_ub
-        active_group_order = []
+    elif config.sampling_mode == "bounded":
+        active = config.constraints
+        active.group_order = []
+        active.local_order = {g: [] for g in groups}
 
-        active_local_lb = local_lb
-        active_local_ub = local_ub
-        active_local_order = {g: [] for g in groups}
+    elif config.sampling_mode == "ordered":
+        active.group_lb = {g: 0.0 for g in groups}
+        active.group_ub = {g: 1.0 for g in groups}
+        active.group_order = config.constraints.group_order
 
-    elif sampling_mode == "ordered":
-        active_group_lb = {g: 0.0 for g in groups}
-        active_group_ub = {g: 1.0 for g in groups}
-        active_group_order = group_order_constraints
-
-        active_local_lb = {
+        active.local_lb = {
             g: {c: 0.0 for c in crits}
             for g, crits in groups.items()
         }
-        active_local_ub = {
+        active.local_ub = {
             g: {c: 1.0 for c in crits}
             for g, crits in groups.items()
         }
-        active_local_order = local_order_constraints
+        active.local_order = config.constraints.local_order
 
-    elif sampling_mode == "bounded_ordered":
-        active_group_lb = group_lb
-        active_group_ub = group_ub
-        active_group_order = group_order_constraints
-
-        active_local_lb = local_lb
-        active_local_ub = local_ub
-        active_local_order = local_order_constraints
+    elif config.sampling_mode == "bounded_ordered":
+        active = config.constraints
 
     else:
         raise ValueError(
@@ -446,13 +467,13 @@ def get_active_constraints(
             "'random', 'bounded', 'ordered', or 'bounded_ordered'"
         )
 
-    return active_group_lb, active_group_ub, active_group_order, active_local_lb, active_local_ub, active_local_order
+    return active
 
 
 def sample_weights_dirichlet_constrained(
     lb_dict,
     ub_dict,
-    order_cons=None,
+    order_cons=[],
     max_tries=100000,
     alpha=1.0,
     rng=None,
@@ -503,7 +524,6 @@ def sample_weights_dirichlet_constrained(
     ub_vec = np.array([ub_dict[x] for x in items], dtype=float)
 
     idx = {x: i for i, x in enumerate(items)}
-    order_cons = order_cons or []
 
     k = len(items)
     alpha_vec = np.full(k, alpha, dtype=float)
@@ -559,14 +579,7 @@ def sample_weights_dirichlet_constrained(
 
 def sample_hierarchical_weights(
     groups,
-
-    active_group_lb,
-    active_group_ub,
-    active_group_order,
-
-    active_local_lb,
-    active_local_ub,
-    active_local_order,
+    constraints,
 
     alpha_group=1.0,
     alpha_local=1.0,
@@ -611,9 +624,9 @@ def sample_hierarchical_weights(
 
     group_weights_sampled = sample_weights_dirichlet_constrained(
         items=groups.keys(),
-        lb_dict=active_group_lb,
-        ub_dict=active_group_ub,
-        order_cons=active_group_order,
+        lb_dict=constraints.group_lb,
+        ub_dict=constraints.group_ub,
+        order_cons=constraints.group_order,
         alpha=alpha_group,
         rng=rng,
         stats=sampler_stats,
@@ -626,9 +639,9 @@ def sample_hierarchical_weights(
 
         local_weights_sampled = sample_weights_dirichlet_constrained(
             items=crits,
-            lb_dict=active_local_lb[g],
-            ub_dict=active_local_ub[g],
-            order_cons=active_local_order[g],
+            lb_dict=constraints.local_lb[g],
+            ub_dict=constraints.local_ub[g],
+            order_cons=constraints.local_order[g],
             alpha=alpha_local,
             rng=rng,
             stats=sampler_stats,
@@ -641,27 +654,7 @@ def sample_hierarchical_weights(
     return final_weights
 
 
-def sample_smaa_weights(
-    criteria_list,
-
-    groups,
-    weight_mode,
-    sampling_mode,
-
-    group_lb,
-    group_ub,
-    group_order_constraints,
-    local_lb,
-    local_ub,
-    local_order_constraints,
-
-    alpha=1.0,
-    alpha_group=1.0,
-    alpha_local=1.0,
-
-    rng=None,
-    sampler_stats=None
-):
+def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     """
     Sample one criterion-weight vector according to the selected
     SMAA weight structure.
@@ -698,58 +691,49 @@ def sample_smaa_weights(
     final_weights : dict
         Dictionary mapping each final criterion to its sampled weight.
     """
-
     if rng is None:
         rng = np.random.default_rng()
 
-    active_group_lb, active_group_ub, active_group_order, active_local_lb, active_local_ub, active_local_order = get_active_constraints(sampling_mode, groups, group_lb, group_ub, group_order_constraints, local_lb, local_ub, local_order_constraints)
+    active_constr = get_active_constraints(config)
 
-    if weight_mode == "flat":
-        criterion_lb = {c: 0.0 for c in criteria_list}
-        criterion_ub = {c: 1.0 for c in criteria_list}
+    if config.weight_mode == "flat":
+        criterion_lb = {c: 0.0 for c in config.criteria}
+        criterion_ub = {c: 1.0 for c in config.criteria}
         final_weights = sample_weights_dirichlet_constrained(
-            items=criteria_list,
             lb_dict=criterion_lb,
             ub_dict=criterion_ub,
             order_cons=[],
-            alpha=alpha,
+            alpha=config.alpha,
             rng=rng,
             stats=sampler_stats,
             stats_key="flat_weights"
         )
         return final_weights
 
-    elif weight_mode == "group":
+    elif config.weight_mode == "group":
         group_weights_sampled = sample_weights_dirichlet_constrained(
-            lb_dict=active_group_lb,
-            ub_dict=active_group_ub,
-            order_cons=active_group_order,
-            alpha=alpha_group,
+            lb_dict=active_constr.group_lb,
+            ub_dict=active_constr.group_ub,
+            order_cons=active_constr.group_order,
+            alpha=config.alpha_group,
             rng=rng,
             stats=sampler_stats,
             stats_key="group_weights"
         )
 
         final_weights = {}
-        for g, crits in groups.items():
+        for g, crits in config.groups.items():
             for c in crits:
                 final_weights[c] = group_weights_sampled[g] / len(crits)
         return final_weights
 
-    elif weight_mode == "hierarchical":
+    elif config.weight_mode == "hierarchical":
         return sample_hierarchical_weights(
-            groups=groups,
+            groups=config.groups,
+            active_constr=config.constraints,
 
-            active_group_lb=active_group_lb,
-            active_group_ub=active_group_ub,
-            active_group_order=active_group_order,
-
-            active_local_lb=active_local_lb,
-            active_local_ub=active_local_ub,
-            active_local_order=active_local_order,
-
-            alpha_group=alpha_group,
-            alpha_local=alpha_local,
+            alpha_group=config.alpha_group,
+            alpha_local=config.alpha_local,
 
             sampler_stats=sampler_stats,
             rng=rng
@@ -765,17 +749,7 @@ def sample_smaa_weights(
 # PROMETHEE EVALUATION ENGINE
 # ============================================================
 
-def promethee_nfs(
-    df,
-    directions_dict,
-    weights_dict,
-    method="promethee_like",
-    thresholds_dict=None,
-    use_veto=False,
-    veto_thresholds_dict=None,
-    veto_type="hard",
-    penalty_factor=0.5
-):
+def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
     """
     Compute PROMETHEE net flow scores for a given decision matrix
     and a given criterion-weight vector.
@@ -815,11 +789,16 @@ def promethee_nfs(
     nfs : pandas.Series
         Net flow score for each alternative.
     """
-    alts = df.index.tolist()
+    # Fall-back to defaults for unspecified parameters
+    df = decision_matrix or config.df
+    method = config.method or "promethee_like"
+    config.use_veto = (config.veto_type != "no")
+    alts = config.df.index.tolist()
+
     S = pd.DataFrame(0.0, index=alts, columns=alts)
 
-    if use_veto and veto_thresholds_dict is None:
-        raise ValueError("veto_thresholds_dict must be provided when use_veto=True.")
+    if config.use_veto and config.veto_thresholds is None:
+        raise ValueError("veto_thresholds must be provided when use_veto=True.")
 
     for a in alts:
         for b in alts:
@@ -832,36 +811,34 @@ def promethee_nfs(
                 d = preference_difference(
                     df.loc[a, c],
                     df.loc[b, c],
-                    directions_dict[c]
+                    config.directions[c]
                 )
 
                 if method == "promethee_like":
-                    q = thresholds_dict[c]
+                    q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
 
                 elif method == "promethee":
-                    q, p = thresholds_dict[c]
+                    q, p = config.thresholds[c]
                     pref = promethee_linear_preference(d, q, p)
 
                 else:
                     raise ValueError("method must be either 'promethee_like' or 'promethee'.")
 
-                score += weights_dict[c] * pref
+                score += config.weights[c] * pref
 
             # Apply optional veto / penalty after aggregation
-            if use_veto and veto_is_triggered(
+            if config.use_veto and veto_is_triggered(
                 a=a,
                 b=b,
                 df=df,
-                directions_dict=directions_dict,
-                veto_thresholds_dict=veto_thresholds_dict
+                directions_dict=config.directions,
+                veto_thresholds_dict=config.veto_thresholds,
             ):
-                if veto_type == "hard":
+                if config.veto_type == "hard":
                     score = 0.0
-
-                elif veto_type == "soft":
-                    score *= penalty_factor
-
+                elif config.veto_type == "soft":
+                    score *= config.penalty_factor
                 else:
                     raise ValueError("veto_type must be either 'hard' or 'soft'.")
 
@@ -877,31 +854,7 @@ def promethee_nfs(
 # SMAA MONTE CARLO SIMULATION
 # ============================================================
 
-def run_smaa(
-    df,
-    directions_dict,
-    analysis_type="full_smaa",
-    n_samples=100000,
-    alpha=1.0,
-    rng=None,
-    method="promethee_like",
-    thresholds_dict=None,
-    use_veto=False,
-    veto_thresholds_dict=None,
-    veto_type="hard",
-    penalty_factor=0.5,
-    weight_mode="flat",
-    sampling_mode="random",
-    groups=None,
-    group_lb=None,
-    group_ub=None,
-    group_order_constraints=None,
-    local_lb=None,
-    local_ub=None,
-    local_order_constraints=None,
-    alpha_group=1.0,
-    alpha_local=1.0
-):
+def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
     """
     Run the SMAA Monte Carlo simulation.
 
@@ -946,7 +899,7 @@ def run_smaa(
     dict
         Dictionary containing SMAA outputs and diagnostic information.
     """
-    criteria_list = df.columns.tolist()
+
     if rng is None:
         rng = np.random.default_rng()
 
@@ -954,13 +907,13 @@ def run_smaa(
     # Since no group or local structure is used, this implementation
     # allows flat sampling only in the unconstrained random case.
 
-    if weight_mode == "flat" and sampling_mode != "random":
+    if config.weight_mode == "flat" and config.sampling_mode != "random":
         raise ValueError(
             "With weight_mode='flat', only sampling_mode='random' is supported. "
             "Use weight_mode='group' or weight_mode='hierarchical' for bounded or ordered sampling."
         )
 
-    alts = df.index.tolist()
+    alts = config.df.index.tolist()
     n_alts = len(alts)
 
     rank_counts = pd.DataFrame(
@@ -972,19 +925,19 @@ def run_smaa(
 
     win_counts = pd.Series(0, index=alts, dtype=int)
     outrank_counts = pd.DataFrame(0, index=alts, columns=alts, dtype=int)
-    weight_samples = {c: [] for c in criteria_list}
+    weight_samples = {c: [] for c in config.criteria}
 
     nfs_samples = {a: [] for a in alts}
     rank_samples = {a: [] for a in alts}
     accepted = 0
     sampler_stats = {}
 
-    for _ in range(n_samples):
+    for _ in range(config.n_samples):
         # Generate one realization of uncertainty
         if analysis_type == "smaa_weights":
-            current_df = df
+            current_df = config.df
         elif analysis_type == "full_smaa":
-            current_df = sample_performance_matrix(df, rng)
+            current_df = sample_performance_matrix(config.df, rng)
         else:
             raise ValueError(
                 "analysis_type must be either "
@@ -992,44 +945,13 @@ def run_smaa(
             )
 
         # Sample one feasible weight vector
-        w = sample_smaa_weights(
-            criteria_list=criteria_list,
+        w = sample_smaa_weights(config, sampler_stats, rng)
 
-            groups=groups,
-            weight_mode=weight_mode,
-
-            group_lb=group_lb,
-            group_ub=group_ub,
-            group_order_constraints=group_order_constraints,
-
-            local_lb=local_lb,
-            local_ub=local_ub,
-            local_order_constraints=local_order_constraints,
-
-            alpha=alpha,
-            alpha_group=alpha_group,
-            alpha_local=alpha_local,
-
-            rng=rng,
-            sampler_stats=sampler_stats
-        )
-
-        for c in criteria_list:
+        for c in config.criteria:
             weight_samples[c].append(w[c])
 
         # Evaluate alternatives using PROMETHEE
-        nfs = promethee_nfs(
-            df=current_df,
-            criteria_list=criteria_list,
-            directions_dict=directions_dict,
-            weights_dict=w,
-            method=method,
-            thresholds_dict=thresholds_dict,
-            use_veto=use_veto,
-            veto_thresholds_dict=veto_thresholds_dict,
-            veto_type=veto_type,
-            penalty_factor=penalty_factor
-        )
+        nfs = promethee_nfs(config, decision_matrix=current_df)
         # Convert NFS values into a ranking
         order = nfs.sort_values(ascending=False).index.tolist()
         rank_map = {a: r for r, a in enumerate(order, start=1)}
@@ -1062,7 +984,7 @@ def run_smaa(
     exp_rank = pd.Series(exp_rank, index=alts).sort_values()
 
     w_mean = pd.Series(
-        {c: float(np.mean(weight_samples[c])) for c in criteria_list}
+        {c: float(np.mean(weight_samples[c])) for c in config.criteria}
     ).sort_values(ascending=False)
 
     sim_rows = []
@@ -1103,25 +1025,26 @@ def run_smaa(
     }
 
 
-def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, local_weights, thresholds, veto_type, veto_thresholds, penalty_factor, sampling_mode, group_lb, group_ub, group_order_constraints, local_lb, local_ub, local_order_constraints):
+def mcda(config: McdaConfig):
     # ============================================================
     # UNCERTAINTY SETTINGS
     # ============================================================
     
     # Detect whether the decision matrix contains interval-valued performances.
     # If at least one cell is a tuple/list, performance uncertainty is activated.
-    performance_uncertainty = has_uncertain_performances(df)
-    use_veto = (veto_type!="no")
+    performance_uncertainty = has_uncertain_performances(config.df)
+    config.use_veto = (config.veto_type!="no")
+    config.criteria = list(config.directions.keys())
 
     # Select the actual analysis type.
-    if scenario == "deterministic":
-        weights = get_fixed_weights(weight_mode, list(directions.keys()), groups, group_weights, local_weights)
+    if config.scenario == "deterministic":
+        set_fixed_weights(config)
         if performance_uncertainty:
             analysis_type = "performance_uncertainty"
         else:
             analysis_type = "deterministic"
 
-    elif scenario == "uncertain":
+    elif config.scenario == "uncertain":
         if performance_uncertainty:
             analysis_type = "full_smaa"
         else:
@@ -1137,12 +1060,12 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
     # ============================================================
 
     if analysis_type == "deterministic":
-        results, intermediates = deterministic_promethee(df, directions, method, thresholds, use_veto, veto_type, weights, penalty_factor)
+        results, intermediates = deterministic_promethee(config)
 
         pd.set_option("display.precision", 6)
         print("\n--- DETERMINISTIC SCENARIO ---")
         print("\nDecision matrix (numeric):")
-        print(df)
+        print(config.df)
         print("\nPairwise preference matrix S(a,b):")
         print(intermediates["S"])
         print("\nPROMETHEE flows and NFS:")
@@ -1169,22 +1092,8 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
         """
 
     elif analysis_type == "performance_uncertainty":
-
         rng = np.random.default_rng(42)
-
-        perf_out = run_performance_uncertainty(
-            df=df,
-            directions_dict=directions,
-            weights_dict=weights,
-            n_samples=10000,
-            rng=rng,
-            method=method,
-            thresholds_dict=thresholds,
-            use_veto=use_veto,
-            veto_thresholds_dict=veto_thresholds,
-            veto_type=veto_type,
-            penalty_factor=penalty_factor
-        )
+        perf_out = run_performance_uncertainty(config, rng)
 
         print("\n--- PERFORMANCE UNCERTAINTY SCENARIO ---")
         print(f"Samples used: {perf_out['n_samples']}")
@@ -1227,46 +1136,9 @@ def mcda(df, directions, scenario, method, weight_mode, groups, group_weights, l
     - pairwise outranking probabilities.
     """
 
-    if scenario == "uncertain":
-        smaa_out = run_smaa(
-            df=df,
-            directions_dict=directions,
-            analysis_type=analysis_type,
-            n_samples=10000,
-
-            # General SMAA settings
-            alpha=1.0,
-            rng=rng,
-
-            # PROMETHEE settings
-            method=method,
-            thresholds_dict=thresholds,
-
-            # Veto settings
-            use_veto=use_veto,
-            veto_thresholds_dict=veto_thresholds,
-            veto_type=veto_type,
-            penalty_factor=penalty_factor,
-
-            # Weight structure settings
-            weight_mode=weight_mode,
-            sampling_mode=sampling_mode,
-
-            # Group-level settings
-            groups=groups,
-            group_lb=group_lb,
-            group_ub=group_ub,
-            group_order_constraints=group_order_constraints,
-
-            # Local criterion-level settings
-            local_lb=local_lb,
-            local_ub=local_ub,
-            local_order_constraints=local_order_constraints,
-
-            # Hierarchical sampling parameters
-            alpha_group=1.0,
-            alpha_local=1.0
-        )
+    if config.scenario == "uncertain":
+        rng = np.random.default_rng(42)
+        smaa_out = run_smaa(config, analysis_type=analysis_type, rng=rng)
 
         print("\n--- SMAA SCENARIO ---")
         print(f"Samples used: {smaa_out['n_samples']}")
