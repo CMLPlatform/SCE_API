@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 class McdaRequestSerializer(serializers.Serializer):
     SCENARIO_CHOICES = ["uncertain", "deterministic"]
-    WEIGHT_CHOICES = ["equal", "group", "hierarchical"]  #FIXME: seems there is another option: "flat"
+    WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
     METHOD_CHOICES = ["promethee", "promethee_like"]
     VETO_CHOICES = ["no", "soft", "hard"]
     SAMPLING_CHOICES = ["random", "bounded", "ordered"]
@@ -17,7 +17,7 @@ class McdaRequestSerializer(serializers.Serializer):
     groups = serializers.DictField(required=False)  # {"group": [criteria]}
     group_weights = serializers.DictField(required=False)  # {"group": weight}
 
-    thresholds = serializers.DictField(required=False)  # Promethee parameters: {"criterion": (q, p)} or {"criterion": q}, where q=indifference, p=preference  #TODO: tuple, requires change in Federica's code
+    thresholds = serializers.DictField(required=False)  # Promethee parameters: {"criterion": (q, p)} or {"criterion": q}, where q=indifference, p=preference
     veto_type = serializers.ChoiceField(choices=VETO_CHOICES, defaul="no")
     veto_thesholds = serializers.DictField(required=False)  # {"criterion": value}
     penalty_factor = serializers.FloatField(required=False, default=0.5)  # used if veto_type=="soft"

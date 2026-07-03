@@ -99,7 +99,7 @@ class McdaTest(TestCase):
     - performance_uncertainty
 
     Available options:
-    "equal": All final criteria receive the same weight.
+    "flat": All final criteria receive the same weight.
     "group": Group weights are fixed, and each group weight is distributed
             equally among the criteria belonging to that group.
     "hierarchical": Final criterion weights are obtained as:
@@ -107,7 +107,7 @@ class McdaTest(TestCase):
         This allows criteria within a group to have different relative importance.
     """
 
-    weight_mode = "equal"
+    weight_mode = "flat"
 
     # ============================================================
     # METHOD SELECTION
