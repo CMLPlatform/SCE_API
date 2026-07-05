@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # FIGURES FOR SHOWING THE RESULTS
 # ============================================================
 
-def deterministic_promethee_figures(S: pd.DataFrame, phi_plus: pd.Series, phi_minus: pd.Series):
+def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
     """Plot two figures for the deterministic PROMETHEE case
     """
     plt.rcParams.update({
@@ -22,8 +22,7 @@ def deterministic_promethee_figures(S: pd.DataFrame, phi_plus: pd.Series, phi_mi
     # ============================================================
 
     # Sort NFS values according to the final PROMETHEE ranking
-    nfs = phi_plus - phi_minus
-    sorted_nfs = nfs.sort_values(ascending=False)
+    sorted_nfs = results["NFS (phi)"].sort_values(ascending=False)
     alternatives = sorted_nfs.index
     nfs_values = sorted_nfs.values
 
@@ -66,10 +65,10 @@ def deterministic_promethee_figures(S: pd.DataFrame, phi_plus: pd.Series, phi_mi
     - AGAINST row, i.e. phi_minus
     """
     S_aug = S.copy()
-    S_aug["FOR"] = phi_plus
+    S_aug["FOR"] = results["FOR (phi+)"]
 
     against_row = pd.DataFrame(
-        [list(phi_minus) + [np.nan]],
+        [list(results["AGAINST (phi-)"]) + [np.nan]],
         columns=S_aug.columns,
         index=["AGAINST"]
     )

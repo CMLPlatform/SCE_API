@@ -183,101 +183,6 @@ def veto_is_triggered(
     return False
 
 
-def run_performance_uncertainty(config: McdaConfig, rng=None):
-    """
-    Run a Monte Carlo analysis with uncertainty only on alternative
-    performances.
-
-    In this analysis:
-        - criterion weights are fixed;
-        - performance values may be uncertain;
-        - uncertain performances are sampled from their intervals;
-        - PROMETHEE is applied to each sampled decision matrix;
-        - rank acceptability indices are computed from the simulated rankings.
-    """
-
-    if rng is None:
-        rng = np.random.default_rng()
-
-    n_samples = config.n_samples
-    alts = config.df.index.tolist()
-    n_alts = len(alts)
-
-    rank_counts = pd.DataFrame(
-        0,
-        index=alts,
-        columns=[f"rank_{r}" for r in range(1, n_alts + 1)],
-        dtype=int
-    )
-    outrank_counts = pd.DataFrame(
-        0, index=alts, columns=alts, dtype=int
-    )
-
-    win_counts = pd.Series(0, index=alts, dtype=int)
-
-    nfs_samples = {a: [] for a in alts}
-    rank_samples = {a: [] for a in alts}
-
-    for s in range(n_samples):
-        current_df = sample_performance_matrix(config.df, rng)
-        nfs = promethee_nfs(config, decision_matrix=current_df)
-
-        order = nfs.sort_values(ascending=False).index.tolist()
-        rank_map = {a: r for r, a in enumerate(order, start=1)}
-
-        for a in alts:
-            nfs_samples[a].append(float(nfs[a]))
-            rank_samples[a].append(rank_map[a])
-
-        for r, a in enumerate(order, start=1):
-            rank_counts.loc[a, f"rank_{r}"] += 1
-
-        win_counts[order[0]] += 1
-
-        for a in alts:
-            for b in alts:
-                if a != b and nfs[a] > nfs[b]:
-                    outrank_counts.loc[a, b] += 1
-
-    rank_accept = rank_counts / n_samples
-    win_prob = win_counts / n_samples
-    outrank_prob = outrank_counts / n_samples
-
-    ranks = np.arange(1, n_alts + 1, dtype=float)
-
-    exp_rank = (rank_accept.values * ranks).sum(axis=1)
-    exp_rank = pd.Series(exp_rank, index=alts).sort_values()
-
-    mean_nfs = pd.Series(
-        {a: float(np.mean(nfs_samples[a])) for a in alts}
-    ).sort_values(ascending=False)
-
-    sim_rows = []
-
-    for a in alts:
-        for i in range(n_samples):
-            sim_rows.append({
-                "Alternative": a,
-                "Simulation": i + 1,
-                "NFS": nfs_samples[a][i],
-                "Rank": rank_samples[a][i]
-            })
-
-    sim_df = pd.DataFrame(sim_rows)
-
-    return {
-        "rank_acceptability": rank_accept,
-        "expected_rank": exp_rank,
-        "win_probability": win_prob.sort_values(ascending=False),
-        "outrank_probability": outrank_prob,
-        "mean_nfs": mean_nfs,
-        "simulations": sim_df
-    }
-    
-
-# ============================================================
-# FIXED CRITERION WEIGHTS
-# ============================================================
 def set_fixed_weights(config: McdaConfig):
     """
     The dictionary `weights` contains the final weight assigned to
@@ -318,75 +223,6 @@ def set_fixed_weights(config: McdaConfig):
                 weights[c] = Wg * w_local
 
     config.weights = weights
-
-
-def deterministic_promethee(config: McdaConfig):
-    """
-    This function is applicable when:
-        scenario = "deterministic"
-    and the decision matrix does not contain interval-valued performances.
-
-    In this case:
-    - the decision matrix is fixed;
-    - the weights are fixed;
-    - one PROMETHEE evaluation is performed;
-    - the final output is a deterministic ranking.
-    """
-    alts = config.df.index.tolist()
-    S = pd.DataFrame(0.0, index=alts, columns=alts)
-
-    for a in alts:
-        for b in alts:
-            if a == b:
-                continue
-
-            score = 0.0
-
-            for c in config.criteria:
-                d = preference_difference(
-                    config.df.loc[a, c], config.df.loc[b, c], config.directions[c]
-                )
-
-                if config.method == "promethee_like":
-                    q = config.thresholds[c]
-                    pref = promethee_like_preference(d, q)
-                elif config.method == "promethee":
-                    q, p = config.thresholds[c]
-                    pref = promethee_linear_preference(d, q, p)
-                else:
-                    raise ValueError(
-                        "method must be either 'promethee_like' or 'promethee'"
-                    )
-                score += config.weights[c] * pref
-
-            if config.use_veto and veto_is_triggered(
-                a, b, config.df, config.directions, config.veto_thresholds
-            ):
-                if config.veto_type == "hard":
-                    score = 0.0
-                elif config.veto_type == "soft":
-                    score *= config.penalty_factor
-                else:
-                    raise ValueError(
-                        "veto_type must be either 'hard' or 'soft'"
-                    )
-
-            S.loc[a, b] = score
-
-    # ============================================================
-    # OUTRANKING FLOWS
-    # ============================================================
-
-    phi_plus = S.sum(axis=1)
-    phi_minus = S.sum(axis=0)
-    nfs = phi_plus - phi_minus
-
-    results = pd.DataFrame({
-        "FOR (phi+)": phi_plus,
-        "AGAINST (phi-)": phi_minus,
-        "NFS (phi)": nfs
-    }).sort_values("NFS (phi)", ascending=False)
-    return results, S
 
 
 # ============================================================
@@ -850,6 +686,166 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
 
     return nfs
 
+def deterministic_promethee(config: McdaConfig):
+    """
+    This function is applicable when:
+        scenario = "deterministic"
+    and the decision matrix does not contain interval-valued performances.
+
+    In this case:
+    - the decision matrix is fixed;
+    - the weights are fixed;
+    - one PROMETHEE evaluation is performed;
+    - the final output is a deterministic ranking.
+    """
+    alts = config.df.index.tolist()
+    S = pd.DataFrame(0.0, index=alts, columns=alts)
+
+    for a in alts:
+        for b in alts:
+            if a == b:
+                continue
+
+            score = 0.0
+
+            for c in config.criteria:
+                d = preference_difference(
+                    config.df.loc[a, c], config.df.loc[b, c], config.directions[c]
+                )
+
+                if config.method == "promethee_like":
+                    q = config.thresholds[c]
+                    pref = promethee_like_preference(d, q)
+                elif config.method == "promethee":
+                    q, p = config.thresholds[c]
+                    pref = promethee_linear_preference(d, q, p)
+                else:
+                    raise ValueError(
+                        "method must be either 'promethee_like' or 'promethee'"
+                    )
+                score += config.weights[c] * pref
+
+            if config.use_veto and veto_is_triggered(
+                a, b, config.df, config.directions, config.veto_thresholds
+            ):
+                if config.veto_type == "hard":
+                    score = 0.0
+                elif config.veto_type == "soft":
+                    score *= config.penalty_factor
+                else:
+                    raise ValueError(
+                        "veto_type must be either 'hard' or 'soft'"
+                    )
+
+            S.loc[a, b] = score
+
+    # ============================================================
+    # OUTRANKING FLOWS
+    # ============================================================
+
+    phi_plus = S.sum(axis=1)
+    phi_minus = S.sum(axis=0)
+    nfs = phi_plus - phi_minus
+
+    results = pd.DataFrame({
+        "FOR (phi+)": phi_plus,
+        "AGAINST (phi-)": phi_minus,
+        "NFS (phi)": nfs
+    }).sort_values("NFS (phi)", ascending=False)
+    return results, S
+
+def run_performance_uncertainty(config: McdaConfig, rng=None):
+    """
+    Run a Monte Carlo analysis with uncertainty only on alternative
+    performances.
+
+    In this analysis:
+        - criterion weights are fixed;
+        - performance values may be uncertain;
+        - uncertain performances are sampled from their intervals;
+        - PROMETHEE is applied to each sampled decision matrix;
+        - rank acceptability indices are computed from the simulated rankings.
+    """
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    n_samples = config.n_samples
+    alts = config.df.index.tolist()
+    n_alts = len(alts)
+
+    rank_counts = pd.DataFrame(
+        0,
+        index=alts,
+        columns=[f"rank_{r}" for r in range(1, n_alts + 1)],
+        dtype=int
+    )
+    outrank_counts = pd.DataFrame(
+        0, index=alts, columns=alts, dtype=int
+    )
+
+    win_counts = pd.Series(0, index=alts, dtype=int)
+
+    nfs_samples = {a: [] for a in alts}
+    rank_samples = {a: [] for a in alts}
+
+    for s in range(n_samples):
+        current_df = sample_performance_matrix(config.df, rng)
+        nfs = promethee_nfs(config, decision_matrix=current_df)
+
+        order = nfs.sort_values(ascending=False).index.tolist()
+        rank_map = {a: r for r, a in enumerate(order, start=1)}
+
+        for a in alts:
+            nfs_samples[a].append(float(nfs[a]))
+            rank_samples[a].append(rank_map[a])
+
+        for r, a in enumerate(order, start=1):
+            rank_counts.loc[a, f"rank_{r}"] += 1
+
+        win_counts[order[0]] += 1
+
+        for a in alts:
+            for b in alts:
+                if a != b and nfs[a] > nfs[b]:
+                    outrank_counts.loc[a, b] += 1
+
+    rank_accept = rank_counts / n_samples
+    win_prob = win_counts / n_samples
+    outrank_prob = outrank_counts / n_samples
+
+    ranks = np.arange(1, n_alts + 1, dtype=float)
+
+    exp_rank = (rank_accept.values * ranks).sum(axis=1)
+    exp_rank = pd.Series(exp_rank, index=alts).sort_values()
+
+    mean_nfs = pd.Series(
+        {a: float(np.mean(nfs_samples[a])) for a in alts}
+    ).sort_values(ascending=False)
+
+    sim_rows = []
+
+    for a in alts:
+        for i in range(n_samples):
+            sim_rows.append({
+                "Alternative": a,
+                "Simulation": i + 1,
+                "NFS": nfs_samples[a][i],
+                "Rank": rank_samples[a][i]
+            })
+
+    sim_df = pd.DataFrame(sim_rows)
+
+    return {
+        "rank_acceptability": rank_accept,
+        "expected_rank": exp_rank,
+        "win_probability": win_prob.sort_values(ascending=False),
+        "outrank_probability": outrank_prob,
+        "mean_nfs": mean_nfs,
+        "simulations": sim_df
+    }
+
+
 # ============================================================
 # SMAA MONTE CARLO SIMULATION
 # ============================================================
@@ -1060,20 +1056,20 @@ def mcda(config: McdaConfig):
     # ============================================================
 
     if analysis_type == "deterministic":
-        results, intermediates = deterministic_promethee(config)
+        results, pairwise = deterministic_promethee(config)
 
         pd.set_option("display.precision", 6)
         print("\n--- DETERMINISTIC SCENARIO ---")
         print("\nDecision matrix (numeric):")
         print(config.df)
         print("\nPairwise preference matrix S(a,b):")
-        print(intermediates["S"])
+        print(pairwise)
         print("\nPROMETHEE flows and NFS:")
         print(results)
         print("\nRanking (best to worst):")
         print(list(results.index))
 
-        plot.deterministic_promethee_figures(**intermediates)
+        plot.deterministic_promethee_figures(results, pairwise)
 
     # ============================================================
     # CASE 2: PERFORMANCE UNCERTAINTY ANALYSIS
@@ -1093,24 +1089,24 @@ def mcda(config: McdaConfig):
 
     elif analysis_type == "performance_uncertainty":
         rng = np.random.default_rng(42)
-        perf_out = run_performance_uncertainty(config, rng)
+        results = run_performance_uncertainty(config, rng)
 
         print("\n--- PERFORMANCE UNCERTAINTY SCENARIO ---")
-        print(f"Samples used: {perf_out['n_samples']}")
+        print(f"Samples used: {config.n_samples}")
 
         print("\nWinning probabilities (P[rank=1]):")
-        print(perf_out["win_probability"])
+        print(results["win_probability"])
 
         print("\nExpected rank (lower is better):")
-        print(perf_out["expected_rank"])
+        print(results["expected_rank"])
 
         print("\nRank acceptability indices b_{i,r}:")
-        print(perf_out["rank_acceptability"])
+        print(results["rank_acceptability"])
 
         print("\nMean NFS:")
-        print(perf_out["mean_nfs"])
+        print(results["mean_nfs"])
 
-        plot.performance_uncertainty_figures(perf_out)
+        plot.performance_uncertainty_figures(results)
     
     # ============================================================
     # UNCERTAIN SCENARIO EXECUTION
@@ -1138,27 +1134,27 @@ def mcda(config: McdaConfig):
 
     if config.scenario == "uncertain":
         rng = np.random.default_rng(42)
-        smaa_out = run_smaa(config, analysis_type=analysis_type, rng=rng)
+        results = run_smaa(config, analysis_type=analysis_type, rng=rng)
 
         print("\n--- SMAA SCENARIO ---")
-        print(f"Samples used: {smaa_out['n_samples']}")
+        print(f"Samples used: {results['n_samples']}")
 
         print("\nWinning probabilities (P[rank=1]):")
-        print(smaa_out["win_probability"])
+        print(results["win_probability"])
 
         print("\nExpected rank (lower is better):")
-        print(smaa_out["expected_rank"])
+        print(results["expected_rank"])
 
         print("\nRank acceptability indices b_{i,r}:")
-        print(smaa_out["rank_acceptability"])
+        print(results["rank_acceptability"])
 
         print("\nMean sampled weights (barycenter):")
-        print(smaa_out["mean_weights"])
+        print(results["mean_weights"])
 
         print("\nRejection sampling diagnostics:")
-        print(smaa_out["sampler_stats"])
+        print(results["sampler_stats"])
 
         print("\nPairwise outranking probabilities P(i outranks j) based on NFS:")
-        print(smaa_out["outrank_probability"])
+        print(results["outrank_probability"])
 
-        plot.smaa_figures(smaa_out)
+        plot.smaa_figures(results)
