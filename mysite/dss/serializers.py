@@ -2,8 +2,8 @@ from rest_framework import serializers
 
 class McdaRequestSerializer(serializers.Serializer):
     SCENARIO_CHOICES = ["uncertain", "deterministic"]
-    WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
     METHOD_CHOICES = ["promethee", "promethee_like"]
+    WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
     VETO_CHOICES = ["no", "soft", "hard"]
     SAMPLING_CHOICES = ["random", "bounded", "ordered", "bounded_ordered"]
 
@@ -23,7 +23,7 @@ class McdaRequestSerializer(serializers.Serializer):
     veto_thresholds = serializers.DictField(required=False)  # {"criterion": value}
     penalty_factor = serializers.FloatField(default=0.5)  # used if veto_type=="soft"
 
-    sampling_mode = serializers.ChoiceField(SAMPLING_CHOICES, required=False)
+    sampling_mode = serializers.ChoiceField(SAMPLING_CHOICES, required=False)  # If weight_mode=="flat", this must be "random"
     n_samples = serializers.IntegerField(required=False)
     alpha = serializers.FloatField(required=False)
     alpha_group = serializers.FloatField(required=False)
@@ -105,10 +105,10 @@ class IndicatorScoresSerializer(serializers.Serializer):
     score = serializers.FloatField()
 
 class ExperimentRankingSerializer(serializers.Serializer):
-    experiment_id = serializers.IntField()
-    rank = serializers.IntField()
-    score = serializers.IntField()
+    experiment_id = serializers.IntegerField()
+    rank = serializers.IntegerField()
+    score = serializers.IntegerField()
     indicators = IndicatorScoresSerializer
 
 class McdaResponseSerializer(serializers.Serializer):
-    experiment_ranking = serializers.ListField(ExperimentRankingSerializer)
+    experiment_ranking = serializers.ListField(child=ExperimentRankingSerializer())

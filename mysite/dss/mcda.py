@@ -20,44 +20,46 @@ class WeightConstraints:
     Class for storing weight costraints in terms of
     upper and lower bounds for (groups of) criteria.
     """
-    group_lb: Optional[Bounds]
-    group_ub: Optional[Bounds]
-    group_order: Optional[OrderConstraint]
-    local_lb: Optional[dict[str, Bounds]]
-    local_ub: Optional[dict[str, Bounds]]
-    local_order: Optional[dict[str, OrderConstraint]]
+    group_lb: Optional[Bounds] = None
+    group_ub: Optional[Bounds] = None
+    group_order: Optional[OrderConstraint] = None
+    local_lb: Optional[dict[str, Bounds]] = None
+    local_ub: Optional[dict[str, Bounds]] = None
+    local_order: Optional[dict[str, OrderConstraint]] = None
 
 @dataclass(slots=True)
 class McdaConfig:
     # General
-    df = pd.DataFrame
+    df: pd.DataFrame
     # decision_matrix: dict[str, Criteria]
     directions: dict[str, Literal["min", "max"] | float]
     scenario: str
     method: str
-    criteria: Optional[list[str]]
+    criteria: Optional[list[str]] = None  # automatically created
 
     # Weighing and grouping
     weight_mode: str = McdaRequestSerializer.WEIGHT_CHOICES[0]
-    groups: Optional[dict[str, list[str]]]
-    group_weights: Optional[dict[str, float]]
-    local_weights: Optional[dict[str, float]]
+    groups: Optional[dict[str, list[str]]] = None
+    group_weights: Optional[dict[str, float]] = None
+    local_weights: Optional[dict[str, float]] = None
+    _weights: Optional[dict[str, float]] = None
 
     # PROMETHEE parameters
-    thresholds: Optional[Criteria]
+    thresholds: Optional[Criteria] = None
     veto_type: str = "no"
-    veto_thresholds: Optional[Bounds]
+    _use_veto: bool = False
+    veto_thresholds: Optional[Bounds] = None
     penalty_factor: float = 0.5
 
     # Sampling
-    sampling_mode: Optional[str]
+    sampling_mode: Optional[str] = None
     n_samples: int = 10000
     alpha: float = 1.0
     alpha_group: float = 1.0
     alpha_local: float = 1.0
 
     # Weight constraints
-    constraints: Optional[WeightConstraints]
+    constraints: Optional[WeightConstraints] = None
 
 
 # ============================================================
@@ -222,7 +224,7 @@ def set_fixed_weights(config: McdaConfig):
                 w_local = config.local_weights[g][c] / total_local
                 weights[c] = Wg * w_local
 
-    config.weights = weights
+    config._weights = weights
 
 
 # ============================================================
@@ -459,7 +461,6 @@ def sample_hierarchical_weights(
         rng = np.random.default_rng()
 
     group_weights_sampled = sample_weights_dirichlet_constrained(
-        items=groups.keys(),
         lb_dict=constraints.group_lb,
         ub_dict=constraints.group_ub,
         order_cons=constraints.group_order,
@@ -474,7 +475,6 @@ def sample_hierarchical_weights(
     for g, crits in groups.items():
 
         local_weights_sampled = sample_weights_dirichlet_constrained(
-            items=crits,
             lb_dict=constraints.local_lb[g],
             ub_dict=constraints.local_ub[g],
             order_cons=constraints.local_order[g],
@@ -566,13 +566,11 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     elif config.weight_mode == "hierarchical":
         return sample_hierarchical_weights(
             groups=config.groups,
-            active_constr=config.constraints,
-
+            constraints=config.constraints,
             alpha_group=config.alpha_group,
             alpha_local=config.alpha_local,
-
+            rng=rng,
             sampler_stats=sampler_stats,
-            rng=rng
         )
 
     else:
@@ -626,14 +624,14 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
         Net flow score for each alternative.
     """
     # Fall-back to defaults for unspecified parameters
-    df = decision_matrix or config.df
+    df = decision_matrix if decision_matrix is not None else config.df
     method = config.method or "promethee_like"
-    config.use_veto = (config.veto_type != "no")
+    config._use_veto = (config.veto_type != "no")
     alts = config.df.index.tolist()
 
     S = pd.DataFrame(0.0, index=alts, columns=alts)
 
-    if config.use_veto and config.veto_thresholds is None:
+    if config._use_veto and config.veto_thresholds is None:
         raise ValueError("veto_thresholds must be provided when use_veto=True.")
 
     for a in alts:
@@ -653,18 +651,16 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
                 if method == "promethee_like":
                     q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
-
                 elif method == "promethee":
                     q, p = config.thresholds[c]
                     pref = promethee_linear_preference(d, q, p)
-
                 else:
                     raise ValueError("method must be either 'promethee_like' or 'promethee'.")
 
-                score += config.weights[c] * pref
+                score += config._weights[c] * pref
 
             # Apply optional veto / penalty after aggregation
-            if config.use_veto and veto_is_triggered(
+            if config._use_veto and veto_is_triggered(
                 a=a,
                 b=b,
                 df=df,
@@ -717,15 +713,17 @@ def deterministic_promethee(config: McdaConfig):
                     q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
                 elif config.method == "promethee":
+                    if isinstance(config.thresholds[c], (float, int)):
+                        print(config.method, c, config.thresholds[c])
                     q, p = config.thresholds[c]
                     pref = promethee_linear_preference(d, q, p)
                 else:
                     raise ValueError(
                         "method must be either 'promethee_like' or 'promethee'"
                     )
-                score += config.weights[c] * pref
+                score += config._weights[c] * pref
 
-            if config.use_veto and veto_is_triggered(
+            if config._use_veto and veto_is_triggered(
                 a, b, config.df, config.directions, config.veto_thresholds
             ):
                 if config.veto_type == "hard":
@@ -1029,12 +1027,17 @@ def mcda(config: McdaConfig):
     # Detect whether the decision matrix contains interval-valued performances.
     # If at least one cell is a tuple/list, performance uncertainty is activated.
     performance_uncertainty = has_uncertain_performances(config.df)
-    config.use_veto = (config.veto_type!="no")
+    config._use_veto = (config.veto_type!="no")
     config.criteria = list(config.directions.keys())
+    set_fixed_weights(config)
+
+    if config.method == "promethee_like":  # Try to fix if thresholds has tuples
+        for c, val in config.thresholds.items():
+            if not isinstance(val, float):
+                config.thresholds[c] = sum(val)/len(val)
 
     # Select the actual analysis type.
     if config.scenario == "deterministic":
-        set_fixed_weights(config)
         if performance_uncertainty:
             analysis_type = "performance_uncertainty"
         else:
