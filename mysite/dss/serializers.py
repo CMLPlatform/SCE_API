@@ -1,4 +1,63 @@
 from rest_framework import serializers
+from .models import Criterion, CritGroup, GroupOrder, LocalOrder
+
+# Serializers for input data (API requests)
+#TODO: configure https://github.com/vbabiy/djangorestframework-camel-case
+
+class ConsumableSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    flowRate = serializers.FloatField()
+    unit = serializers.CharField()
+
+class KpiSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    value = serializers.FloatField()
+    target = serializers.CharField()  # Can be "min", "max", or a float value
+
+class ExperimentSerializer(serializers.Serializer):
+    experimentId = serializers.IntegerField()
+    weldLength = serializers.FloatField()
+    weldSpeed = serializers.FloatField()
+    country = serializers.CharField()
+    laserPowerkW = serializers.FloatField()
+    weldingStationPowerkW = serializers.FloatField()
+    consumables = ConsumableSerializer(many=True)
+    qualityParameters = KpiSerializer(many=True)
+
+class ExperimentComparisonSerializer(serializers.ListSerializer):
+    child = ExperimentSerializer()
+
+    def validate(self, data):
+        """
+        Validate that all experiments in the list have the same set of quality parameter names.
+        """
+        if not data:
+            return data
+
+        # Collect all quality parameter names from the first experiment
+        first_experiment = data[0]
+        first_kpis = {
+            qp['name'] for qp in first_experiment['qualityParameters']
+        }
+
+        # Check all other experiments
+        for i, experiment in enumerate(data[1:], start=1):
+            current_kpis = {
+                qp['name'] for qp in experiment['qualityParameters']
+            }
+            if current_kpis != first_kpis:
+                raise serializers.ValidationError(
+                    f"Experiment {experiment['experimentId']} has different "
+                    "quality parameters than the first experiment. Expected: "
+                    f"{first_kpis}, Got: {current_kpis}"
+                )
+
+        # Check ID uniqueness
+        ids = set([exp["experimentId"] for exp in data])
+        if len(ids) != len(data):
+            raise serializers.ValidationError("Duplicate experiment IDs found")
+
+        return data
 
 class McdaRequestSerializer(serializers.Serializer):
     SCENARIO_CHOICES = ["uncertain", "deterministic"]
@@ -7,7 +66,7 @@ class McdaRequestSerializer(serializers.Serializer):
     VETO_CHOICES = ["no", "soft", "hard"]
     SAMPLING_CHOICES = ["random", "bounded", "ordered", "bounded_ordered"]
 
-    decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value},}
+    decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value|(min, max)},}
     directions = serializers.DictField()  # {"criterion": "min"|"max"|value}
 
     scenario = serializers.ChoiceField(choices=SCENARIO_CHOICES)
@@ -49,6 +108,12 @@ class McdaRequestSerializer(serializers.Serializer):
                 "Criteria found in matrix but missing from directions:"
                 f"{missing}"
             )
+        # Check direction values
+        for dir in data["directions"].values():
+            if not isinstance(dir, (str, int, float)):
+                raise serializers.ValidationError(f"Wrong data in directions: {dir}")
+            elif isinstance(dir, str) and dir not in ["min", "max"]:
+                raise serializers.ValidationError(f"Expected 'min' or 'max', received: {dir}")
         # All criteria must belong to a group
         if data["groups"]:
             grouped_criteria = set()
@@ -100,6 +165,30 @@ class McdaRequestSerializer(serializers.Serializer):
         
         return data
 
+# Serializers for output data
+
+class GroupOrderSerializer(serializers.ModelSerializer):
+    group1_name = serializers.CharField(source='group1.name')
+    group2_name = serializers.CharField(source='group2.name')
+
+    class Meta:
+        model = GroupOrder
+        fields = ['group1_name', 'group2_name', 'intensity']
+
+    def to_representation(self, instance):
+        return (instance.group1.name, instance.group2.name, instance.intensity)
+
+class LocalOrderSerializer(serializers.ModelSerializer):
+    criterion1_name = serializers.CharField(source='criterion1.name')
+    criterion2_name = serializers.CharField(source='criterion2.name')
+
+    class Meta:
+        model = GroupOrder
+        fields = ['criterion1_name', 'criterion2_name', 'intensity']
+
+    def to_representation(self, instance):
+        return (instance.criterion1.name, instance.criterion2.name, instance.intensity)
+
 class IndicatorScoresSerializer(serializers.Serializer):
     indicator = serializers.CharField()
     score = serializers.FloatField()
@@ -110,5 +199,5 @@ class ExperimentRankingSerializer(serializers.Serializer):
     score = serializers.IntegerField()
     indicators = IndicatorScoresSerializer
 
-class McdaResponseSerializer(serializers.Serializer):
+class McdaResultSerializer(serializers.Serializer):
     experiment_ranking = serializers.ListField(child=ExperimentRankingSerializer())

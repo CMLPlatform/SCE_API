@@ -7,45 +7,41 @@ import pandas as pd
 from typing import Literal, Optional
 
 from . import plot
-from .serializers import McdaRequestSerializer
 
 # Aliases for reused data structures
-Criteria = dict[str, float | tuple[float, float]]
+RangeDict = dict[str, float | tuple[float, float]]
 Bounds = dict[str, float]
 OrderConstraint = list[tuple[str, str, float]]
 
 @dataclass(slots=True)
 class WeightConstraints:
     """
-    Class for storing weight costraints in terms of
-    upper and lower bounds for (groups of) criteria.
+    Class for storing weights of groups and/or criteria within groups.
+    Weight can be a single value or a range.
+    The ordering of groups or criteria can also be specified.
     """
-    group_lb: Optional[Bounds] = None
-    group_ub: Optional[Bounds] = None
+    group: Optional[RangeDict] = None
     group_order: Optional[OrderConstraint] = None
-    local_lb: Optional[dict[str, Bounds]] = None
-    local_ub: Optional[dict[str, Bounds]] = None
+    local: Optional[RangeDict] = None
     local_order: Optional[dict[str, OrderConstraint]] = None
 
 @dataclass(slots=True)
 class McdaConfig:
     # General
     df: pd.DataFrame
-    # decision_matrix: dict[str, Criteria]
+    # decision_matrix: dict[str, RangeDict]
     directions: dict[str, Literal["min", "max"] | float]
     scenario: str
     method: str
     criteria: Optional[list[str]] = None  # automatically created
 
     # Weighing and grouping
-    weight_mode: str = McdaRequestSerializer.WEIGHT_CHOICES[0]
+    weight_mode: str = "flat"
     groups: Optional[dict[str, list[str]]] = None
-    group_weights: Optional[dict[str, float]] = None
-    local_weights: Optional[dict[str, float]] = None
     _weights: Optional[dict[str, float]] = None
 
     # PROMETHEE parameters
-    thresholds: Optional[Criteria] = None
+    thresholds: Optional[RangeDict] = None
     veto_type: str = "no"
     _use_veto: bool = False
     veto_thresholds: Optional[Bounds] = None
@@ -211,14 +207,14 @@ def set_fixed_weights(config: McdaConfig):
     elif config.weight_mode == "group":
         weights = {}
         for g, crits in config.groups.items():
-            wg = config.group_weights[g]
+            wg = config.constraints.group[g]
             for c in crits:
                 weights[c] = wg / len(crits)
 
     elif config.weight_mode == "hierarchical":
         weights = {}
         for g, crits in config.groups.items():
-            Wg = config.group_weights[g]
+            Wg = config.constraints.group[g]
             total_local = sum(config.local_weights[g].values())
             for c in crits:
                 w_local = config.local_weights[g][c] / total_local
@@ -530,12 +526,10 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     if rng is None:
         rng = np.random.default_rng()
 
-    active_constr = get_active_constraints(config)
-
     if config.weight_mode == "flat":
         criterion_lb = {c: 0.0 for c in config.criteria}
         criterion_ub = {c: 1.0 for c in config.criteria}
-        final_weights = sample_weights_dirichlet_constrained(
+        config._weights = sample_weights_dirichlet_constrained(
             lb_dict=criterion_lb,
             ub_dict=criterion_ub,
             order_cons=[],
@@ -544,9 +538,9 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
             stats=sampler_stats,
             stats_key="flat_weights"
         )
-        return final_weights
 
     elif config.weight_mode == "group":
+        active_constr = get_active_constraints(config)
         group_weights_sampled = sample_weights_dirichlet_constrained(
             lb_dict=active_constr.group_lb,
             ub_dict=active_constr.group_ub,
@@ -561,10 +555,10 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
         for g, crits in config.groups.items():
             for c in crits:
                 final_weights[c] = group_weights_sampled[g] / len(crits)
-        return final_weights
+        config._weights = final_weights
 
     elif config.weight_mode == "hierarchical":
-        return sample_hierarchical_weights(
+        config._weights = sample_hierarchical_weights(
             groups=config.groups,
             constraints=config.constraints,
             alpha_group=config.alpha_group,
@@ -626,7 +620,6 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
     # Fall-back to defaults for unspecified parameters
     df = decision_matrix if decision_matrix is not None else config.df
     method = config.method or "promethee_like"
-    config._use_veto = (config.veto_type != "no")
     alts = config.df.index.tolist()
 
     S = pd.DataFrame(0.0, index=alts, columns=alts)
@@ -874,6 +867,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
            random  -> no specific constraints
            bounded -> lower/upper bounds
            ordered -> ordinal and intensity constraints
+           bounded_ordered -> bounds + constraints
 
     3) Evaluate alternatives using PROMETHEE
        -------------------------------------
@@ -939,10 +933,10 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
             )
 
         # Sample one feasible weight vector
-        w = sample_smaa_weights(config, sampler_stats, rng)
+        sample_smaa_weights(config, sampler_stats, rng)
 
         for c in config.criteria:
-            weight_samples[c].append(w[c])
+            weight_samples[c].append(config._weights[c])
 
         # Evaluate alternatives using PROMETHEE
         nfs = promethee_nfs(config, decision_matrix=current_df)
@@ -1067,12 +1061,12 @@ def mcda(config: McdaConfig):
         print(config.df)
         print("\nPairwise preference matrix S(a,b):")
         print(pairwise)
-        print("\nPROMETHEE flows and NFS:")
+        print("\nPROMETHEE flows and Net Flow Scores:")
         print(results)
         print("\nRanking (best to worst):")
         print(list(results.index))
 
-        plot.deterministic_promethee_figures(results, pairwise)
+        # plot.deterministic_promethee_figures(results, pairwise)
 
     # ============================================================
     # CASE 2: PERFORMANCE UNCERTAINTY ANALYSIS
@@ -1109,7 +1103,7 @@ def mcda(config: McdaConfig):
         print("\nMean NFS:")
         print(results["mean_nfs"])
 
-        plot.performance_uncertainty_figures(results)
+        # plot.performance_uncertainty_figures(results)
     
     # ============================================================
     # UNCERTAIN SCENARIO EXECUTION
@@ -1160,4 +1154,4 @@ def mcda(config: McdaConfig):
         print("\nPairwise outranking probabilities P(i outranks j) based on NFS:")
         print(results["outrank_probability"])
 
-        plot.smaa_figures(results)
+        # plot.smaa_figures(results)

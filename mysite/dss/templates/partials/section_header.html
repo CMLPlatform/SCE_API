@@ -1,0 +1,13 @@
+{% comment %}
+  Partial: section_header.html
+  Variables:
+    title  — section title
+    hint   — one-line explanation shown below the title
+{% endcomment %}
+<div class="flex items-baseline gap-3 mb-4">
+  <h2 class="text-base font-semibold text-slate-100">{{ title }}</h2>
+  <span class="h-px flex-1 bg-slate-800"></span>
+</div>
+{% if hint %}
+  <p class="text-xs text-slate-400 mb-4">{{ hint }}</p>
+{% endif %}

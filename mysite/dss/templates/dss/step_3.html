@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Step 3 — Sampling settings{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-100 font-sans">
+
+  {# ── Progress bar ── #}
+  <div class="fixed top-0 inset-x-0 z-50 h-1 bg-slate-800">
+    <div class="h-full bg-indigo-500 transition-all duration-500" style="width: 66%"></div>
+  </div>
+
+  <div class="max-w-2xl mx-auto px-6 py-16">
+
+    {# ── Header ── #}
+    <div class="mb-10">
+      <p class="text-xs font-semibold tracking-widest text-indigo-400 uppercase mb-2">Step 3 of 3</p>
+      <h1 class="text-3xl font-bold tracking-tight text-white">Sampling settings</h1>
+      <p class="mt-2 text-slate-400 text-sm">
+        To assess the effect of uncertain parameters, sampling and uncertainty parameters
+        are configured here.
+      </p>
+    </div>
+
+    {# ── Session context pills ── #}
+    <div class="flex flex-wrap gap-2 mb-10">
+      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        Decision data: <strong class="text-slate-100">{{ session.get_scenario_display }}</strong>
+      </span>
+      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        Method: <strong class="text-slate-100">{{ session.get_method_display }}</strong>
+      </span>
+      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        Weights: <strong class="text-slate-100">{{ session.get_weight_mode_display }}</strong>
+      </span>
+      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        Veto: <strong class="text-slate-100">{{ session.get_veto_type_display }}</strong>
+      </span>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+
+      {# ── Non-field errors ── #}
+      {% if form.non_field_errors %}
+        <div class="mb-6 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-sm text-red-300">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% include "partials/section_header.html" with title="Sampling parameters" hint="All values must be positive." %}
+
+      {{ form.as_p }}
+
+      {% include "partials/section_header.html" with title="Ordering constraints" hint="Ordering the importance of groups or criteria relative to each other." %}
+      {% if group_order_formset %}
+      {{ group_order_formset.management_form }}
+      <table>
+          <thead class="text-white"><tr>
+            <th>Superior Group</th><th>Inferior Group</th><th>Intensity</th><th>Remove</th>
+          </tr></thead>
+          <tbody>
+          {% for row in group_order_formset %}
+              <tr>
+              <td>{{ row.group1 }}</td>
+              <td>{{ row.group2 }}</td>
+              <td>{{ row.intensity }}</td>
+              <td>{{ row.DELETE }}</td>
+              </tr>
+          {% endfor %}
+          </tbody>
+      </table>
+      <button type="button"
+              data-add-row="group-order-rows"
+              data-prefix="{{ group_order_formset.prefix }}"
+              class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
+                      border border-dashed border-slate-600 px-3 py-1.5 text-xs
+                      text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+              viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add constraint
+      </button>
+      {% endif %}
+
+      {% if local_order_formset %}
+      {{ local_order_formset.management_form }}
+      <table>
+          <thead class="text-white"><tr>
+            <th>Superior Criterion</th><th>Inferior Criterion</th><th>Intensity</th><th>Remove</th>
+          </tr></thead>
+          <tbody>
+          {% for row in local_order_formset %}
+              <tr>
+              <td>{{ row.criterion1 }}</td>
+              <td>{{ row.criterion2 }}</td>
+              <td>{{ row.intensity }}</td>
+              <td>{{ row.DELETE }}</td>
+              </tr>
+          {% endfor %}
+          </tbody>
+      </table>
+      <button type="button"
+              data-add-row="local-order-rows"
+              data-prefix="{{ local_order_formset.prefix }}"
+              class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
+                      border border-dashed border-slate-600 px-3 py-1.5 text-xs
+                      text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+              viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add constraint
+      </button>
+      {% endif %}
+
+      {# ── Navigation ── #}
+      <div class="mt-10 flex items-center justify-between">
+        <a href="{% url 'wizard' session_id=session.id step=2 %}"
+            class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back
+        </a>
+        <button type="submit"
+          class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500
+                  px-6 py-3 text-sm font-semibold text-white transition-colors
+                  focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2
+                  focus:ring-offset-slate-950">
+          See results
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+
+<script>
+// Function to add a new formset row, connected to 'add-row-btn'
+document.querySelectorAll(".add-row-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const containerId = btn.dataset.addRow;
+    const prefix      = btn.dataset.prefix;
+    const container   = document.getElementById(containerId);
+    const rows        = container.querySelectorAll(".formset-row");
+    const totalInput  = document.querySelector(`#id_${prefix}-TOTAL_FORMS`);
+
+    const newIndex = parseInt(totalInput.value, 10);  // current total = index of next form
+
+    // Clone the last existing row (which is the empty extra form Django always adds)
+    const lastRow  = rows[rows.length - 1];
+    const newRow   = lastRow.cloneNode(true);
+
+    // Update id / name / for attributes: replace -<oldIndex>- with -<newIndex>-
+    const oldIndex = newIndex - 1;
+    const reAttr   = (attr) => attr.replace(
+      new RegExp(`(${prefix}-)${oldIndex}(-|$)`, "g"),
+      `$1${newIndex}$2`
+    );
+
+    newRow.querySelectorAll("[id]").forEach(el => {
+      el.id = reAttr(el.id);
+    });
+    newRow.querySelectorAll("[name]").forEach(el => {
+      el.name = reAttr(el.name);
+    });
+    newRow.querySelectorAll("label[for]").forEach(el => {
+      el.htmlFor = reAttr(el.htmlFor);
+    });
+
+    // Clear values in the clone so it starts blank
+    newRow.querySelectorAll("input:not([type=checkbox]):not([type=hidden])").forEach(el => {
+      el.value = "";
+    });
+    newRow.querySelectorAll("select").forEach(el => {
+      el.selectedIndex = 0;
+    });
+    newRow.querySelectorAll("input[type=checkbox]").forEach(el => {
+      el.checked = false;
+    });
+
+    // Remove any leftover error messages from the cloned row
+    newRow.querySelectorAll("p.text-red-400").forEach(el => el.remove());
+
+    // Wire up the × delete button on the new row
+    wireDeleteButton(newRow);
+
+    container.appendChild(newRow);
+
+    // Tell Django there is one more form
+    totalInput.value = newIndex + 1;
+  });
+});
+
+</script>
+{% endblock %}
