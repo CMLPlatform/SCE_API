@@ -187,18 +187,11 @@ class McdaTest(TestCase):
         """
         # ============================================================
 
-        group_lb = {
-            "CRM": 0.10,
-            "Circularity": 0.10,
-            "Environmental": 0.20,
-            "Manufacturer": 0.05
-        }
-
-        group_ub = {
-            "CRM": 0.40,
-            "Circularity": 0.40,
-            "Environmental": 0.60,
-            "Manufacturer": 0.25
+        group_bounds = {
+            "CRM": (0.10,0.40),
+            "Circularity": (0.10,0.40),
+            "Environmental": (0.20,0.60),
+            "Manufacturer": (0.05,0.25),
         }
 
         group_order_constraints = [
@@ -221,7 +214,7 @@ class McdaTest(TestCase):
             sum_{j in G_g} w_{j|g} = 1
 
         In the hierarchical model, the final global criterion weight is:
-            w_j = W_g * w_{j|g}
+            w_j = W_g × w_{j|g}
 
         where:
             W_g       = sampled group weight
@@ -239,58 +232,32 @@ class McdaTest(TestCase):
         or as:
         ("A", "B", intensity)
         meaning:
-            w_A >= intensity * w_B
+            w_A >= intensity × w_B
         """
 
-        local_lb = {
+        local_bounds = {
             "CRM": {
-                "Ni concentration (%)": 0.10,
-                "Li concentration (%)": 0.05,
-                "Mg concentration (%)": 0.05,
-                "Ti concentration (%)": 0.05,
-                "Cu concentration (%)": 0.10,
+                "Ni concentration (%)": (0.10,0.40),
+                "Li concentration (%)": (0.05,0.30),
+                "Mg concentration (%)": (0.05,0.25),
+                "Ti concentration (%)": (0.05,0.25),
+                "Cu concentration (%)": (0.10,0.40),
             },
             "Circularity": {
-                "Recycled input (kg/kg)": 0.40,
-                "Waste output (kg/kg)": 0.20,
+                "Recycled input (kg/kg)": (0.40,0.80),
+                "Waste output (kg/kg)": (0.20,0.60),
             },
             "Environmental": {
-                "Climate change (GWP100)": 0.15,
-                "Acidification (AE)": 0.05,
-                "Eutrophication Freshwater (P)": 0.05,
-                "Particulate Matter (human health)": 0.05,
-                "LandUse (soil quality index)": 0.05,
-                "WaterUse (m³ world eq deprived)": 0.10,
-                "Ionising radiation (kBq U-235 eq)": 0.05,
+                "Climate change (GWP100)": (0.15,0.35),
+                "Acidification (AE)": (0.05,0.20),
+                "Eutrophication Freshwater (P)": (0.05,0.20),
+                "Particulate Matter (human health)": (0.05,0.20),
+                "LandUse (soil quality index)": (0.05,0.20),
+                "WaterUse (m³ world eq deprived)": (0.10,0.30),
+                "Ionising radiation (kBq U-235 eq)": (0.05,0.20),
             },
             "Manufacturer": {
-                "Operator": 1.00,
-            }
-        }
-
-        local_ub = {
-            "CRM": {
-                "Ni concentration (%)": 0.40,
-                "Li concentration (%)": 0.30,
-                "Mg concentration (%)": 0.25,
-                "Ti concentration (%)": 0.25,
-                "Cu concentration (%)": 0.40,
-            },
-            "Circularity": {
-                "Recycled input (kg/kg)": 0.80,
-                "Waste output (kg/kg)": 0.60,
-            },
-            "Environmental": {
-                "Climate change (GWP100)": 0.35,
-                "Acidification (AE)": 0.20,
-                "Eutrophication Freshwater (P)": 0.20,
-                "Particulate Matter (human health)": 0.20,
-                "LandUse (soil quality index)": 0.20,
-                "WaterUse (m³ world eq deprived)": 0.30,
-                "Ionising radiation (kBq U-235 eq)": 0.20,
-            },
-            "Manufacturer": {
-                "Operator": 1.00,
+                "Operator": (1.00,1.00),
             }
         }
 
@@ -316,7 +283,8 @@ class McdaTest(TestCase):
         }
 
         constraints = WeightConstraints(
-            group_lb, group_ub, group_order_constraints, local_lb, local_ub, local_order_constraints
+            group_bounds, group_order_constraints,
+            local_bounds, local_order_constraints,
         )
 
         # ============================================================
@@ -349,8 +317,6 @@ class McdaTest(TestCase):
                 method=settings[1],
                 weight_mode=settings[2],
                 groups=groups,
-                group_weights=group_weights,
-                local_weights=local_weights,
                 thresholds=thresholds,
                 veto_type=settings[3],
                 veto_thresholds=veto_thresholds,
@@ -404,7 +370,7 @@ class Explanations():
     "group": Group weights are fixed, and each group weight is distributed
             equally among the criteria belonging to that group.
     "hierarchical": Final criterion weights are obtained as:
-                    final weight = group weight x local criterion weight
+                    final weight = group weight × local criterion weight
         This allows criteria within a group to have different relative importance.
     """
 
@@ -473,7 +439,7 @@ class Explanations():
     3) hierarchical
     Both group-level weights and local within-group weights
     are sampled.
-        w_j = W_g * w_{j|g}
+        w_j = W_g × w_{j|g}
     This allows criteria in the same group to have different
     local importance.
 

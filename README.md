@@ -349,3 +349,89 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
     'update_interval': 'A',
 }
 ```
+
+# Decision Support System manual
+The Sustainability and Cost Module features a Decision Support System (DSS) that can be accessed through an API. It is specifically designed for supporting decisions in laser welding. The DSS has a user interface to guide you through the process of setting decision preferences. 
+
+## API access
+To receive decision support for comparing different laser welding parameters, send a post request to [main-domain.com/dss/experiments/]. The request should contain a list of experiments with the following structure:
+```JSON
+[
+  {
+    "experimentId": 12,
+    "weldLength": 29,
+    "weldSpeed": 100,
+    "country": "DE",
+    "laserPowerkW": 4,
+    "weldingStationPowerkW": 12,
+    "consumables": [
+      {
+        "name": "Nitrogen",
+        "flowRate": 15.2,
+        "unit": "m3/h"
+      },
+      {
+        "name": "Argon",
+        "flowRate": 6,
+        "unit": "m3/h"
+      },
+      {
+        "name": "Aluminium (filler wire)",
+        "flowRate": 0.02,
+        "unit": "kg/h"
+      }
+    ],
+    "qualityParameters": [
+      {
+        "name": "Porosity",
+        "value": 3.2,
+        "target": "min"
+      },
+      {
+        "name": "Tensile strength",
+        "value": 0.18,
+        "target": "max"
+      },
+      {
+        "name": "Weld depth",
+        "value": 3,
+        "target": 3.5
+      }
+    ]
+  }
+]
+```
+
+
+## Criteria calculations
+
+Calculations for deriving the KPIs used as decision criteria in the DSS, for the Process Developer. These calculations are implemented in the function calculate_kpis, in script views.py.
+- Amount of shielding gas = gas flow rate × processing time
+- Amount of filler wire = filler wire use rate × processing time
+- Consumables costs = Σ amount × price (for all consumables)
+- Labour costs = processing time × 3 × wages (in the specific country)
+- Process energy use = processing time × (laser power + welding station power)
+- Energy costs = process energy use × electricity price (in the specific country)
+- Operating costs = consumables costs + labour costs + energy costs
+- Consumables footprint = Σ amount × material carbon footprint (for all consumables)
+- Process carbon footprint = consumables footprint + process energy use × electricity footprint (in the specific country)
+- The technical quality indicators are directly used without calculations.
+
+Calculations for deriving KPIs for the Key Account Manager. This is not implemented yet (July 2026).
+- Amount of shielding gas = gas flow rate × processing time
+- Amount of filler wire = filler wire use rate × processing time
+- Consumables costs = Σ amount × price (for all consumables)
+- Labour costs = cycle time × 3 × wages (in the specific country)
+- Process energy use = processing time × laser power + cycle time × welding station power
+- Energy costs = process energy use × electricity price (in the specific country)
+- Operating costs = consumables costs + labour costs + energy costs + maintenance costs
+- Materials costs = Σ material weight × material price / (1 – scrap rate) (for all parts)
+- Service life = 15 years (fixed value)
+- Annual production = 240 days/year × 16 hours/day × 3600 seconds/hour / cycle time
+- Amortized CAPEX = investment costs / (service life × annual production)
+- Total production costs = operating costs + materials costs + amortized CAPEX
+- Consumables footprint = Σ amount × material carbon footprint (for all consumables)
+- Process carbon footprint = consumables footprint + process energy use × electricity footprint (in the specific country)
+- Materials footprint = Σ material weight × material carbon footprint / (1 – scrap rate) (for all parts)
+- Product carbon footprint = process carbon footprint + materials footprint
+- The remaining KPIs are directly used without calculations: recyclability, process monitoring, process automation level, operator specialization level, production lead time, machine saturation, technical quality indicators.

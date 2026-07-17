@@ -208,6 +208,8 @@ def set_fixed_weights(config: McdaConfig):
         weights = {}
         for g, crits in config.groups.items():
             wg = config.constraints.group[g]
+            if isinstance(wg, (list, tuple)):
+                wg = sum(wg)
             for c in crits:
                 weights[c] = wg / len(crits)
 
@@ -215,9 +217,11 @@ def set_fixed_weights(config: McdaConfig):
         weights = {}
         for g, crits in config.groups.items():
             Wg = config.constraints.group[g]
-            total_local = sum(config.local_weights[g].values())
+            if isinstance(Wg, (list, tuple)):
+                Wg = sum(Wg)
+            total_local = sum(config.constraints.local[g].values())
             for c in crits:
-                w_local = config.local_weights[g][c] / total_local
+                w_local = config.constraints.local[g][c] / total_local
                 weights[c] = Wg * w_local
 
     config._weights = weights
@@ -331,7 +335,7 @@ def sample_weights_dirichlet_constrained(
         w_more >= w_less
 
     3) Optional preference intensity constraints:
-        w_more >= intensity * w_less
+        w_more >= intensity × w_less
 
     Notes
     -----
@@ -444,7 +448,7 @@ def sample_hierarchical_weights(
     Final global weights
     --------------------
     The final criterion weight is obtained as:
-        w_j = W_g * w_{j|g}
+        w_j = W_g × w_{j|g}
     where criterion j belongs to group g.
 
     The optional sampler_stats object stores rejection sampling
@@ -513,7 +517,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
 
     3) hierarchical
        Group weights and local within-group weights are both sampled:
-           w_j = W_g * w_{j|g}
+           w_j = W_g × w_{j|g}
 
        This is the most flexible structured model, because it allows
        both group-level and criterion-level uncertainty.
@@ -584,7 +588,7 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
 
     For each ordered pair of alternatives (a,b), the function computes
     an aggregated preference score:
-        S(a,b) = sum_j w_j * P_j(a,b)
+        S(a,b) = sum_j w_j ×  P_j(a,b)
 
     where:
         w_j       = criterion weight
