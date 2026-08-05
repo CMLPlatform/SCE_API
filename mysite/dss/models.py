@@ -35,9 +35,9 @@ def validate_number_or_range(value):
 class McdaSession(models.Model):
     """Ties the whole flow together. Tracks where the user is in the decision tree."""
     class Status(models.TextChoices):
-        PENDING   = "pending"    # request received, forms not started
+        PENDING     = "pending"      # request received, forms not started
         IN_PROGRESS = "in_progress"  # user is in the form wizard
-        COMPLETE  = "complete"   # mcda() has run
+        COMPLETE    = "complete"     # mcda() has run
 
     class Scenario(models.TextChoices):
         DETERMINISTIC = "deterministic"
@@ -65,6 +65,7 @@ class McdaSession(models.Model):
 
     status      = models.CharField(max_length=11, choices=Status, default=Status.PENDING)
     created_at  = models.DateTimeField(auto_now_add=True)
+    user_type   = models.CharField(max_length=3, choices={"pd": "Process developer", "kam": "Key account manager"}, null=True)
 
     # Form 1 - always present
     scenario    = models.CharField(max_length=15, choices=Scenario, null=True)
@@ -88,6 +89,10 @@ class McdaSession(models.Model):
     group_order = models.JSONField(null=True)  # [[group1, group2, float], ...]
     local_order = models.JSONField(null=True)  # [[criterion1, criterion2, float], ...]
 
+    @property
+    def criteria(self):
+        return self.all_criteria.filter(used=True)
+
     def init_criteria_n_groups(self):
         """Create all criteria and groups needed for the MCDA.
         Some criteria and all groups are pre-defined.
@@ -103,11 +108,12 @@ class McdaSession(models.Model):
         Criterion(session=self, name="Operating costs", group=cost, direction="min").save()
         Criterion(session=self, name="Process energy use", group=sust, direction="min").save()
         Criterion(session=self, name="Process carbon footprint", group=sust, direction="min").save()
-        
+        #TODO: if self.user_type == self.UserType.KAM:
+        # Add more groups and criteria
     
     def build_config(self) -> McdaConfig:
         import pandas as pd
-        criteria = list(self.criteria.all())
+        criteria = list(self.criteria)
         criterion_names = [c.name for c in criteria]
         criterion_names.sort()
 
@@ -170,8 +176,9 @@ class Criterion(models.Model):
     """One row per criterion. Partially populated from the request,
     completed during the form wizard.
     """
-    session = models.ForeignKey(McdaSession, on_delete=models.CASCADE,
-                                related_name="criteria")
+    session  = models.ForeignKey(McdaSession, on_delete=models.CASCADE,
+                                 related_name="all_criteria")
+    used = models.BooleanField(default=True)
     name      = models.CharField(max_length=40) # e.g. "price"
     group     = models.ForeignKey(CritGroup, on_delete=models.SET_NULL, blank=True, null=True, related_name="criteria")
     direction = models.CharField(max_length=10, blank=True, validators=[validate_direction], help_text="Enter 'min', 'max' or a target value")

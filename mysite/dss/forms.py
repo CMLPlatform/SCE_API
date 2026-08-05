@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
-from .models import McdaSession, GroupOrder, LocalOrder
+from .models import McdaSession, Criterion, CritGroup, GroupOrder, LocalOrder
 
 
 # ------------------------------------------------------------------
@@ -69,6 +69,56 @@ class OrderingEntryField(forms.Field):
         except ValueError:
             raise forms.ValidationError("Format must be 'A, B, intensity'.")
 
+# ------------------------------------------------------------------
+# Form 0: criteria selection (always shown)
+# ------------------------------------------------------------------
+
+class KpiSelectionForm(forms.Form):
+    def __init__(self, session, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.groups = (
+            CritGroup.objects.filter(session=session).prefetch_related("criteria")
+        )
+
+        for group in self.groups:
+            criteria = group.criteria.all()
+            field_name = f"group_{group.pk}"
+
+            # Group checkbox
+            self.fields[field_name] = forms.BooleanField(
+                required=False,
+                initial=all(c.used for c in criteria),
+                label=group.name,
+            )
+            group.field = self[field_name]
+
+            # Criterion checkboxes
+            for criterion in criteria:
+                field_name = f"criterion_{criterion.pk}"
+                self.fields[field_name] = (
+                    forms.BooleanField(
+                        required=False,
+                        initial=criterion.used,
+                        label=criterion.name,
+                    )
+                )
+                criterion.field = self[field_name]
+
+    def save(self, *args):
+        criteria = []
+
+        for name, value in self.cleaned_data.items():
+            if name.startswith("criterion_"):
+                pk = int(name.split("_")[1])
+                criteria.append((pk, value))
+
+        criterion_map = Criterion.objects.in_bulk(pk for pk, _ in criteria)
+        for pk, used in criteria:
+            criterion = criterion_map[pk]
+            criterion.used = used
+
+        Criterion.objects.bulk_update(criterion_map.values(), ["used"])
 
 # ------------------------------------------------------------------
 # Form 1: basic settings (always shown)

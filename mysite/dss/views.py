@@ -9,7 +9,7 @@ from rest_framework import status
 from .serializers import ExperimentComparisonSerializer, McdaRequestSerializer, McdaResultSerializer
 from .mcda import mcda, McdaConfig, WeightConstraints
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup
-from .forms import BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
+from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
 
 # wages, electricity carbon intensity, electricity price
 country_data = pd.read_csv("init_data/country_data.csv", index_col="country")
@@ -176,14 +176,16 @@ class ExperimentComparisonInitView(APIView):
 
         session = calculate_kpis(serializer.validated_data)
 
-        return redirect(reverse("wizard", kwargs={"session_id":session.id, "step":1}))
+        return redirect(
+            reverse("wizard", kwargs={"session_id": session.id, "step": 0})
+        )
         return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
 
 class McdaWizardView(View):
     def _next_step(self, current_step: int, session: McdaSession) -> int | None:
         """Decision tree: select the next form"""
-        if current_step == 1:
-            return 2  # Form 2 is always shown (thresholds are always required)
+        if current_step < 2:  # Form 0 and 1 are always shown
+            return current_step + 1
         if current_step == 2:
             if session.scenario != "deterministic":
                 return 3
@@ -215,7 +217,9 @@ class McdaWizardView(View):
     
     def get_form(self, step: int, session: McdaSession, data=None):
         """Returns the right form for the current step."""
-        if step == 1:
+        if step == 0:
+            return KpiSelectionForm(session, data)
+        elif step == 1:
             return BaseConfigForm(data)
         elif step == 2:
             return WeightsThresholdsForm(session, data)
@@ -223,7 +227,9 @@ class McdaWizardView(View):
             return SamplingConfigForm(session, data)
 
     def get_context(self, step: int, session: McdaSession, **kwargs):
-        if step == 1:
+        if step == 0:
+            context = {"groups": kwargs["form"].groups}
+        elif step == 1:
             context = step1_context()
         elif step == 2:
             context = step2_context(session)
