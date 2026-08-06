@@ -26,7 +26,7 @@
       {% for group in groups %}
       <fieldset class="text-white py-2">
         <legend class="font-semibold">
-          <!--{{ group.field }}--> {{ group.name }}
+          {# {{ group.field }} #} {{ group.name }}
         </legend>
 
         <ul>
@@ -38,6 +38,32 @@
         </ul>
       </fieldset>
       {% endfor %}
+
+      {% if form.value_rows %}
+      {% include "partials/section_header.html" with title="Missing values" hint="Please provide any missing values (for selected KPIs)." %}
+
+      <table class="text-white">
+        <thead>
+          <tr>
+            <th>Criterion</th>
+            {% for alternative in form.alternatives %}
+            <th>{{ alternative.name }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in form.value_rows %}
+          <tr>
+            <td>{{ row.criterion.name }}</td>
+          {% for cell in row.cells %}
+            <td>{% if cell %}{{ cell }}{% endif %}</td>
+          {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
 
       {# ── Submit ── #}
       <div class="mt-10 flex justify-end">

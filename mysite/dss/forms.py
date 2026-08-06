@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
-from .models import McdaSession, Criterion, CritGroup, GroupOrder, LocalOrder
+from .models import McdaSession, Criterion, CritGroup, GroupOrder, LocalOrder, DecisionMatrix
 
 
 # ------------------------------------------------------------------
@@ -74,7 +74,7 @@ class OrderingEntryField(forms.Field):
 # ------------------------------------------------------------------
 
 class KpiSelectionForm(forms.Form):
-    def __init__(self, session, *args, **kwargs):
+    def __init__(self, session: McdaSession, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.groups = (
@@ -105,6 +105,26 @@ class KpiSelectionForm(forms.Form):
                 )
                 criterion.field = self[field_name]
 
+        # Find KPI values that are missing in the input
+        self.alternatives = session.alternatives.all()
+        self.value_rows = []
+
+        for criterion in session.criteria:
+            row = {"criterion": criterion, "cells": []}
+            has_missing = False
+
+            for alternative in self.alternatives:
+                if criterion.name in alternative.values:
+                    row["cells"].append(None)
+                else:
+                    has_missing = True
+                    field_name = (f"value_{criterion.pk}_{alternative.pk}")
+                    self.fields[field_name] = forms.FloatField()
+                    row["cells"].append(self[field_name])
+
+            if has_missing:
+                self.value_rows.append(row)
+
     def save(self, *args):
         criteria = []
 
@@ -119,6 +139,21 @@ class KpiSelectionForm(forms.Form):
             criterion.used = used
 
         Criterion.objects.bulk_update(criterion_map.values(), ["used"])
+
+        # Add newly provided KPI values to DecisionMatrix.values
+        alternatives = {alt.pk: alt for alt in self.session.alternatives.all()}
+
+        for name, value in self.cleaned_data.items():
+            if not name.startswith("value_"):
+                continue
+
+            _, criterion_id, alternative_id = name.split("_")
+            alternative = alternatives[int(alternative_id)]
+            criterion = Criterion.objects.get(pk=int(criterion_id))
+            alternative.values[criterion.name] = value
+
+        # Save the changes made to all alternative.values
+        DecisionMatrix.objects.bulk_update(alternatives.values(), ["values"])
 
 # ------------------------------------------------------------------
 # Form 1: basic settings (always shown)

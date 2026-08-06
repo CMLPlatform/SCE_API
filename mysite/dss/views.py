@@ -43,11 +43,10 @@ def calculate_kpis(valid_data: list) -> McdaSession:
     session = McdaSession.objects.create()
     quality_group = create_default_criteria(session)
     for kpi in valid_data[0]["qualityParameters"]:
-        if not Criterion.objects.filter(name=kpi["name"]).exists():
-            Criterion.objects.create(
-                session=session, name=kpi["name"],
-                group=quality_group, direction=kpi["target"],
-            )
+        Criterion.objects.create(
+            session=session, name=kpi["name"],
+            group=quality_group, direction=kpi["target"],
+        )
     
     # Extract data from all experiments
     for exp in valid_data:
@@ -93,8 +92,9 @@ def calculate_kpis(valid_data: list) -> McdaSession:
         }
         for kpi in exp["qualityParameters"]:
             kpi_dict[kpi["name"]] = kpi["value"]
+        name = "Experiment #" + str(exp["experimentId"])
         DecisionMatrix.objects.create(
-            session=session, name=exp["experimentId"], values=kpi_dict
+            session=session, name=name, values=kpi_dict
         )
     return session
 
@@ -140,8 +140,7 @@ def step2_context(session) -> dict:
     """
     Dynamic context for step 2 — depends on session choices.
     """
-    criteria = session.criteria.all()
-    directions = {crit.name: crit.direction for crit in criteria}
+    directions = {crit.name: crit.direction for crit in session.criteria}
     group_names = list(session.groups.values_list("name", flat=True))
 
     threshold_hint = (
