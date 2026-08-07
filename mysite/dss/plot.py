@@ -357,20 +357,21 @@ def smaa_figures(smaa_out: dict):
 
     # ============================================================
     # FIGURE 2: PAIRWISE OUTRANKING PROBABILITIES
-    #           WITH EXPECTED RANK
+    #           WITH EXPECTED RANK AND MEAN NET FLOW
     # ============================================================
 
     outrank_prob = smaa_out["outrank_probability"].copy()
     expected_rank = smaa_out["expected_rank"].copy()
+    mean_net_flows = smaa_out["mean_net_flows"].copy()
 
-    # Reorder alternatives according to expected rank
+    # Order alternatives according to expected rank
     order = expected_rank.index
-
     outrank_prob = outrank_prob.loc[order, order]
 
-    # Add expected rank as last column
+    # Add expected rank and mean NFS as summary columns
     plot_df = outrank_prob.copy()
     plot_df["Expected rank"] = expected_rank.loc[order]
+    plot_df["Mean net flow"] = mean_net_flows.loc[order]
 
     # Replace diagonal values with NaN
     # because an alternative is not compared with itself
@@ -378,15 +379,36 @@ def smaa_figures(smaa_out: dict):
         plot_df.loc[a, a] = np.nan
 
     data = plot_df.values.astype(float)
+    n_alts = len(order)
 
-    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
+    # ------------------------------------------------------------
+    # COLOUR DATA
+    # ------------------------------------------------------------
+    #
+    # Only pairwise outranking probabilities are represented
+    # through the green colour scale.
+    #
+    # Expected ranks and mean net flows use a neutral background
+    # because they are measured on different scales.
 
+    colour_data = np.full_like(data, np.nan, dtype=float)
+    colour_data[:, :n_alts] = data[:, :n_alts]
+
+    # Use a neutral colour for:
+    # - diagonal cells;
+    # - expected-rank column;
+    # - mean-net-flow column.
+
+    cmap = plt.get_cmap("Greens").copy()
+    cmap.set_bad(color="#f2f2f2")
+
+    fig, ax = plt.subplots(figsize=(FIG_W + 2, FIG_H))
     im = ax.imshow(
-        data,
+        colour_data,
         aspect="auto",
-        cmap="Greens",
+        cmap=cmap,
         vmin=0,
-        vmax=np.nanmax(data)
+        vmax=1,
     )
 
     # Axis ticks
@@ -397,30 +419,18 @@ def smaa_figures(smaa_out: dict):
     ax.set_yticklabels(plot_df.index)
 
     # Separation line before Expected rank column
-    ax.axvline(
-        x=len(plot_df.columns) - 1.5, color="black", linewidth=3
-    )
+    ax.axvline(x=n_alts- 0.5, color="black", linewidth=3)
+    # Separate expected rank from mean net flow.
+    ax.axvline(x=n_alts + 0.5, color="black", linewidth=1)
+    
+    # ------------------------------------------------------------
+    # NUMERICAL VALUES
+    # ------------------------------------------------------------
 
-    # Add values inside cells
     for i in range(data.shape[0]):
         for j in range(data.shape[1]):
-            if not np.isnan(data[i, j]):
-                text_color = (
-                    "white"
-                    if data[i, j] > np.nanmax(data) * 0.55
-                    else "black"
-                )
-                ax.text(
-                    j,
-                    i,
-                    f"{data[i, j]:.3f}",
-                    ha="center",
-                    va="center",
-                    fontsize=CELL_FONT,
-                    color=text_color
-                )
-
-            else:
+            value = data[i, j]
+            if np.isnan(value):
                 ax.text(
                     j,
                     i,
@@ -431,9 +441,29 @@ def smaa_figures(smaa_out: dict):
                     color="black"
                 )
 
+            else:
+                # White text is used only for high probabilities.
+                # Summary columns always use black text.
+                if j < n_alts and value > 0.55:
+                    text_color = "white"
+                else:
+                    text_color = "black"
+                ax.text(
+                    j,
+                    i,
+                    f"{value:.3f}",
+                    ha="center",
+                    va="center",
+                    fontsize=CELL_FONT,
+                    color=text_color
+                )
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
     plt.tight_layout()
     plt.savefig(
-        "Pairwise_Outranking_Expected_Rank.pdf",
+        "Pairwise_Outranking_Expected_Rank_Mean_Net_Flow.pdf",
         format="pdf",
         bbox_inches="tight"
     )

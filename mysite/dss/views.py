@@ -133,6 +133,16 @@ def step1_context() -> dict:
             {"value": "hard", "label": "Hard",  "hint": "Disqualify alternatives"},
             {"value": "soft", "label": "Soft",  "hint": "Penalise alternatives"},
         ],
+        "sampling_mode_options": [
+            {"value": "random",  "label": "Random",
+            "hint": "No bounds or constraints are imposed."},
+            {"value": "bounded", "label": "Bounded",
+            "hint": "Lower and upper bounds are imposed."},
+            {"value": "ordered", "label": "Ordered",
+            "hint": "A preference order of the importance of groups is imposed."},
+            {"value": "bounded_ordered", "label": "Bounded ordered",
+            "hint": "Both lower and upper bounds, and a preference order imposed."},
+        ]
     }
 
 
@@ -150,22 +160,10 @@ def step2_context(session) -> dict:
         else "Enter the threshold value for each criterion."
     )
 
-    sampling_mode_options = [
-        {"value": "random",  "label": "Random",
-         "hint": "No bounds or constraints are imposed."},
-        {"value": "bounded", "label": "Bounded",
-         "hint": "Lower and upper bounds are imposed."},
-        {"value": "ordered", "label": "Ordered",
-         "hint": "A preference order of the importance of groups is imposed."},
-        {"value": "bounded_ordered", "label": "Bounded ordered",
-         "hint": "Both lower and upper bounds, and a preference order imposed."},
-    ]
-
     return {
         "criteria":              directions,
         "groups":                group_names,
         "threshold_hint":        threshold_hint,
-        "sampling_mode_options": sampling_mode_options,
     }
 
 class ExperimentComparisonInitView(APIView):
@@ -241,6 +239,9 @@ class McdaWizardView(View):
                 for formset in  ["group_order_formset", "local_order_formset"]:
                     if formset in kwargs:
                         context[formset] = kwargs[formset]
+                context["order_hint"] = "Ordering the importance of groups or criteria relative to each other."
+                if session.weight_mode=="hierarchical":
+                    context["order_hint"] += " Only specify the order of criteria belonging to the same group."
             else:
                 context = {}
         context.update(kwargs)

@@ -165,23 +165,33 @@ class BaseConfigForm(forms.Form):
     Saved to: session.scenario, .method, .weight_mode, .veto_type
     """
     scenario = forms.ChoiceField(
-        choices=McdaSession.Scenario.choices, widget=forms.RadioSelect,
+        choices=McdaSession.Scenario.choices, widget=forms.RadioSelect
     )
     method = forms.ChoiceField(
-        choices=McdaSession.Method.choices, widget=forms.RadioSelect,
+        choices=McdaSession.Method.choices, widget=forms.RadioSelect
     )
     weight_mode = forms.ChoiceField(
-        choices=McdaSession.WeightMode.choices, widget=forms.RadioSelect,
+        choices=McdaSession.WeightMode.choices, widget=forms.RadioSelect
+    )
+    sampling_mode = forms.ChoiceField(
+        choices=McdaSession.SamplingMode.choices, widget=forms.RadioSelect
     )
     veto_type = forms.ChoiceField(
-        choices=McdaSession.VetoType.choices, widget=forms.RadioSelect,
+        choices=McdaSession.VetoType.choices, widget=forms.RadioSelect
     )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("scenario") == "uncertain" and not cleaned.get("sampling_mode"):
+            self.add_error("sampling_mode", "Required for uncertain analysis.")
+        return cleaned
 
     def save(self, session: McdaSession) -> None:
         data = self.cleaned_data
         session.scenario    = data["scenario"]
         session.method      = data["method"]
         session.weight_mode = data["weight_mode"]
+        session.sampling_mode = data["sampling_mode"]
         session.veto_type   = data["veto_type"]
         session.save()
 
@@ -206,19 +216,20 @@ class WeightsThresholdsForm(forms.Form):
         criteria = list(session.criteria.values_list("name", flat=True))
         self.groups = list(session.groups.values_list("name", flat=True))
 
-        # -- group_weights: weight_mode in {group, hierarchical} -----
-        if session.weight_mode in ("group", "hierarchical"):
-            for group in self.groups:
-                self.fields[f"group_weight_{group}"] = WeightField(
-                    label=f"Weight — {group.title()}", required=False
-                )
+        if session.sampling_mode != "random":
+            # -- group_weights: weight_mode in {group, hierarchical} -----
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in self.groups:
+                    self.fields[f"group_weight_{group}"] = WeightField(
+                        label=f"Weight — {group.title()}", required=False
+                    )
 
-        # -- local_weights: weight_mode == hierarchical ---------------
-        if session.weight_mode == "hierarchical":
-            for criterion in criteria:
-                self.fields[f"local_weight_{criterion}"] = WeightField(
-                    label=f"Local weight — {criterion}", required=False,
-                )
+            # -- local_weights: weight_mode in hierarchical, flat --------
+            if session.weight_mode in ("hierarchical", "flat"):
+                for criterion in criteria:
+                    self.fields[f"local_weight_{criterion}"] = WeightField(
+                        label=f"Criterion weight — {criterion}", required=False
+                    )
 
         # -- thresholds: always, shape depends on method --------------
         for criterion in criteria:
@@ -245,29 +256,25 @@ class WeightsThresholdsForm(forms.Form):
                 label="Penalty factor", required=False
             )
 
-        # -- sampling_mode: weight_mode == "group" --------------------
-        if session.weight_mode == "group":
-            self.fields["sampling_mode"] = forms.ChoiceField(
-                choices=McdaSession.SamplingMode.choices,
-                widget=forms.RadioSelect,
-            )
-
     def clean(self):
         cleaned = super().clean()
         session = self.session
 
-        if session.weight_mode in ("group", "hierarchical"):
-            for group in self.groups:
-                if not cleaned.get(f"group_weight_{group}"):
-                    self.add_error(
-                        f"group_weight_{group}",
-                        "Required when weight mode is group or hierarchical."
-                    )
-
-        if session.weight_mode == "hierarchical":
-            for name in session.criteria.values_list("name", flat=True):
-                if not cleaned.get(f"local_weight_{name}"):
-                    self.add_error(f"local_weight_{name}", "Required for hierarchical weighting.")
+        if session.sampling_mode != "random":
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in self.groups:
+                    if not cleaned.get(f"group_weight_{group}"):
+                        self.add_error(
+                            f"group_weight_{group}",
+                            "Required when weight mode is group or hierarchical."
+                        )
+            if session.weight_mode in ("hierarchical", "flat"):
+                for name in session.criteria.values_list("name", flat=True):
+                    if not cleaned.get(f"local_weight_{name}"):
+                        self.add_error(
+                            f"local_weight_{name}",
+                            "Required for hierarchical weighting."
+                        )
 
         if session.veto_type != "no":
             for name in session.criteria.values_list("name", flat=True):
@@ -276,9 +283,6 @@ class WeightsThresholdsForm(forms.Form):
 
         if session.veto_type == "soft" and cleaned.get("penalty_factor") is None:
             self.add_error("penalty_factor", "Required for soft veto.")
-
-        if session.weight_mode == "group" and not cleaned.get("sampling_mode"):
-            self.add_error("sampling_mode", "Required when weight mode is group.")
 
         return cleaned
 
@@ -289,10 +293,8 @@ class WeightsThresholdsForm(forms.Form):
         if session.weight_mode in ("group", "hierarchical"):
             session.group_weights = {g: d[f"group_weight_{g}"] for g in self.groups}
 
-        if session.weight_mode == "hierarchical":
+        if session.weight_mode in ("hierarchical", "flat"):
             session.local_weights = {c: d[f"local_weight_{c}"] for c in criteria}
-        elif session.weight_mode == "group":
-            session.sampling_mode = d["sampling_mode"]
 
         session.thresholds = {c: d[f"threshold_{c}"] for c in criteria}
 

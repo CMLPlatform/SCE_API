@@ -16,13 +16,17 @@ OrderConstraint = list[tuple[str, str, float]]
 @dataclass(slots=True)
 class WeightConstraints:
     """
-    Class for storing weights of groups and/or criteria within groups.
+    Class for storing weights and constraints.
+    Each criterion and group can have a weight.
     Weight can be a single value or a range.
     The ordering of groups or criteria can also be specified.
     """
+    criterion: Optional[RangeDict] = None
+    criterion_order: Optional[OrderConstraint] = None
     group: Optional[RangeDict] = None
     group_order: Optional[OrderConstraint] = None
-    local: Optional[RangeDict] = None
+    #TODO: local parameters not needed; ungrouped criterion can be used, group can be derived
+    local: Optional[dict[str, RangeDict]] = None
     local_order: Optional[dict[str, OrderConstraint]] = None
 
 @dataclass(slots=True)
@@ -228,6 +232,111 @@ def set_fixed_weights(config: McdaConfig):
 
 
 # ============================================================
+# WEIGHTING AND RANKING HELPER FUNCTIONS
+# ============================================================
+def ranking_to_pairwise_constraints(ranking: list, expected_items: list=None):
+    """
+    Convert a complete or incomplete ordinal ranking into
+    pairwise constraints.
+
+    Example 1 — complete ranking:
+        [
+            ["C1"],
+            ["C2", "C3"],
+            ["C4"]
+        ]
+
+    Example 2 — incomplete ranking:
+        [
+            ["C1"]
+        ]
+
+    If expected_items contains C1, C2, C3, and C4, the second
+    example means that C1 is first, while no order is imposed
+    among C2, C3, and C4.
+
+    Items belonging to the same rank are not compared.
+    """
+
+    if ranking is None:
+        return []
+
+    # Copy the ranking to avoid modifying the original input.
+    effective_ranking = [list(rank_level) for rank_level in ranking]
+
+    ranked_items = [
+        item for rank_level in effective_ranking for item in rank_level
+    ]
+    ranked_items_set = set(ranked_items)
+
+    if len(ranked_items) != len(ranked_items_set):
+        raise ValueError("Each item can appear only once in the ranking.")
+
+    if expected_items is not None:
+        expected_items_set = set(expected_items)
+        unknown_items = ranked_items_set - expected_items_set
+
+        if unknown_items:
+            raise ValueError(
+                f"Unknown items in ranking: {sorted(unknown_items)}"
+            )
+
+        # Items omitted from the ranking are interpreted as
+        # belonging to a final, unordered rank.
+        unranked_items = list(expected_items_set - ranked_items_set)
+
+        if unranked_items:
+            effective_ranking.append(unranked_items)
+
+    constraints = []
+
+    for higher_position in range(len(effective_ranking)):
+        for lower_position in range(higher_position + 1, len(effective_ranking)):
+            for higher_item in effective_ranking[higher_position]:
+                for lower_item in effective_ranking[lower_position]:
+                    constraints.append((higher_item, lower_item, 1.0))
+
+    return constraints
+
+
+def combine_order_constraints(
+        ranking=None, pairwise_constraints=None, expected_items=None
+):
+    """
+    Combine:
+        - a complete or incomplete ordinal ranking;
+        - optional partial pairwise constraints.
+
+    Pairwise constraints can be:
+        (more_important, less_important)
+    or:
+        (more_important, less_important, intensity)
+    """
+
+    constraints = ranking_to_pairwise_constraints(ranking, expected_items)
+
+    if pairwise_constraints is not None:
+        constraints.extend(pairwise_constraints)
+
+    # Remove duplicate constraints.
+    # If the same comparison has different intensities,
+    # retain the strongest one.
+
+    merged_constraints = {}
+
+    for constraint in constraints:
+        intensity = 1.0 if len(constraint) == 2 else constraint[2]
+        key = constraint[:2]
+        merged_constraints[key] = max(
+            intensity, merged_constraints.get(key, 0.0)
+        )
+
+    return [
+        (*key, intensity)
+        for key, intensity in merged_constraints.items()
+    ]
+
+# ============================================================
 # ACTIVATE CONSTRAINTS ACCORDING TO SAMPLING MODE
 # ============================================================
 def get_active_constraints(config: McdaConfig) -> WeightConstraints:
@@ -262,16 +371,11 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     active = WeightConstraints()
 
     if config.sampling_mode == "random":
-        active.group_lb = {g: 0.0 for g in groups}
-        active.group_ub = {g: 1.0 for g in groups}
+        active.group = {g: (0.0, 1.0) for g in groups}
         active.group_order = []
 
-        active.local_lb = {
-            g: {c: 0.0 for c in crits}
-            for g, crits in groups.items()
-        }
-        active.local_ub = {
-            g: {c: 1.0 for c in crits}
+        active.local = {
+            g: {c: (0.0, 1.0) for c in crits}
             for g, crits in groups.items()
         }
         active.local_order = {g: [] for g in groups}
@@ -282,16 +386,11 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
         active.local_order = {g: [] for g in groups}
 
     elif config.sampling_mode == "ordered":
-        active.group_lb = {g: 0.0 for g in groups}
-        active.group_ub = {g: 1.0 for g in groups}
+        active.group = {g: (0.0, 1.0) for g in groups}
         active.group_order = config.constraints.group_order
 
-        active.local_lb = {
-            g: {c: 0.0 for c in crits}
-            for g, crits in groups.items()
-        }
-        active.local_ub = {
-            g: {c: 1.0 for c in crits}
+        active.local = {
+            g: {c: (0.0, 1.0) for c in crits}
             for g, crits in groups.items()
         }
         active.local_order = config.constraints.local_order
@@ -309,7 +408,7 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
 
 
 def sample_weights_dirichlet_constrained(
-    lb_dict,
+    lb_dict, #TODO: replace by bounds_dict
     ub_dict,
     order_cons=[],
     max_tries=100000,
@@ -531,11 +630,10 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
         rng = np.random.default_rng()
 
     if config.weight_mode == "flat":
-        criterion_lb = {c: 0.0 for c in config.criteria}
-        criterion_ub = {c: 1.0 for c in config.criteria}
+        active_constr = get_active_constraints(config)
         config._weights = sample_weights_dirichlet_constrained(
-            lb_dict=criterion_lb,
-            ub_dict=criterion_ub,
+            lb_dict=active_constr.criterion,
+            ub_dict=active_constr.criterion,
             order_cons=[],
             alpha=config.alpha,
             rng=rng,
@@ -546,7 +644,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     elif config.weight_mode == "group":
         active_constr = get_active_constraints(config)
         group_weights_sampled = sample_weights_dirichlet_constrained(
-            lb_dict=active_constr.group_lb,
+            lb_dict=active_constr.group_lb,  #FIXME: lb + ub are now combined
             ub_dict=active_constr.group_ub,
             order_cons=active_constr.group_order,
             alpha=config.alpha_group,
@@ -974,6 +1072,12 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
     ranks = np.arange(1, n_alts + 1, dtype=float)
     exp_rank = (rank_accept.values * ranks).sum(axis=1)
     exp_rank = pd.Series(exp_rank, index=alts).sort_values()
+        
+    # Mean PROMETHEE net flow across all simulations
+    mean_net_flows = pd.Series(
+        {a: float(np.mean(nfs_samples[a])) for a in alts},
+        name="Mean net flow",
+    ).sort_values(ascending=False)
 
     w_mean = pd.Series(
         {c: float(np.mean(weight_samples[c])) for c in config.criteria}
@@ -1011,6 +1115,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
         "win_probability": win_prob.sort_values(ascending=False),
         "outrank_probability": outrank_prob,
         "mean_weights": w_mean,
+        "mean_net_flows": mean_net_flows,
         "n_samples": accepted,
         "simulations": sim_df,
         "sampler_stats": sampler_stats_df
@@ -1142,6 +1247,10 @@ def mcda(config: McdaConfig):
 
         print("\nWinning probabilities (P[rank=1]):")
         print(results["win_probability"])
+        
+        mean_net_flow_ranking = list("results"["mean_net_flows"].index)
+        print("\\nRanking based on mean net flows:")
+        print(mean_net_flow_ranking)
 
         print("\nExpected rank (lower is better):")
         print(results["expected_rank"])

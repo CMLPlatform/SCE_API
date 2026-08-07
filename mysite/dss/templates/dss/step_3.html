@@ -51,7 +51,7 @@
 
       {{ form.as_p }}
 
-      {% include "partials/section_header.html" with title="Ordering constraints" hint="Ordering the importance of groups or criteria relative to each other." %}
+      {% include "partials/section_header.html" with title="Ordering constraints" hint=order_hint %}
       {% if group_order_formset %}
       {{ group_order_formset.management_form }}
       <table>

@@ -71,6 +71,7 @@ class McdaSession(models.Model):
     scenario    = models.CharField(max_length=15, choices=Scenario, null=True)
     method      = models.CharField(max_length=15, choices=Method, null=True)
     weight_mode = models.CharField(max_length=12, choices=WeightMode, null=True)
+    sampling_mode    = models.CharField(max_length=15, choices=SamplingMode, null=True)
     veto_type   = models.CharField(max_length=4, choices=VetoType, null=True)
 
     # Form 2 - conditional; stored as JSON to handle float|tuple values
@@ -79,7 +80,6 @@ class McdaSession(models.Model):
     thresholds       = models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
     veto_thresholds  = models.JSONField(null=True)  # {"criterion": float}
     penalty_factor   = models.FloatField(default=0.5)
-    sampling_mode    = models.CharField(max_length=15, choices=SamplingMode, null=True)
 
     # Form 3 - conditional
     n_samples   = models.IntegerField(null=True)
@@ -188,8 +188,9 @@ class Criterion(models.Model):
         return f"{self.name} ({self.group})"
 
     class Meta:
+        # To have distinct criteria in the decision matrix, they need to be unique in a session
         verbose_name_plural = "Criteria"
-        unique_together = ['name', 'group']
+        unique_together = ['name', 'session']
     
     def clean(self):
         if self.direction not in ["min", "max"]:
@@ -207,7 +208,7 @@ class GroupOrder(models.Model):
     session = models.ForeignKey(McdaSession, on_delete=models.CASCADE, related_name="group_orders")
     group1 = models.ForeignKey(CritGroup, on_delete=models.CASCADE, related_name="ordered_higher")
     group2 = models.ForeignKey(CritGroup, on_delete=models.CASCADE, related_name="ordered_lower")
-    intensity = models.FloatField(validators=[MinValueValidator(0)])
+    intensity = models.FloatField(validators=[MinValueValidator(0)], default=1)
 
     class Meta:
         unique_together = ['session', 'group1', 'group2']
@@ -217,7 +218,7 @@ class LocalOrder(models.Model):
     session = models.ForeignKey(McdaSession, on_delete=models.CASCADE, related_name="local_orders")
     criterion1 = models.ForeignKey(Criterion, on_delete=models.CASCADE, related_name="ordered_higher")
     criterion2 = models.ForeignKey(Criterion, on_delete=models.CASCADE, related_name="ordered_lower")
-    intensity = models.FloatField(validators=[MinValueValidator(0)])
+    intensity = models.FloatField(validators=[MinValueValidator(0)], default=1)
 
     class Meta:
         unique_together = ['session', 'criterion1', 'criterion2']
