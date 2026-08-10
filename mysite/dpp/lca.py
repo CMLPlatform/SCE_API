@@ -48,7 +48,9 @@ def ensure_methods(family: str):
         method_set = IndicatorSet.objects.get(name=family)
     except IndicatorSet.DoesNotExist:
         logger.debug("Creating a set of environmental indicators.")
-        method_set = IndicatorSet.objects.create(name=family, start_date=datetime.date.today())
+        method_set = IndicatorSet.objects.create(
+            name=family, start_date=datetime.date.today()
+        )
     methods = [
         m for m in bwd.methods
         if family in m and m[-2:] not in EXCLUDED_METHODS
@@ -182,7 +184,9 @@ def make_transport_exchange(transports, product, amount):
     # Determine the mass of one unit of product (kg)
     input_prod = transport.product
     if hasattr(input_prod, 'properties'):
-        mass = input_prod.properties.weight * CONVERSIONS[input_prod.properties.weight_unit]
+        mass = input_prod.properties.weight * CONVERSIONS[
+            input_prod.properties.weight_unit
+        ]
     elif input_prod.unit in UNIT_CHOICES['Mass']:
         mass = CONVERSIONS[input_prod.unit]
     else:
@@ -203,11 +207,20 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     :param db_name: Bightway database name, to add the activity to.
     """
     # Import here to avoid circular imports
-    from .models import ProductExchange, EnvExchange
+    from .models import ProductExchange, EnvExchange, BackgroundProcess
 
     biosphere = bwd.Database(DEFAULT_REMOTE_PROJECT)
     bw_activities = {}
     for dpp_process in processes:
+        # Skip already known background processes
+        try:
+            background_process = dpp_process.backgroundprocess
+        except BackgroundProcess.DoesNotExist:
+            background_process = None
+
+        if background_process and dpp_process.database in bwd.databases:
+            continue  #NOTE: assuming it exists in the bwd database, e.g. ecoinvent
+
         location = str(dpp_process.facility.country) if dpp_process.facility else 'GLO'
         transports = dpp_process.functional_flow.productionline.transport
         exchanges = [{
@@ -224,7 +237,7 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
             if exc.product.manufacturing_info not in processes:
                 continue  # Cutoff in case max_depth was used.
             sign = 1 if exc.direction == 'in' else -1
-            try:
+            try:  # Find the source DB of background processes
                 source_db = exc.product.manufacturing_info.database
                 db_code = exc.product.manufacturing_info.db_code
             except AttributeError:
@@ -262,36 +275,6 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
         bw_activities[(db_name, dpp_process.pk)] = activity
     return bw_activities
 
-def convert_bw_to_dpp(bw_activity):
-    # Import here to avoid circular imports
-    from .models import BackgroundProcess
-    
-    raise NotImplementedError()
-    (db_name, code), act = bw_activity
-    dpp_activity = BackgroundProcess(name=act.name, amount=1, description=act.comment, functional_flow=act.reference_product, database=db_name, db_code=code)
-    for exchange in act.get('exchanges', []):
-        if exchange.get('type') == 'technosphere':
-            dpp_activity.amount = exchange['amount']
-        else:
-            pass #TODO: create an exchange
-    return dpp_activity
-
-def link_to_background_db(activities, background_db): #FIXME: unused
-    """
-    Link DPP processes to ecoinvent or other background DB
-    only for processes not in DPP system.
-    """
-    for activity in activities:
-        for exchange in activity.get('exchanges', []):
-            if exchange.get('type') == 'technosphere':
-                # If not in foreground, search background
-                if not exchange.get('input'):
-                    background_match = background_db.search(
-                        exchange['name'], exchange.get('unit')
-                    )
-                    if background_match:
-                        exchange['input'] = background_match
-
 def select_supply_chain(root_product, max_depth=None):
     """
     Traverse DPP links to build minimal Brightway database
@@ -306,10 +289,11 @@ def select_supply_chain(root_product, max_depth=None):
         visited.add(flow.id)
         
         # Get the ManufacturingProcess for this flow
-        assert hasattr(flow, 'manufacturing_info'), f"Product {flow} has no manufacturing process!"
+        assert hasattr(flow, 'manufacturing_info'), (
+            f"Product {flow} has no manufacturing process!"
+        )
         process = flow.manufacturing_info
         processes_to_include.append(process)
-        # convert_dpp_to_bw_activity(process, db_name)
         
         # Traverse upstream through exchanges
         if hasattr(process, 'prod_exchanges'):
@@ -400,7 +384,7 @@ def create_supply_chain_lca(product):
     ref_activity = db.get(product.manufacturing_info.pk)
     results = lca_calculations(ref_activity, lcia_family)
     #TODO: contribution analysis
-    # Create SustainabilityScores to store results
+    # Create SustainabilityScores to store results      
     if created:
         for m, value, unit in results:
             SustainabilityScore.objects.create(
@@ -427,3 +411,18 @@ def create_supply_chain_lca(product):
             )
     
     return evaluation
+
+def list_background_processes() -> dict:
+    """
+    Create a dictionary of available background processes
+    Structured as: {database_name: {activity_name: activity_code}}
+    """
+    setup_project("L4M-DPP")
+    background = {}
+    for db_name in bwd.databases:
+        if db_name[:4] != "dpp_":
+            background[db_name] = {
+                act["name"]: act["code"]
+                for act in bwd.Database(db_name)
+            }
+    return background
