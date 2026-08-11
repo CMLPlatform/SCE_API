@@ -384,7 +384,7 @@ def create_supply_chain_lca(product):
     ref_activity = db.get(product.manufacturing_info.pk)
     results = lca_calculations(ref_activity, lcia_family)
     #TODO: contribution analysis
-    # Create SustainabilityScores to store results      
+    # Create SustainabilityScores to store results
     if created:
         for m, value, unit in results:
             SustainabilityScore.objects.create(
