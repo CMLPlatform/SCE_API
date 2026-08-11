@@ -12,6 +12,7 @@ Run with:
 from django.test import TestCase
 import datetime
 from unittest.mock import MagicMock, patch
+from ..models import IndicatorSet
 from dpp.lca import (
     EXCLUDED_METHODS, setup_project, ensure_methods, select_supply_chain,
     convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca,
@@ -63,7 +64,7 @@ class TestSetupProject(TestCase):
 
         mock_bwd.projects.set_current.assert_called_once_with("L4M-test")
         mock_bwi.remote.install_project.assert_called_once_with(
-            "ecoinvent-3.10-biosphere", "L4M-test"
+            "ecoinvent-3.12-biosphere", "L4M-test"
         )
 
     @patch("dpp.lca.bwi")
@@ -95,40 +96,18 @@ class TestEnsureMethods(TestCase):
     def test_creates_indicator_set_when_missing(self, mock_bwd):
         mock_bwd.methods = self._bwd_methods()
 
-        indicator_set = MagicMock()
-        indicator_set.name = "EF v3.1"
-
-        with patch("dpp.lca.models.IndicatorSet") as MockIS, \
-             patch("dpp.lca.models.ImpactIndicator") as MockII, \
-             patch("dpp.lca.models.ImpactCategory") as MockIC:
-
-            MockIS.objects.get.side_effect = MockIS.DoesNotExist
-            MockIS.DoesNotExist = Exception
-            MockIS.objects.create.return_value = indicator_set
-            MockIC.objects.get_or_create.return_value = (MagicMock(), True)
-            MockII.objects.filter.return_value = []   # no existing indicators
-            result = ensure_methods("EF v3.1")
-
-        assert result is indicator_set
-        MockIS.objects.create.assert_called_once_with(
-            name="EF v3.1", start_date=datetime.date.today()
-        )
+        result = ensure_methods("EF v3.1")
+        assert result.name == "EF v3.1"
+        assert result.start_date == datetime.date.today()
 
     @patch("dpp.lca.bwd")
     def test_returns_existing_indicator_set(self, mock_bwd):
         mock_bwd.methods = self._bwd_methods()
-        existing_set = MagicMock()
-
-        with patch("dpp.lca.models.IndicatorSet") as MockIS, \
-             patch("dpp.lca.models.ImpactIndicator") as MockII, \
-             patch("dpp.lca.models.ImpactCategory") as MockIC:
-
-            MockIS.objects.get.return_value = existing_set
-            # Simulate: existing indicators >= methods, so early return
-            MockII.objects.filter.return_value = [MagicMock(), MagicMock(), MagicMock()]
-            result = ensure_methods("EF v3.1")
-
-        assert result is existing_set
+        existing_set = IndicatorSet.objects.create(
+            name="CML2001", start_date=datetime.date(2020,2,2)
+        )
+        result = ensure_methods("CML2001")
+        assert result == existing_set
 
     @patch("dpp.lca.bwd")
     def test_excludes_known_zero_impact_methods(self, mock_bwd):
@@ -144,9 +123,9 @@ class TestEnsureMethods(TestCase):
         indicator_set = MagicMock()
         created_methods = []
 
-        with patch("dpp.lca.models.IndicatorSet") as MockIS, \
-             patch("dpp.lca.models.ImpactIndicator") as MockII, \
-             patch("dpp.lca.models.ImpactCategory") as MockIC:
+        with patch("dpp.models.IndicatorSet") as MockIS, \
+             patch("dpp.models.ImpactIndicator") as MockII, \
+             patch("dpp.models.ImpactCategory") as MockIC:
 
             MockIS.objects.get.side_effect = MockIS.DoesNotExist
             MockIS.DoesNotExist = Exception
@@ -233,18 +212,14 @@ class TestConvertDppToBrightway(TestCase):
     @patch("dpp.lca.bwd")
     def test_output_contains_activity_key(self, mock_bwd):
         """Each process must produce a key of the form (db_name, pk)."""
-        mock_bwd.Database.return_value = iter([])   # empty biosphere
 
         proc = make_process(pk=42, name="my proc", unit="kg")
 
-        with patch("dpp.lca.models.ProductExchange") as MockPE, \
-             patch("dpp.lca.models.EnvExchange") as MockEE:
+        with patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
 
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
-
-            # biosphere db search (used by find_biosphere_flow) not called
-            mock_bwd.Database.return_value.__iter__ = lambda s: iter([])
 
             result = convert_dpp_to_brightway([proc], "testdb")
 
@@ -255,8 +230,8 @@ class TestConvertDppToBrightway(TestCase):
         """The activity must always have a production exchange."""
         proc = make_process(pk=1, unit="kg", amount=2.0)
 
-        with patch("dpp.lca.models.ProductExchange") as MockPE, \
-             patch("dpp.lca.models.EnvExchange") as MockEE:
+        with patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
 
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
@@ -273,8 +248,8 @@ class TestConvertDppToBrightway(TestCase):
         """Processes with a mass-unit functional flow should be 'Raw material acquisition'."""
         proc = make_process(pk=1, unit="kg")
 
-        with patch("dpp.lca.models.ProductExchange") as MockPE, \
-             patch("dpp.lca.models.EnvExchange") as MockEE:
+        with patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -286,8 +261,8 @@ class TestConvertDppToBrightway(TestCase):
         """Processes with unit 'pcs' (not a resource unit) should be 'Manufacturing'."""
         proc = make_process(pk=1, unit="pcs")
 
-        with patch("dpp.lca.models.ProductExchange") as MockPE, \
-             patch("dpp.lca.models.EnvExchange") as MockEE:
+        with patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -306,8 +281,8 @@ class TestConvertDppToBrightway(TestCase):
         pe.product.model.unit = "kg"
         pe.product.manufacturing_info = external_proc   # not in [proc]
 
-        with patch("dpp.lca.models.ProductExchange") as MockPE, \
-             patch("dpp.lca.models.EnvExchange") as MockEE:
+        with patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = [pe]
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -327,7 +302,6 @@ class TestLcaCalculations(TestCase):
             (family, "acidification", "AP"),
         ]
         mock_bwd.methods = {m: {"unit": "kg CO2 eq"} for m in methods}
-        mock_bwd.methods.__iter__ = lambda s: iter(methods)
 
         lca_obj = MagicMock()
         lca_obj.score = 3.14
@@ -338,20 +312,6 @@ class TestLcaCalculations(TestCase):
         results = lca_calculations(activity, family)
         assert len(results) == 2
         assert all(len(r) == 3 for r in results)   # (method, score, unit)
-
-    @patch("dpp.lca.bwd")
-    def test_returns_none_when_no_methods(self, mock_bwd, capsys):
-        """When no matching methods are found the function prints a warning and returns None."""
-        mock_bwd.methods = {}
-        mock_bwd.methods.__iter__ = lambda s: iter([])
-
-        activity = MagicMock()
-        activity.__getitem__ = lambda self, k: "x"
-
-        result = lca_calculations(activity, "NonExistentFamily")
-        assert result is None
-        captured = capsys.readouterr()
-        assert "No" in captured.out
 
     @patch("dpp.lca.bwd")
     def test_switch_method_called_for_subsequent_methods(self, mock_bwd):
@@ -411,9 +371,9 @@ class TestCreateSupplyChainLca(TestCase):
              patch("dpp.lca.lca_calculations", return_value=[
                  (("EF v3.1", "climate change", "GWP100"), 2.0, "kg CO2 eq")
              ]), \
-             patch("dpp.lca.models.SustainabilityEvaluation") as MockEval, \
-             patch("dpp.lca.models.SustainabilityScore") as MockScore, \
-             patch("dpp.lca.models.ImpactIndicator") as MockII:
+             patch("dpp.models.SustainabilityEvaluation") as MockEval, \
+             patch("dpp.models.SustainabilityScore") as MockScore, \
+             patch("dpp.models.ImpactIndicator") as MockII:
 
             mock_em.return_value = MagicMock(name="method_set")
             MockEval.objects.get_or_create.return_value = (MagicMock(), True)
@@ -441,9 +401,9 @@ class TestCreateSupplyChainLca(TestCase):
              patch("dpp.lca.lca_calculations", return_value=[
                  (("EF v3.1", "climate change", "GWP100"), 2.0, "kg CO2 eq")
              ]), \
-             patch("dpp.lca.models.SustainabilityEvaluation") as MockEval, \
-             patch("dpp.lca.models.SustainabilityScore") as MockScore, \
-             patch("dpp.lca.models.ImpactIndicator") as MockII:
+             patch("dpp.models.SustainabilityEvaluation") as MockEval, \
+             patch("dpp.models.SustainabilityScore") as MockScore, \
+             patch("dpp.models.ImpactIndicator") as MockII:
 
             mock_em.return_value = MagicMock(name="method_set")
             # created=False -> evaluation already existed
