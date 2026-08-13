@@ -5,6 +5,9 @@ from ..models import *
 # Test creating a production line and transport
 class ProductionLineTest(TestCase):
     def setUp(self):
+        self.user = User.objects.create(
+            username="test_user", password="notsosecret"
+        )
         self.fprod = ProductModel.objects.create(
             name="final product", unit="bottles", brand="brand name"
         )
@@ -24,6 +27,7 @@ class ProductionLineTest(TestCase):
             description="text",
             final_product=self.fprod,
             facility=facility,
+            created_by=self.user,
         )
 
     def test_create_transport(self):

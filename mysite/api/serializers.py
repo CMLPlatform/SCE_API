@@ -138,7 +138,7 @@ class TransportSerializer(serializers.ModelSerializer):
         fields = ['production_line', 'product', 'distance', 'mode']
 
 class MaterialSerializer(CountryFieldMixin, serializers.ModelSerializer):
-    is_critical = serializers.Field()  #FIXME: requires `fields = []``
+    is_critical = serializers.BooleanField()
 
     class Meta:
         model = Material

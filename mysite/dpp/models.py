@@ -1108,7 +1108,11 @@ class ItemExchange(models.Model):
 
     def clean(self):
         super().clean()
-        allowed_events = LifeCycleEvent.EVENT_TYPES['Maintenance'].keys() + LifeCycleEvent.EVENT_TYPES['Closing the loop'].keys() + ['disassembly']
+        allowed_events = (
+            list(LifeCycleEvent.EVENT_TYPES['Maintenance'].keys()) + 
+            list(LifeCycleEvent.EVENT_TYPES['Closing the loop'].keys()) + 
+            ['disassembly']
+        )
         if self.event.type not in allowed_events:
             raise ValidationError("This life cycle event cannot exchange items.")
     

@@ -69,6 +69,7 @@ class MetadataSerializerTests(TestCase):
         self.batch = ProductBatch.objects.create(
             model=self.product_model,
             batch_number=202507001,
+            GTIN="0987654321",
         )
 
         # Product item (instance)
@@ -193,6 +194,7 @@ class LifeCycleEventSerializerTests(TestCase):
         self.batch = ProductBatch.objects.create(
             model=self.product_model,
             batch_number=202507001,
+            GTIN="0987654321",
         )
         self.screen_model = ProductModel.objects.create(
             name="Screen model W",
@@ -202,6 +204,7 @@ class LifeCycleEventSerializerTests(TestCase):
         self.screen_batch = ProductBatch.objects.create(
             model=self.screen_model,
             batch_number=202507002,
+            GTIN="9876543210",
         )
         self.component = Component.objects.create(
             product=self.product_model,
@@ -385,6 +388,7 @@ class ComponentAndConcentrationSerializerTests(TestCase):
             {
                 'material': {
                     'id': 2,
+                    'is_critical': False,
                     'name': 'Oak wood',
                     'chemical_formula': '',
                     'criticality_level': '',
@@ -395,6 +399,7 @@ class ComponentAndConcentrationSerializerTests(TestCase):
             {
                 'material': {
                     'id': 1,
+                    'is_critical': True,
                     'name': 'Steel',
                     'chemical_formula': '',
                     'criticality_level': 'm',
@@ -414,6 +419,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
 
     def setUp(self):
         self.factory = APIRequestFactory()
+        self.maxDiff = None
 
         self.product_model = ProductModel.objects.create(
             name="Cheese grater XL",
@@ -484,10 +490,8 @@ class SustainabilityEvaluationSerializerTests(TestCase):
         data = serializer.data
 
         expected_output = {
-            'id': 1,
             'sustainability_score': [
                 {
-                    'id': 1,
                     'impact_indicator': 1,
                     'impact_value': 9.2,
                     'upstream_phase': 0.4,
@@ -497,7 +501,6 @@ class SustainabilityEvaluationSerializerTests(TestCase):
                     'scope_1_2_3': 7.4,
                 },
                 {
-                    'id': 2,
                     'impact_indicator': 2,
                     'impact_value': 9.2,
                     'upstream_phase': 0.2,
@@ -507,6 +510,7 @@ class SustainabilityEvaluationSerializerTests(TestCase):
                     'scope_1_2_3': 7.4,
                 },
             ],
+            'is_environmental': True,
             'functional_amount': 1.0,
             'system_boundaries': self.evaluation.system_boundaries,
             'geographical_scope': 'EU',
@@ -515,7 +519,16 @@ class SustainabilityEvaluationSerializerTests(TestCase):
             'software_used': '',
             'allocation_method': 'mass',
             'assessment_date': str(date.today()),
-            'assessed_by': 1,
+            'assessed_by': {
+                'id': 1,
+                'legal_documents': None,
+                'name': 'LCA consultants 0.2',
+                'address': 'Street Name 62',
+                'country': 'CH',
+                'contact_email': '',
+                'website': '',
+                'type': 'research',
+            },
         }
         self.assertDictEqual(expected_output, data)
 
