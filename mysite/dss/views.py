@@ -6,7 +6,7 @@ from rest_framework.views import APIView, View
 from rest_framework.response import Response
 from rest_framework import status
 
-from .serializers import ExperimentComparisonSerializer, McdaRequestSerializer, McdaResultSerializer
+from .serializers import ExperimentComparisonSerializer, WeldStationComparisonSerializer, McdaRequestSerializer, McdaResultSerializer
 from .mcda import mcda, McdaConfig, WeightConstraints
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup
 from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
@@ -15,6 +15,7 @@ from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, Samp
 country_data = pd.read_csv("init_data/country_data.csv", index_col="country")
 # price, carbon footprint of consumables
 material_data = pd.read_csv("init_data/material_data.csv", index_col="material")
+MULTIPLIERS = {"h": 1/3600, "min": 1/60, "s": 1, "kg": 1, "g": 1/1000, "mg": 10**-6, "m3": 1, "L": 1/1000}
 
 # Helper functions
 
@@ -27,72 +28,172 @@ def lookup(info: str, country: str):
             return value
     return country_data.loc["?", info]
 
-def create_default_criteria(session: McdaSession):
+def create_criteria(session: McdaSession, user_type: str="pd"):
     """Create default groups and criteria"""
     cost = CritGroup.objects.create(session=session, name="Economic")
     sust = CritGroup.objects.create(session=session, name="Sustainability")
-    circ = CritGroup.objects.create(session=session, name="Circularity", weight=0)
     qual = CritGroup.objects.create(session=session, name="Technical quality")
     Criterion.objects.create(session=session, name="Operating costs", group=cost, direction="min")
     Criterion.objects.create(session=session, name="Process energy use", group=sust, direction="min")
     Criterion.objects.create(session=session, name="Process carbon footprint", group=sust, direction="min")
-    return qual
+    if user_type == "kam":
+        circ = CritGroup.objects.create(session=session, name="Circularity", weight=0)
+        oper = CritGroup.objects.create(session=session, name="Productivity")
+        Criterion.objects.create(session=session, name="Total production costs", group=cost, direction="min")
+        Criterion.objects.create(session=session, name="Maintenance costs", group=cost, direction="min")
+        Criterion.objects.create(session=session, name="Production cycle time", group=oper, direction="min")
+        Criterion.objects.create(session=session, name="Product carbon footprint", group=sust, direction="min")
+        Criterion.objects.create(session=session, name="Scrap rate", group=circ, direction="min")
+        Criterion.objects.create(session=session, name="Recyclability", group=circ, direction="max")
+        return qual, oper
+    return qual, None
 
-def calculate_kpis(valid_data: list) -> McdaSession:
+def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
+    """
+    Compute the KPI values for a single experiment or alternative.
+
+    Converts consumable flow rates to absolute usage, then derives cost,
+    energy-use, and carbon-footprint KPIs shared by all users. For the
+    KAM user, additionally accounts for scrap-adjusted yield, maintenance
+    and material costs, amortized CAPEX, and operational-efficiency KPIs.
+
+    Parameters:
+        exp: A single experiment's raw data (one entry of `valid_data`),
+            containing weld parameters, consumables, quality parameters,
+            and for KAM: materials, operational efficiency data.
+        user_type: Either "pd" or "kam". Determines the KPI set.
+
+    Returns:
+        dict: KPI name -> value, ready to store as a DecisionMatrix row.
+
+    Raises:
+        RuntimeError: If a consumable's quantity/time unit or material
+            name is not recognised.
+    """
+    processing_time = exp["weldLength"] * exp["weldSpeed"]  #TODO: check units
+    consumables_use = {}
+    for cons in exp["consumables"]:
+        qnt_unit, time_unit = cons["unit"].split("/")
+        if qnt_unit not in MULTIPLIERS:
+            raise RuntimeError(f"Cannot process unit '{qnt_unit}'")
+        elif time_unit not in MULTIPLIERS:
+            raise RuntimeError(f"Cannot process unit '{time_unit}'")
+        elif cons["name"] not in material_data.index:
+            raise RuntimeError(f"Material '{cons["name"]}' not recognised.")
+        amount = MULTIPLIERS[qnt_unit] * cons["flowRate"] * \
+                processing_time * MULTIPLIERS[time_unit]
+        consumables_use[cons["name"]] = amount
+
+    if user_type == "kam":
+        cycle_time = exp["cycleTime"]
+        yield_rate = 1 - exp["scrapRate"]
+    else:  # Simplifications for the PD user
+        cycle_time = processing_time
+        yield_rate = 1
+    consumables_costs = sum([
+        amount * material_data.loc[cons, "price"]
+        for cons, amount in consumables_use.items()
+    ])
+    labour_costs = cycle_time/3600 * lookup("wages", exp["country"]) * 3
+    process_energy_use = (
+        processing_time * exp["laserPowerkW"]
+        + cycle_time * exp["weldingStationPowerkW"]
+    ) / 3600 / yield_rate
+    operating_costs = consumables_costs + labour_costs + (
+        process_energy_use * lookup("electricity_price", exp["country"])
+    )
+    consumables_footprint = sum([
+        amount * material_data.loc[cons, "CO2eq"]
+        for cons, amount in consumables_use.items()
+    ]) / yield_rate
+    proc_carbon_footprint = consumables_footprint + (
+        process_energy_use * lookup("electricity_CO2eq", exp["country"])
+    )
+    if user_type == "kam":
+        annual_production = 240 * 16 * 3600 / cycle_time
+        operating_costs += exp["maintenanceCosts"] / annual_production
+        material_costs = sum([
+            mat["weight"] * material_data.loc[mat["name"], "price"]
+            for mat in exp["materials"]
+        ])
+        material_footprint = sum([
+            mat["weight"] * material_data.loc[mat["name"], "CO2eq"]
+            for mat in exp["materials"]
+        ])
+        service_life = 15
+        CAPEX = 700000
+        amortized_capex = CAPEX / (service_life * annual_production)
+        total_production_costs = (
+            operating_costs + material_costs + amortized_capex
+        ) / yield_rate
+        prod_carbon_footprint = (
+            proc_carbon_footprint + material_footprint / yield_rate
+        )
+
+    # Create dict of KPIs
+    kpi_dict = {
+        "Process energy use": process_energy_use,
+        "Operating costs": operating_costs,
+        "Process carbon footprint": proc_carbon_footprint,
+    }
+    for kpi in exp["qualityParameters"]:
+        kpi_dict[kpi["name"]] = kpi["value"]
+    if user_type == "kam":
+        kam_kpis = {
+            "Maintenance costs": exp["maintenanceCosts"],
+            "Scrap rate": exp["scrapRate"],
+            "Recyclability": exp["recyclability"],
+            "Production cycle time": cycle_time,
+            "Total production costs": total_production_costs,
+            "Product carbon footprint": prod_carbon_footprint,
+        }
+        kpi_dict.update(kam_kpis)
+        for kpi in exp["productivity"]:
+            kpi_dict[kpi["name"]] = kpi["value"]
+
+    return kpi_dict
+
+def calculate_kpis(valid_data: list, user: str="pd") -> McdaSession:
+    """
+    Calculate the KPIs (criteria) of interest for user (pd or kam)
+    and attach these to a new McdaSession.
+
+    Creates the session's criteria groups (via `create_criteria`),
+    registers the dynamic quality parameters 
+    and for KAM, operational efficiency criteria. 
+    Then convert each experiment in `valid_data` to a DecisionMatrix row.
+
+    Args:
+        valid_data: List of validated experiment dicts, as produced by
+            the PD or KAM serializer. All entries are assumed to share
+            the same set of quality parameters / operational-efficiency
+            criteria as `valid_data[0]`.
+        user: Either "pd" or "kam". Determines which criteria are
+            created and which KPIs are calculated per experiment.
+
+    Returns:
+        McdaSession: The newly created session, with criteria, groups,
+        and one DecisionMatrix row per experiment attached.
+    """
     # Start a session and initiate groups and criteria
     session = McdaSession.objects.create()
-    quality_group = create_default_criteria(session)
+    quality_group, oper_group = create_criteria(session, user_type=user)
     for kpi in valid_data[0]["qualityParameters"]:
         Criterion.objects.create(
             session=session, name=kpi["name"],
             group=quality_group, direction=kpi["target"],
         )
+    if oper_group:
+        for kpi in valid_data[0]["productivity"]:
+            Criterion.objects.create(
+                session=session, name=kpi["name"],
+                group=oper_group, direction=kpi["target"],
+            )
     
-    # Extract data from all experiments
-    for exp in valid_data:
-        multipliers = {"h": 1/3600, "min": 1/60, "s": 1, "kg": 1, "g": 1/1000, "mg": 10**-6, "m3": 1, "L": 1/1000}
-        processing_time = exp["weldLength"] * exp["weldSpeed"]  #TODO: check units
-        consumables_use = {}
-        for cons in exp["consumables"]:
-            qnt_unit, time_unit = cons["unit"].split("/")
-            if qnt_unit not in multipliers:
-                raise RuntimeError(f"Cannot process unit '{qnt_unit}'")
-            elif time_unit not in multipliers:
-                raise RuntimeError(f"Cannot process unit '{time_unit}'")
-            elif cons["name"] not in material_data.index:
-                raise RuntimeError(f"Material '{cons["name"]}' not recognised.")
-            amount = multipliers[qnt_unit] * cons["flowRate"] * \
-                    processing_time * multipliers[time_unit]
-            consumables_use[cons["name"]] = amount
-        
-        consumables_costs = sum([
-            amount * material_data.loc[cons, "price"]
-            for cons, amount in consumables_use.items()
-        ])
-        labour_costs = processing_time/3600 * lookup("wages", exp["country"]) * 3
-        process_energy_use = processing_time/3600 * (
-            exp["laserPowerkW"] + exp["weldingStationPowerkW"]
-        )
-        operating_costs = consumables_costs + labour_costs + (
-            process_energy_use * lookup("electricity_price", exp["country"])
-        )
-        consumables_footprint = sum([
-            amount * material_data.loc[cons, "CO2eq"]
-            for cons, amount in consumables_use.items()
-        ])
-        carbon_footprint = consumables_footprint + (
-            process_energy_use * lookup("electricity_CO2eq", exp["country"])
-        )
-
-        # Create decision matrix
-        kpi_dict = {
-            "Process energy use": process_energy_use,
-	        "Operating costs": operating_costs,
-            "Process carbon footprint": carbon_footprint,
-        }
-        for kpi in exp["qualityParameters"]:
-            kpi_dict[kpi["name"]] = kpi["value"]
-        name = "Experiment #" + str(exp["experimentId"])
+    # Extract data from all experiments, compute and store KPIs
+    for experiment in valid_data:
+        kpi_dict = calculate_experiment_kpis(experiment, user)
+        name = "Experiment #" + str(experiment["experimentId"])
         DecisionMatrix.objects.create(
             session=session, name=name, values=kpi_dict
         )
@@ -172,6 +273,18 @@ class ExperimentComparisonInitView(APIView):
         serializer.is_valid(raise_exception=True)
 
         session = calculate_kpis(serializer.validated_data)
+
+        return redirect(
+            reverse("wizard", kwargs={"session_id": session.id, "step": 0})
+        )
+        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
+
+class KamComparisonInitView(APIView):
+    def post(self, request):
+        serializer = WeldStationComparisonSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        session = calculate_kpis(serializer.validated_data, user="kam")
 
         return redirect(
             reverse("wizard", kwargs={"session_id": session.id, "step": 0})
@@ -311,7 +424,7 @@ def parse_request(valid_data: dict) -> McdaSession:
             group.save()
             Criterion.objects.filter(name__in=criteria).update(group=group)
 
-    quality_grp = create_default_criteria(session)
+    quality_grp = create_criteria(session)
 
     for alt_name, values in valid_data["decision_matrix"].items():
         DecisionMatrix(session=session, name=alt_name, values=values).save()

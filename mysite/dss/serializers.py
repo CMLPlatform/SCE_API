@@ -9,6 +9,10 @@ class ConsumableSerializer(serializers.Serializer):
     flowRate = serializers.FloatField()
     unit = serializers.CharField()
 
+class MaterialSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    weight = serializers.FloatField()
+
 class KpiSerializer(serializers.Serializer):
     name = serializers.CharField()
     value = serializers.FloatField()
@@ -58,6 +62,17 @@ class ExperimentComparisonSerializer(serializers.ListSerializer):
             raise serializers.ValidationError("Duplicate experiment IDs found")
 
         return data
+
+class WeldStationSerializer(ExperimentSerializer):
+    maintenanceCosts = serializers.FloatField()
+    cycleTime = serializers.FloatField()
+    scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
+    recyclability = serializers.FloatField(min_value=0, max_value=1)
+    materials = MaterialSerializer(many=True)
+    productivity = KpiSerializer(many=True)
+
+class WeldStationComparisonSerializer(serializers.ListSerializer):
+    child = WeldStationSerializer()
 
 class McdaRequestSerializer(serializers.Serializer):
     SCENARIO_CHOICES = ["uncertain", "deterministic"]
