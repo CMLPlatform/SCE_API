@@ -21,13 +21,13 @@ class WeightConstraints:
     Weight can be a single value or a range.
     The ordering of groups or criteria can also be specified.
     """
-    criterion: Optional[RangeDict] = None
-    criterion_order: Optional[OrderConstraint] = None
     group: Optional[RangeDict] = None
     group_order: Optional[OrderConstraint] = None
     #TODO: local parameters not needed; ungrouped criterion can be used, group can be derived
     local: Optional[dict[str, RangeDict]] = None
     local_order: Optional[dict[str, OrderConstraint]] = None
+    criterion: Optional[RangeDict] = None
+    criterion_order: Optional[OrderConstraint] = None
 
 @dataclass(slots=True)
 class McdaConfig:
@@ -223,10 +223,15 @@ def set_fixed_weights(config: McdaConfig):
             Wg = config.constraints.group[g]
             if isinstance(Wg, (list, tuple)):
                 Wg = sum(Wg)
-            total_local = sum(config.constraints.local[g].values())
+            total_local = sum([
+                sum(v)/len(v) if isinstance(v, (list, tuple)) else v
+                for v in config.constraints.local[g].values()
+            ])
             for c in crits:
-                w_local = config.constraints.local[g][c] / total_local
-                weights[c] = Wg * w_local
+                w_local = config.constraints.local[g][c]
+                if isinstance(w_local, (list, tuple)):
+                    w_local = sum(w_local)
+                weights[c] = Wg * w_local / total_local
 
     config._weights = weights
 
@@ -404,14 +409,22 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
             "'random', 'bounded', 'ordered', or 'bounded_ordered'"
         )
 
+    # Add ungrouped criterion dict
+    if config.weight_mode == "flat":
+        active.criterion = {}
+        active.criterion_order = []
+        for group in groups:
+            active.criterion.update(active.local[group])
+            active.criterion_order.append(active.local_order[group])
+
     return active
 
 
 def sample_weights_dirichlet_constrained(
-    lb_dict, #TODO: replace by bounds_dict
-    ub_dict,
-    order_cons=[],
+    bounds_dict: dict,
+    order_cons: list=[],
     max_tries=100000,
+    batch_size=1000,
     alpha=1.0,
     rng=None,
     stats=None,
@@ -427,14 +440,14 @@ def sample_weights_dirichlet_constrained(
     and then accepts it only if all active constraints are satisfied.
 
     The constraints are:
-    1) Lower and upper bounds:
+    1) Lower and upper bounds (`bounds_dict`):
         lb_i <= w_i <= ub_i
 
-    2) Optional ordinal constraints:
-        w_more >= w_less
+    2) Optional ordinal constraints (`order_cons`):
+        w_superior >= w_inferior
 
-    3) Optional preference intensity constraints:
-        w_more >= intensity × w_less
+    3) Optional preference intensity constraints (`order_cons`):
+        w_superior >= intensity × w_inferior
 
     Notes
     -----
@@ -452,61 +465,69 @@ def sample_weights_dirichlet_constrained(
         rng = np.random.default_rng()
 
     if stats is not None and stats_key not in stats:
-        stats[stats_key] = {
-            "draws": 0, "accepted": 0, "rejected": 0
-        }
+        stats[stats_key] = {"draws": 0, "accepted": 0, "rejected": 0}
 
-    items = list(lb_dict.keys())
-    lb_vec = np.array([lb_dict[x] for x in items], dtype=float)
-    ub_vec = np.array([ub_dict[x] for x in items], dtype=float)
+    keys = list(bounds_dict.keys())
+    idx = {x: i for i, x in enumerate(keys)}
+    bounds_arr = np.array(list(bounds_dict.values()), dtype=float)
+    alpha_vec = np.full(len(keys), alpha, dtype=float)
 
-    idx = {x: i for i, x in enumerate(items)}
+    # Precompute constraint indices/intensities once, outside the loop
+    hi_idx, lo_idx, intensities = [], [], []
+    for constraint in order_cons:
+        if len(constraint) == 2:
+            hi, lo = constraint
+            intensity = 1.0
+        elif len(constraint) == 3:
+            hi, lo, intensity = constraint
+        else:
+            raise ValueError(
+                "Each ordinal constraint must be either "
+                "(superior, inferior) or "
+                "(superior, inferior, intensity)."
+            )
+        hi_idx.append(idx[hi])
+        lo_idx.append(idx[lo])
+        intensities.append(intensity)
 
-    k = len(items)
-    alpha_vec = np.full(k, alpha, dtype=float)
+    hi_idx = np.array(hi_idx, dtype=int)
+    lo_idx = np.array(lo_idx, dtype=int)
+    intensities = np.array(intensities, dtype=float)
 
-    for _ in range(max_tries):
-        w = rng.dirichlet(alpha_vec)
+    tries_done = 0
+    while tries_done < max_tries:
+        n = min(batch_size, max_tries - tries_done)
+
+        # Draw a whole batch of weights at once (vectorized)
+        w_batch = rng.dirichlet(alpha_vec, size=n)  # shape (n, keys)
+        tries_done += n
 
         if stats is not None:
-            stats[stats_key]["draws"] += 1
+            stats[stats_key]["draws"] += n
 
-        # Check lower and upper bounds
-        rejected = False
-        if np.any(w < lb_vec - 1e-12) or np.any(w > ub_vec + 1e-12):
-            rejected = True
+        # Vectorized bound check across the batch
+        ok = np.all(
+            (  w_batch >= bounds_arr[:, 0] - 1e-12)
+            & (w_batch <= bounds_arr[:, 1] + 1e-12),
+            axis=1,
+        )
 
-        # Check ordinal and intensity constraints
-        if not rejected:
-            for cons in order_cons:
+        # Vectorized ordinal constraint check across the batch
+        if ok.any() and len(hi_idx) > 0:
+            super_w = w_batch[:, hi_idx] + 1e-12
+            infer_w = w_batch[:, lo_idx] * intensities
+            ok &= np.all(super_w >= infer_w, axis=1)
 
-                if len(cons) == 2:
-                    hi, lo = cons
-                    intensity = 1.0
-
-                elif len(cons) == 3:
-                    hi, lo, intensity = cons
-
-                else:
-                    raise ValueError(
-                        "Each ordinal constraint must be either "
-                        "(more_important, less_important) or "
-                        "(more_important, less_important, intensity)."
-                    )
-
-                if w[idx[hi]] + 1e-12 < intensity * w[idx[lo]]:
-                    rejected = True
-                    break
-
-        if rejected:
+        n_accepted = int(ok.sum())
+        if n_accepted > 0:
             if stats is not None:
-                stats[stats_key]["rejected"] += 1
-            continue
+                stats[stats_key]["accepted"] += 1
+                stats[stats_key]["rejected"] += n - n_accepted
+            weights = w_batch[np.argmax(ok)]
+            return {x: float(weights[i]) for x, i in idx.items()}
 
-        if stats is not None:
-            stats[stats_key]["accepted"] += 1
-
-        return {x: float(w[idx[x]]) for x in idx}
+        elif stats is not None:
+            stats[stats_key]["rejected"] += n
 
     raise RuntimeError(
         "Could not sample a feasible weight vector. "
@@ -560,8 +581,7 @@ def sample_hierarchical_weights(
         rng = np.random.default_rng()
 
     group_weights_sampled = sample_weights_dirichlet_constrained(
-        lb_dict=constraints.group_lb,
-        ub_dict=constraints.group_ub,
+        bounds_dict=constraints.group,
         order_cons=constraints.group_order,
         alpha=alpha_group,
         rng=rng,
@@ -574,8 +594,7 @@ def sample_hierarchical_weights(
     for g, crits in groups.items():
 
         local_weights_sampled = sample_weights_dirichlet_constrained(
-            lb_dict=constraints.local_lb[g],
-            ub_dict=constraints.local_ub[g],
+            bounds_dict=constraints.local[g],
             order_cons=constraints.local_order[g],
             alpha=alpha_local,
             rng=rng,
@@ -632,8 +651,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     if config.weight_mode == "flat":
         active_constr = get_active_constraints(config)
         config._weights = sample_weights_dirichlet_constrained(
-            lb_dict=active_constr.criterion,
-            ub_dict=active_constr.criterion,
+            bounds_dict=active_constr.criterion,
             order_cons=[],
             alpha=config.alpha,
             rng=rng,
@@ -644,8 +662,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     elif config.weight_mode == "group":
         active_constr = get_active_constraints(config)
         group_weights_sampled = sample_weights_dirichlet_constrained(
-            lb_dict=active_constr.group_lb,  #FIXME: lb + ub are now combined
-            ub_dict=active_constr.group_ub,
+            bounds_dict=active_constr.group,
             order_cons=active_constr.group_order,
             alpha=config.alpha_group,
             rng=rng,
@@ -1248,7 +1265,7 @@ def mcda(config: McdaConfig):
         print("\nWinning probabilities (P[rank=1]):")
         print(results["win_probability"])
         
-        mean_net_flow_ranking = list("results"["mean_net_flows"].index)
+        mean_net_flow_ranking = list(results["mean_net_flows"].index)
         print("\\nRanking based on mean net flows:")
         print(mean_net_flow_ranking)
 
