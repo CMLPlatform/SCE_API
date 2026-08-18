@@ -27,6 +27,7 @@ jobs:
         pip install -r requirements.txt
         pip install pytest-django
     - name: Run tests
+      working-directory: ./mysite
       run: |
         DJANGO_SETTINGS_MODULE=mysite.settings pytest dss/tests.py
         python manage.py test api dpp
