@@ -1,5 +1,8 @@
+import numpy as np
 import pandas as pd
 
+from django.core import cache
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.views.generic import DetailView
 from rest_framework.views import APIView, View
@@ -10,14 +13,87 @@ from .serializers import ExperimentComparisonSerializer, WeldStationComparisonSe
 from .mcda import mcda, McdaConfig, WeightConstraints
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup
 from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
+from .plot import fig_to_bytes
+
+
+# -----------------------------------
+# Results view construction functions
+# -----------------------------------
+
+PLOT_TIMEOUT = 3600  # Cache storage time for figures
+
+# Define display order and labels
+RESULT_NAMES = {
+    "decision_matrix":     "Decision matrix",
+    "pairwise_prefs":      "Pairwise preference matrix",
+    "net_flow_scores":     "PROMETHEE flows & Net flow scores (NFS)",
+    "outrank_probability": "Pairwise outranking probabilities (based on NFS)",
+    "sampler_stats":       "Sampling diagnostics",
+    "win_probability":     "Winning probabilities",
+    "expected_rank":       "Expected rank (lower is better)",
+    "rank_acceptability":  "Rank acceptability indices",
+    "mean_net_flows":      "Mean net flow scores",
+    "mean_weights":        "Mean sampled weights",
+    "samples_used":        "Rejection sampling diagnostics",
+}
+
+def _format(value) -> str:
+    """Normalise numpy scalars and round floats to 4 digits for display."""
+    if isinstance(value, (np.floating, float)):
+        return f"{float(value):.4f}"
+    elif isinstance(value, (np.integer, int)):
+        return str(int(value))
+    return str(value)
+
+def _df_to_ctx(df: pd.DataFrame) -> dict:
+    return {
+        "index_name": df.index.name or "",
+        "headers": list(df.columns),
+        "rows": [
+            (str(idx), [_format(v) for v in row])
+            for idx, row in zip(df.index, df.values)
+        ],
+    }
+
+def _series_to_ctx(series: pd.Series) -> dict:
+    return {
+        "index_name": series.index.name or "",
+        "value_name": series.name or "Value",
+        "rows": [(str(idx), _format(v)) for idx, v in series.items()],
+    }
+
+def _build_sections(result: dict) -> list[dict]:
+    """Convert the data in results to a list of sections"""
+    sections = []
+    for key, label in RESULT_NAMES.items():
+        if key not in result:
+            continue
+        value = result[key]
+
+        if isinstance(value, pd.DataFrame):
+            sections.append({
+                "label": label, "type": "dataframe", "data": _df_to_ctx(value)
+            })
+        elif isinstance(value, pd.Series):
+            sections.append({
+                "label": label, "type": "series", "data": _series_to_ctx(value)
+            })
+        else:
+            sections.append({
+                "label": label, "type": "scalar", "data": _format(value)
+            })
+
+    return sections
+
+# -----------------------------------
+# KPI calculation helper functions
+# -----------------------------------
 
 # wages, electricity carbon intensity, electricity price
 country_data = pd.read_csv("init_data/country_data.csv", index_col="country")
 # price, carbon footprint of consumables
 material_data = pd.read_csv("init_data/material_data.csv", index_col="material")
 MULTIPLIERS = {"h": 1/3600, "min": 1/60, "s": 1, "kg": 1, "g": 1/1000, "mg": 10**-6, "m3": 1, "L": 1/1000}
-
-# Helper functions
 
 def lookup(info: str, country: str):
     """Find the info for country in country_data
@@ -164,7 +240,7 @@ def calculate_kpis(valid_data: list, user: str="pd") -> McdaSession:
     Then convert each experiment in `valid_data` to a DecisionMatrix row.
 
     Args:
-        valid_data: List of validated experiment dicts, as produced by
+        valid_data: List of validated expemcdariment dicts, as produced by
             the PD or KAM serializer. All entries are assumed to share
             the same set of quality parameters / operational-efficiency
             criteria as `valid_data[0]`.
@@ -199,6 +275,9 @@ def calculate_kpis(valid_data: list, user: str="pd") -> McdaSession:
         )
     return session
 
+# -----------------------------------
+# Context definitions for forms
+# -----------------------------------
 
 def step1_context() -> dict:
     """
@@ -212,8 +291,6 @@ def step1_context() -> dict:
              "hint": "Criteria have a fixed importance."},
             {"value": "uncertain", "label": "Uncertain",
              "hint": "Criteria weights are given as ranges."},
-            # {"value": "stochastic",  "label": "Stochastic",
-            #  "hint": "Weights drawn from distributions."},
         ],
         "method_options": [
             {"value": "promethee", "label": "PROMETHEE",
@@ -246,7 +323,6 @@ def step1_context() -> dict:
         ]
     }
 
-
 def step2_context(session) -> dict:
     """
     Dynamic context for step 2 — depends on session choices.
@@ -266,6 +342,10 @@ def step2_context(session) -> dict:
         "groups":                group_names,
         "threshold_hint":        threshold_hint,
     }
+
+# -----------------------------------
+# The actual views
+# -----------------------------------
 
 class ExperimentComparisonInitView(APIView):
     def post(self, request):
@@ -401,13 +481,37 @@ class McdaWizardView(View):
 
         # All steps done. Run the MCDA calculations
         config = session.build_config()
-        result = mcda(config)
-        response_data = McdaResultSerializer(result).data
-        return redirect("results", session_id=session_id)
+        results, plots, title = mcda(config)
+
+        # Redirect to the results page with plots
+        for name, fig in plots.items():
+            cache.set(
+                f"mcda_plot_{session_id}_{name}",
+                fig_to_bytes(fig),
+                timeout=PLOT_TIMEOUT,
+            )
+        result_context = {
+            "session": session,
+            "title": title.replace('_', ' ').title(),
+            "plot_names": plots.keys(),
+            "sections": _build_sections(results),
+        }
+        return render(request, "results.html", result_context)
         return Response(response_data, status=status.HTTP_200_OK)
 
 class ExperimentResultsView(DetailView):
-    model = "ExperimentResults"
+    model = "ExperimentResults"  #NOTE: model not implemented
+
+def plot_view(request, session_id: int, plot_name: str) -> HttpResponse:
+    """Plots a single figure (embedded in another page)"""
+    fig_bytes = cache.get(f"mcda_plot_{session_id}_{plot_name}")
+    if fig_bytes is None:
+        return HttpResponse(
+            "Plot not found or session expired.",
+            status=404,
+            content_type="text/plain",
+        )
+    return HttpResponse(fig_bytes, content_type="image/svg+xml")
 
 def parse_request(valid_data: dict) -> McdaSession:
     """

@@ -1,6 +1,23 @@
+from io import BytesIO
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+
+# Common figure settings
+FIG_W = 12
+FIG_H = 8
+FONT = 20
+CELL_FONT = 20
+
+def fig_to_bytes(fig: plt.Figure) -> bytes:
+    """Render a figure to raw SVG bytes and close it."""
+    buf = BytesIO()
+    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="#0f172a")
+    buf.seek(0)
+    data = buf.read()
+    plt.close(fig)
+    return data
 
 # ============================================================
 # FIGURES FOR SHOWING THE RESULTS
@@ -10,11 +27,11 @@ def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
     """Plot two figures for the deterministic PROMETHEE case
     """
     plt.rcParams.update({
-        "font.size": 20,
-        "axes.titlesize": 20,
-        "axes.labelsize": 20,
-        "xtick.labelsize": 20,
-        "ytick.labelsize": 20
+        "font.size": FONT,
+        "axes.titlesize": FONT,
+        "axes.labelsize": FONT,
+        "xtick.labelsize": FONT,
+        "ytick.labelsize": FONT
     })
 
     # ============================================================
@@ -27,7 +44,7 @@ def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
     nfs_values = sorted_nfs.values
 
     # Bar plot of the Net Flow Scores
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(FIG_W, FIG_H))
     bars = plt.bar(alternatives, nfs_values)
 
     # Add a horizontal line at zero to distinguish positive and negative NFS
@@ -43,17 +60,14 @@ def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
             f"{v:.3f}",
             ha="center",
             va="bottom",
-            fontsize=20
+            fontsize=FONT
         )
 
     plt.ylabel("Net Flow Score")
     plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
 
-    plt.savefig(
-        "Net_Flow_Score.pdf", format="pdf", bbox_inches="tight"
-    )
-    plt.show()
+    plt.tight_layout()
+    plots = {"Net Flow Score": fig}
 
     # ============================================================
     # FIGURE 2: PAIRWISE PREFERENCE MATRIX WITH FLOWS
@@ -77,7 +91,7 @@ def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
     # Convert to numerical array for plotting
     data = S_aug.values.astype(float)
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
 
     # Heatmap of pairwise preference scores and flows
     im = ax.imshow(
@@ -119,24 +133,19 @@ def deterministic_promethee_figures(results: pd.DataFrame, S: pd.DataFrame):
                     f"{data[i, j]:.3f}",
                     ha="center",
                     va="center",
-                    fontsize=20,
+                    fontsize=FONT,
                     color=text_color
                 )
 
     plt.tight_layout()
-    # Save as PDF
-    plt.savefig(
-        "Pairwise_Preference_Matrix.pdf", format="pdf", bbox_inches="tight"
-    )
-    plt.show()
+
+    # Return two figures
+    plots["Pairwise Preference Matrix"] = fig
+    return plots
 
 def performance_uncertainty_figures(perf_out: dict):
     """Create two figures for the performance uncertainty case
     """
-    FIG_W = 12
-    FIG_H = 8
-    FONT = 20
-    CELL_FONT = 20
 
     plt.rcParams.update({
         "font.size": FONT,
@@ -194,12 +203,7 @@ def performance_uncertainty_figures(perf_out: dict):
         spine.set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(
-        "Performance_Uncertainty_Rank_Acceptability.pdf",
-        format="pdf",
-        bbox_inches="tight"
-    )
-    plt.show()
+    plots = {"Performance Uncertainty Rank Acceptability": fig}
 
     # ============================================================
     # FIGURE 2: PAIRWISE OUTRANKING PROBABILITIES
@@ -268,21 +272,12 @@ def performance_uncertainty_figures(perf_out: dict):
                 )
 
     plt.tight_layout()
-    plt.savefig(
-        "Performance_Uncertainty_Pairwise_Outranking_Expected_Rank.pdf",
-        format="pdf",
-        bbox_inches="tight"
-    )
-    plt.show()
+    plots["Performance Uncertainty - Pairwise Outranking Expected Rank"] = fig
+    return plots
 
 def smaa_figures(smaa_out: dict):
     """Create two figures for deterministic or uncertain SMAA results.
     """
-    # Common figure settings
-    FIG_W = 12
-    FIG_H = 8
-    FONT = 20
-    CELL_FONT = 20
 
     plt.rcParams.update({
         "font.size": FONT,
@@ -348,12 +343,7 @@ def smaa_figures(smaa_out: dict):
         spine.set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(
-        "Rank_Acceptability_Heatmap.pdf",
-        format="pdf",
-        bbox_inches="tight"
-    )
-    plt.show()
+    plots = {"Rank Acceptability Heatmap": fig}
 
     # ============================================================
     # FIGURE 2: PAIRWISE OUTRANKING PROBABILITIES
@@ -387,7 +377,6 @@ def smaa_figures(smaa_out: dict):
     #
     # Only pairwise outranking probabilities are represented
     # through the green colour scale.
-    #
     # Expected ranks and mean net flows use a neutral background
     # because they are measured on different scales.
 
@@ -404,11 +393,7 @@ def smaa_figures(smaa_out: dict):
 
     fig, ax = plt.subplots(figsize=(FIG_W + 2, FIG_H))
     im = ax.imshow(
-        colour_data,
-        aspect="auto",
-        cmap=cmap,
-        vmin=0,
-        vmax=1,
+        colour_data, aspect="auto", cmap=cmap, vmin=0, vmax=1
     )
 
     # Axis ticks
@@ -462,9 +447,5 @@ def smaa_figures(smaa_out: dict):
         spine.set_visible(False)
 
     plt.tight_layout()
-    plt.savefig(
-        "Pairwise_Outranking_Expected_Rank_Mean_Net_Flow.pdf",
-        format="pdf",
-        bbox_inches="tight"
-    )
-    plt.show()
+    plots["Pairwise Outranking - Expected Rank Mean Net Flow"] = fig
+    return plots

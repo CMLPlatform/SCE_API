@@ -857,12 +857,12 @@ def deterministic_promethee(config: McdaConfig):
     phi_minus = S.sum(axis=0)
     nfs = phi_plus - phi_minus
 
-    results = pd.DataFrame({
+    nfs_df = pd.DataFrame({
         "FOR (phi+)": phi_plus,
         "AGAINST (phi-)": phi_minus,
         "NFS (phi)": nfs
     }).sort_values("NFS (phi)", ascending=False)
-    return results, S
+    return {"net_flow_scores": nfs_df, "pairwise_prefs": S}
 
 def run_performance_uncertainty(config: McdaConfig, rng=None):
     """
@@ -929,7 +929,7 @@ def run_performance_uncertainty(config: McdaConfig, rng=None):
     exp_rank = (rank_accept.values * ranks).sum(axis=1)
     exp_rank = pd.Series(exp_rank, index=alts).sort_values()
 
-    mean_nfs = pd.Series(
+    mean_net_flows = pd.Series(
         {a: float(np.mean(nfs_samples[a])) for a in alts}
     ).sort_values(ascending=False)
 
@@ -951,7 +951,7 @@ def run_performance_uncertainty(config: McdaConfig, rng=None):
         "expected_rank": exp_rank,
         "win_probability": win_prob.sort_values(ascending=False),
         "outrank_probability": outrank_prob,
-        "mean_nfs": mean_nfs,
+        "mean_net_flows": mean_net_flows,
         "simulations": sim_df
     }
 
@@ -1179,20 +1179,8 @@ def mcda(config: McdaConfig):
     # ============================================================
 
     if analysis_type == "deterministic":
-        results, pairwise = deterministic_promethee(config)
-
-        pd.set_option("display.precision", 6)
-        print("\n--- DETERMINISTIC SCENARIO ---")
-        print("\nDecision matrix (numeric):")
-        print(config.df)
-        print("\nPairwise preference matrix S(a,b):")
-        print(pairwise)
-        print("\nPROMETHEE flows and Net Flow Scores:")
-        print(results)
-        print("\nRanking (best to worst):")
-        print(list(results.index))
-
-        # plot.deterministic_promethee_figures(results, pairwise)
+        results = deterministic_promethee(config)
+        plots = plot.deterministic_promethee_figures(*results.values())
 
     # ============================================================
     # CASE 2: PERFORMANCE UNCERTAINTY ANALYSIS
@@ -1213,23 +1201,7 @@ def mcda(config: McdaConfig):
     elif analysis_type == "performance_uncertainty":
         rng = np.random.default_rng(42)
         results = run_performance_uncertainty(config, rng)
-
-        print("\n--- PERFORMANCE UNCERTAINTY SCENARIO ---")
-        print(f"Samples used: {config.n_samples}")
-
-        print("\nWinning probabilities (P[rank=1]):")
-        print(results["win_probability"])
-
-        print("\nExpected rank (lower is better):")
-        print(results["expected_rank"])
-
-        print("\nRank acceptability indices b_{i,r}:")
-        print(results["rank_acceptability"])
-
-        print("\nMean NFS:")
-        print(results["mean_nfs"])
-
-        # plot.performance_uncertainty_figures(results)
+        plot.performance_uncertainty_figures(results)
     
     # ============================================================
     # UNCERTAIN SCENARIO EXECUTION
@@ -1258,30 +1230,8 @@ def mcda(config: McdaConfig):
     if config.scenario == "uncertain":
         rng = np.random.default_rng(42)
         results = run_smaa(config, analysis_type=analysis_type, rng=rng)
+        plots = plot.smaa_figures(results)
 
-        print("\n--- SMAA SCENARIO ---")
-        print(f"Samples used: {results['n_samples']}")
+    results["decision_matrix"] = config.df
 
-        print("\nWinning probabilities (P[rank=1]):")
-        print(results["win_probability"])
-        
-        mean_net_flow_ranking = list(results["mean_net_flows"].index)
-        print("\\nRanking based on mean net flows:")
-        print(mean_net_flow_ranking)
-
-        print("\nExpected rank (lower is better):")
-        print(results["expected_rank"])
-
-        print("\nRank acceptability indices b_{i,r}:")
-        print(results["rank_acceptability"])
-
-        print("\nMean sampled weights (barycenter):")
-        print(results["mean_weights"])
-
-        print("\nRejection sampling diagnostics:")
-        print(results["sampler_stats"])
-
-        print("\nPairwise outranking probabilities P(i outranks j) based on NFS:")
-        print(results["outrank_probability"])
-
-        # plot.smaa_figures(results)
+    return results, plots, analysis_type

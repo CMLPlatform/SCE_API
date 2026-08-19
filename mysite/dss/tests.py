@@ -2,8 +2,9 @@ import logging
 import pytest
 from unittest.mock import patch
 
-import pandas as pd
 from django.test import TestCase
+import pandas as pd
+import matplotlib.pyplot as plt
 from .views import lookup, calculate_experiment_kpis, calculate_kpis
 from .models import DecisionMatrix, Criterion
 from .mcda import McdaConfig, WeightConstraints, mcda
@@ -567,7 +568,11 @@ class McdaTest(TestCase):
                 n_samples=10,
                 constraints=constraints,
             )
-            result = mcda(config)
+            results, plots, title = mcda(config)
+            plt.close()  # Close plots to clear memory
+        assert set(results.keys()) == {"net_flow_scores", "pairwise_prefs", "decision_matrix"}
+        assert set(plots.keys()) == {"Net Flow Score", "Pairwise Preference Matrix"}
+        assert title == "deterministic"
         return
 
 class Explanations():
