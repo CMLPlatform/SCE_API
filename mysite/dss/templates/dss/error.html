@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Analysis failed{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-100 font-sans
+            flex items-center justify-center px-6">
+  <div class="max-w-lg w-full">
+
+    {# Icon #}
+    <div class="mb-6 flex h-14 w-14 items-center justify-center
+                rounded-full bg-red-900/40 border border-red-700">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 text-red-400"
+           fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+    </div>
+
+    {# Error message #}
+    <h1 class="text-2xl font-bold tracking-tight text-white mb-2">
+      Analysis failed
+    </h1>
+    <p class="text-sm text-slate-400 mb-6">
+      The calculation failed with the following error message:
+    </p>
+    <div class="rounded-lg border border-red-800 bg-red-900/20 px-4 py-3 mb-8
+                font-mono text-sm text-red-300 break-words">
+      {{ error }}
+    </div>
+    <p class="text-sm text-slate-400 mb-6">
+      Start a new analysis, or go back to the previous step using the 'back' button of your browser.
+    </p>
+
+    {# Return button #}
+    <a href="{% url 'mcda-init' %}"
+       class="inline-flex items-center gap-2 rounded-lg border border-slate-700
+              bg-slate-800 hover:bg-slate-700 px-5 py-2.5 text-sm font-semibold
+              text-slate-100 transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+      Start new analysis
+    </a>
+
+  </div>
+</div>
+{% endblock %}

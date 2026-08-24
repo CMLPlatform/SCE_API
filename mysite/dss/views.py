@@ -338,9 +338,9 @@ def step2_context(session) -> dict:
     )
 
     return {
-        "criteria":              directions,
-        "groups":                group_names,
-        "threshold_hint":        threshold_hint,
+        "criteria": directions,
+        "groups": group_names,
+        "threshold_hint": threshold_hint,
     }
 
 # -----------------------------------
@@ -481,7 +481,10 @@ class McdaWizardView(View):
 
         # All steps done. Run the MCDA calculations
         config = session.build_config()
-        results, plots, title = mcda(config)
+        try:
+            results, plots, title = mcda(config)
+        except RuntimeError as e:
+            return render(request, "error.html", {"error": e})
 
         # Redirect to the results page with plots
         for name, fig in plots.items():
