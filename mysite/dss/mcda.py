@@ -24,7 +24,7 @@ class WeightConstraints:
     group: Optional[RangeDict] = None
     group_order: Optional[OrderConstraint] = None
     #TODO: local parameters not needed; ungrouped criterion can be used, group can be derived
-    local: Optional[dict[str, RangeDict]] = None
+    local: Optional[RangeDict | dict[str, RangeDict]] = None
     local_order: Optional[dict[str, OrderConstraint]] = None
     criterion: Optional[RangeDict] = None
     criterion_order: Optional[OrderConstraint] = None
@@ -204,6 +204,8 @@ def set_fixed_weights(config: McdaConfig):
             w_c = W_g × w_{c|g}
         where local weights are normalized within each group.
     """
+    if config.sampling_mode == "random":
+        return
 
     if config.weight_mode == "flat":
         weights = {c: 1 / len(config.criteria) for c in config.criteria}
@@ -469,7 +471,10 @@ def sample_weights_dirichlet_constrained(
 
     keys = list(bounds_dict.keys())
     idx = {x: i for i, x in enumerate(keys)}
-    bounds_arr = np.array(list(bounds_dict.values()), dtype=float)
+    bounds_arr = np.array(
+        [v if isinstance(v, tuple) else (v, v) for v in bounds_dict.values()],
+        dtype=float
+    )
     alpha_vec = np.full(len(keys), alpha, dtype=float)
 
     # Precompute constraint indices/intensities once, outside the loop

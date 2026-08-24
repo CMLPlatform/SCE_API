@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Step 4 — Sampling settings{% endblock %}
+{% load dss_tags %}
+{% block title %}Step 4 — Order constraints{% endblock %}
 
 {% block content %}
 <div class="min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -14,10 +15,9 @@
     {# ── Header ── #}
     <div class="mb-10">
       <p class="text-xs font-semibold tracking-widest text-indigo-400 uppercase mb-2">Step 4 of 4</p>
-      <h1 class="text-3xl font-bold tracking-tight text-white">Sampling settings</h1>
+      <h1 class="text-3xl font-bold tracking-tight text-white">Sampling &amp; order constraints</h1>
       <p class="mt-2 text-slate-400 text-sm">
-        To assess the effect of uncertain parameters, sampling and uncertainty parameters
-        are configured here.
+        Configure how samples are drawn, and specify the prefere order of criteria.
       </p>
     </div>
 
@@ -40,99 +40,292 @@
     <form method="post" novalidate>
       {% csrf_token %}
 
-      {# ── Non-field errors ── #}
       {% if form.non_field_errors %}
         <div class="mb-6 rounded-lg bg-red-900/40 border border-red-700 px-4 py-3 text-sm text-red-300">
           {{ form.non_field_errors }}
         </div>
       {% endif %}
 
+      {% comment %}
+         SECTION 1 — Sampling parameters
+         SamplingConfigForm fields rendered individually
+      {% endcomment %}
       {% include "partials/section_header.html" with title="Sampling parameters" hint="All values must be positive." %}
 
-      {{ form.as_p }}
+      {# n_samples — always shown #}
+      {% with field=form.n_samples %}
+        <div>
+          <label for="{{ field.id_for_label }}"
+                  class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+            Number of samples
+          </label>
+          <input type="number"
+                  id="{{ field.id_for_label }}"
+                  name="{{ field.html_name }}"
+                  value="{{ field.value|default:'' }}"
+                  min="1" step="1"
+                  placeholder="e.g. 1000"
+                  class="w-full rounded-md border
+                        {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}
+                        px-3 py-2 text-sm text-slate-100 placeholder-slate-500
+                        focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+          {% if field.errors %}
+            <p class="mt-1 text-xs text-red-400">{{ field.errors|join:", " }}</p>
+          {% endif %}
+        </div>
+      {% endwith %}
 
-      {% include "partials/section_header.html" with title="Ordering constraints" hint=order_hint %}
+      {% comment %}
+         SECTION 2 — Group ordering constraints
+         Visible when uncertain + ordered|bounded_ordered
+      {% endcomment %}
       {% if group_order_formset %}
-      {{ group_order_formset.management_form }}
-      <table>
-          <thead class="text-white"><tr>
-            <th>Superior Group</th><th>Inferior Group</th><th>Intensity</th><th>Remove</th>
-          </tr></thead>
-          <tbody>
-          {% for row in group_order_formset %}
-              <tr>
-              <td>{{ row.group1 }}</td>
-              <td>{{ row.group2 }}</td>
-              <td>{{ row.intensity }}</td>
-              <td>{{ row.DELETE }}</td>
-              </tr>
-          {% endfor %}
-          </tbody>
-      </table>
-      <button type="button"
-              data-add-row="group-order-rows"
-              data-prefix="{{ group_order_formset.prefix }}"
-              class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
-                      border border-dashed border-slate-600 px-3 py-1.5 text-xs
-                      text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
-              viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        Add constraint
-      </button>
+        {% include "partials/section_header.html" with title="Group ordering constraints" hint="Define pairwise preference between groups." %}
+
+        {{ group_order_formset.management_form }}
+
+        <div class="rounded-xl border border-slate-700 overflow-hidden mb-3">
+
+          {# Table header #}
+          <div class="grid grid-cols-12 bg-slate-800/60 px-4 py-2
+                      text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <span class="col-span-4">Superior Group</span>
+            <span class="col-span-4">Inferior Group</span>
+            <span class="col-span-3">Intensity</span>
+            <span class="col-span-1"></span>{# delete #}
+          </div>
+
+          {# Formset rows #}
+          <div id="group-order-rows" class="divide-y divide-slate-800">
+            {% for row in group_order_formset %}
+              <div class="formset-row grid grid-cols-12 items-start gap-2 px-4 py-3 bg-slate-900">
+
+                {# group1 #}
+                <div class="col-span-4">
+                  {{ row.id }}
+                  <select name="{{ row.group1.html_name }}"
+                          id="{{ row.group1.id_for_label }}"
+                          class="w-full rounded-md border border-slate-700 bg-slate-800
+                                 px-2 py-2 text-sm text-slate-100
+                                 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">—</option>
+                    {% for pk, name in row.group1.field.choices %}
+                      {% if pk %}
+                        <option value="{{ pk }}"
+                          {% if row.group1.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                          {{ name }}
+                        </option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                  {% if row.group1.errors %}
+                    <p class="mt-1 text-xs text-red-400">{{ row.group1.errors|join:", " }}</p>
+                  {% endif %}
+                </div>
+
+                {# group2 #}
+                <div class="col-span-4">
+                  <select name="{{ row.group2.html_name }}"
+                          id="{{ row.group2.id_for_label }}"
+                          class="w-full rounded-md border border-slate-700 bg-slate-800
+                                 px-2 py-2 text-sm text-slate-100
+                                 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">—</option>
+                    {% for pk, name in row.group2.field.choices %}
+                      {% if pk %}
+                        <option value="{{ pk }}"
+                          {% if row.group2.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                          {{ name }}
+                        </option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                  {% if row.group2.errors %}
+                    <p class="mt-1 text-xs text-red-400">{{ row.group2.errors|join:", " }}</p>
+                  {% endif %}
+                </div>
+
+                {# intensity #}
+                <div class="col-span-3">
+                  <input type="number"
+                         name="{{ row.intensity.html_name }}"
+                         id="{{ row.intensity.id_for_label }}"
+                         value="{{ row.intensity.value|default:'' }}"
+                         min="0" step="any"
+                         placeholder="e.g. 3"
+                         class="w-full rounded-md border border-slate-700 bg-slate-800
+                                px-2 py-2 text-sm text-slate-100 placeholder-slate-500
+                                focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                  {% if row.intensity.errors %}
+                    <p class="mt-1 text-xs text-red-400">{{ row.intensity.errors|join:", " }}</p>
+                  {% endif %}
+                </div>
+
+                {# DELETE checkbox — hidden, triggered by the × button #}
+                <div class="col-span-1 flex justify-center pt-2">
+                  <label class="cursor-pointer text-slate-600 hover:text-red-400 transition"
+                         title="Remove row">
+                    <input type="checkbox"
+                           name="{{ row.DELETE.html_name }}"
+                           id="{{ row.DELETE.id_for_label }}"
+                           class="sr-only delete-checkbox">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 pointer-events-none"
+                         fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </label>
+                </div>
+
+              </div>{# /formset-row #}
+            {% endfor %}
+          </div>{# /group-order-rows #}
+
+        </div>{# /rounded-xl #}
+
+        <button type="button"
+                data-add-row="group-order-rows"
+                data-prefix="{{ group_order_formset.prefix }}"
+                class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
+                       border border-dashed border-slate-600 px-3 py-1.5 text-xs
+                       text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add constraint
+        </button>
       {% endif %}
 
+      {% comment %}
+         SECTION 3 — Local (criterion) ordering constraints
+         Same conditions as group_order_formset
+      {% endcomment %}
       {% if local_order_formset %}
-      {{ local_order_formset.management_form }}
-      <table>
-          <thead class="text-white"><tr>
-            <th>Superior Criterion</th><th>Inferior Criterion</th><th>Intensity</th><th>Remove</th>
-          </tr></thead>
-          <tbody>
-          {% for row in local_order_formset %}
-              <tr>
-              <td>{{ row.criterion1 }}</td>
-              <td>{{ row.criterion2 }}</td>
-              <td>{{ row.intensity }}</td>
-              <td>{{ row.DELETE }}</td>
-              </tr>
-          {% endfor %}
-          </tbody>
-      </table>
-      <button type="button"
-              data-add-row="local-order-rows"
-              data-prefix="{{ local_order_formset.prefix }}"
-              class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
-                      border border-dashed border-slate-600 px-3 py-1.5 text-xs
-                      text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
-              viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        Add constraint
-      </button>
+        {% include "partials/section_header.html" with title="Criterion ordering constraints" hint="Define pairwise preference between criteria within a group." %}
+
+        {{ local_order_formset.management_form }}
+
+        <div class="rounded-xl border border-slate-700 overflow-hidden mb-3">
+
+          <div class="grid grid-cols-12 bg-slate-800/60 px-4 py-2
+                      text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <span class="col-span-3">Superior Criterion</span>
+            <span class="col-span-3">Inferior Criterion</span>
+            <span class="col-span-2">Intensity</span>
+            <span class="col-span-1"></span>
+          </div>
+
+          <div id="local-order-rows" class="divide-y divide-slate-800">
+            {% for row in local_order_formset %}
+              <div class="formset-row grid grid-cols-12 items-start gap-2 px-4 py-3 bg-slate-900">
+
+                {{ row.id }}
+
+                {# criterion1 #}
+                <div class="col-span-3">
+                  <select name="{{ row.criterion1.html_name }}"
+                          id="{{ row.criterion1.id_for_label }}"
+                          class="w-full rounded-md border border-slate-700 bg-slate-800
+                                 px-2 py-2 text-sm text-slate-100
+                                 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">—</option>
+                    {% for pk, name in row.criterion1.field.choices %}
+                      {% if pk %}
+                        <option value="{{ pk }}"
+                          {% if row.criterion1.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                          {{ name }}
+                        </option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+
+                {# criterion2 #}
+                <div class="col-span-3">
+                  <select name="{{ row.criterion2.html_name }}"
+                          id="{{ row.criterion2.id_for_label }}"
+                          class="w-full rounded-md border border-slate-700 bg-slate-800
+                                 px-2 py-2 text-sm text-slate-100
+                                 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value="">—</option>
+                    {% for pk, name in row.criterion2.field.choices %}
+                      {% if pk %}
+                        <option value="{{ pk }}"
+                          {% if row.criterion2.value|stringformat:"s" == pk|stringformat:"s" %}selected{% endif %}>
+                          {{ name }}
+                        </option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+
+                {# intensity #}
+                <div class="col-span-2">
+                  <input type="number"
+                         name="{{ row.intensity.html_name }}"
+                         id="{{ row.intensity.id_for_label }}"
+                         value="{{ row.intensity.value|default:'' }}"
+                         min="0" step="any"
+                         placeholder="e.g. 3"
+                         class="w-full rounded-md border border-slate-700 bg-slate-800
+                                px-2 py-2 text-sm text-slate-100 placeholder-slate-500
+                                focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                </div>
+
+                {# DELETE #}
+                <div class="col-span-1 flex justify-center pt-2">
+                  <label class="cursor-pointer text-slate-600 hover:text-red-400 transition"
+                         title="Remove row">
+                    <input type="checkbox"
+                           name="{{ row.DELETE.html_name }}"
+                           id="{{ row.DELETE.id_for_label }}"
+                           class="sr-only delete-checkbox">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 pointer-events-none"
+                         fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  </label>
+                </div>
+
+              </div>{# /formset-row #}
+            {% endfor %}
+          </div>{# /local-order-rows #}
+
+        </div>
+
+        <button type="button"
+                data-add-row="local-order-rows"
+                data-prefix="{{ local_order_formset.prefix }}"
+                class="add-row-btn mb-10 inline-flex items-center gap-1.5 rounded-md
+                       border border-dashed border-slate-600 px-3 py-1.5 text-xs
+                       text-slate-400 hover:border-indigo-500 hover:text-indigo-400 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add constraint
+        </button>
       {% endif %}
 
       {# ── Navigation ── #}
       <div class="mt-10 flex items-center justify-between">
         <a href="{% url 'wizard' session_id=session.id step=2 %}"
-            class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition">
+           class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
           </svg>
           Back
         </a>
         <button type="submit"
           class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500
-                  px-6 py-3 text-sm font-semibold text-white transition-colors
-                  focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2
-                  focus:ring-offset-slate-950">
-          See results
+                 px-6 py-3 text-sm font-semibold text-white transition-colors
+                 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2
+                 focus:ring-offset-slate-950">
+          Run analysis
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+               viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
         </button>
       </div>
@@ -142,7 +335,18 @@
 </div>
 
 <script>
-// Function to add a new formset row, connected to 'add-row-btn'
+/**
+ * Function to add a new formset row.
+ *
+ * How it works:
+ *   1. Clone the last .formset-row in the target container.
+ *   2. Increment every `id` and `name` attribute that contains the prefix
+ *      and a form index (__N__), updating them to the new index.
+ *   3. Clear all input values and uncheck checkboxes in the clone.
+ *   4. Increment the management form's TOTAL_FORMS counter.
+ *   5. Wire up the delete (×) button on the new row.
+ *   6. Append to the container.
+ */
 document.querySelectorAll(".add-row-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     const containerId = btn.dataset.addRow;
@@ -198,5 +402,25 @@ document.querySelectorAll(".add-row-btn").forEach(btn => {
   });
 });
 
+/**
+ * Clicking the × icon checks the hidden DELETE checkbox and
+ * visually strikes through / fades the row instead of removing
+ * it from the DOM (Django needs the checkbox in the POST data).
+ */
+function wireDeleteButton(row) {
+  const label    = row.querySelector("label[title='Remove row']");
+  const checkbox = row.querySelector(".delete-checkbox");
+  if (!label || !checkbox) return;
+
+  label.addEventListener("click", (e) => {
+    e.preventDefault();
+    checkbox.checked = true;
+    row.classList.add("opacity-30", "pointer-events-none");
+  });
+}
+
+// Wire delete on rows that already exist on page load
+document.querySelectorAll(".formset-row").forEach(wireDeleteButton);
 </script>
+
 {% endblock %}

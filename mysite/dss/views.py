@@ -341,6 +341,7 @@ def step2_context(session) -> dict:
         "criteria": directions,
         "groups": group_names,
         "threshold_hint": threshold_hint,
+        "weight_range": session.sampling_mode.startswith("bounded"),
     }
 
 # -----------------------------------

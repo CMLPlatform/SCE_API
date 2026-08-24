@@ -2,6 +2,7 @@ from django.db import models
 from .mcda import McdaConfig, WeightConstraints
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
+import pandas as pd
 
 
 def validate_direction(value):
@@ -83,9 +84,6 @@ class McdaSession(models.Model):
 
     # Form 3 - conditional
     n_samples   = models.IntegerField(null=True)
-    alpha       = models.FloatField(null=True)
-    alpha_group = models.FloatField(null=True)
-    alpha_local = models.FloatField(null=True)
     group_order = models.JSONField(null=True)  # [[group1, group2, float], ...]
     local_order = models.JSONField(null=True)  # [[criterion1, criterion2, float], ...]
 
@@ -112,7 +110,6 @@ class McdaSession(models.Model):
         # Add more groups and criteria
     
     def build_config(self) -> McdaConfig:
-        import pandas as pd
         criteria = list(self.criteria)
         criterion_names = [c.name for c in criteria]
         criterion_names.sort()
@@ -147,9 +144,6 @@ class McdaSession(models.Model):
             penalty_factor  = self.penalty_factor,
             sampling_mode   = self.sampling_mode,
             n_samples       = self.n_samples,
-            alpha           = self.alpha,
-            alpha_group     = self.alpha_group,
-            alpha_local     = self.alpha_local,
             constraints     = constraints
         )
 

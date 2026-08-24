@@ -17,8 +17,8 @@
       <p class="text-xs font-semibold tracking-widest text-indigo-400 uppercase mb-2">Step 3 of 4</p>
       <h1 class="text-3xl font-bold tracking-tight text-white">Weights &amp; thresholds</h1>
       <p class="mt-2 text-slate-400 text-sm">
-        Weights accept a single value <code class="text-indigo-300">0.5</code>
-        or a range <code class="text-indigo-300">0.2, 0.8</code>.
+        Weights must be a{% if weight_range %} range <code class="text-indigo-300">(0.2, 0.8)</code>
+        {% else %} single value <code class="text-indigo-300">(0.5)</code>{% endif %}.
         All values must be positive.
       </p>
     </div>
@@ -35,6 +35,9 @@
         Weights: <strong class="text-slate-100">{{ session.get_weight_mode_display }}</strong>
       </span>
       <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+        Sampling: <strong class="text-slate-100">{{ session.get_sampling_mode_display }}</strong>
+      </span>
+      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
         Veto: <strong class="text-slate-100">{{ session.get_veto_type_display }}</strong>
       </span>
     </div>
@@ -48,81 +51,46 @@
         </div>
       {% endif %}
 
-      {% comment %}
-         SECTION 1 — Sampling mode
-         Visible when weight_mode == "group"
-      {% endcomment %}
-      {% if session.weight_mode == "group" %}
-        {% include "partials/section_header.html" with title="Sampling mode" hint="Decide how to draw samples from weight and/or KPI values, for Monte Carlo simulation." %}
+      {% if session.sampling_mode != "random" %}
+        {% comment %}
+          SECTION 1 — Group weights
+          Visible when weight_mode in {group, hierarchical}
+        {% endcomment %}
+        {% if session.weight_mode in "group,hierarchical" %}
+          {% include "partials/section_header.html" with title="Group weights" hint="Relative importance of each pre-defined group." %}
 
-        {% with field=form.sampling_mode %}
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3 mb-10">
-            {% for opt in sampling_mode_options %}
-            <label for="{{ field.id_for_label }}_{{ opt.value }}"
-                   class="relative flex cursor-pointer items-start rounded-lg border
-                          border-slate-700 bg-slate-900 px-4 py-3
-                          hover:border-indigo-500 hover:bg-slate-800 transition
-                          has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950">
-              <input type="radio"
-                     id="{{ field.id_for_label }}_{{ opt.value }}"
-                     name="{{ field.html_name }}"
-                     value="{{ opt.value }}"
-                     {% if field.value == opt.value %}checked{% endif %}
-                     class="peer sr-only">
-              <span class="mt-0.5 mr-3 flex h-4 w-4 shrink-0 items-center justify-center
-                           rounded-full border border-slate-600
-                           peer-checked:border-indigo-400 peer-checked:bg-indigo-500 transition">
-                <span class="h-1.5 w-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100"></span>
-              </span>
-              <span>
-                <span class="block text-sm font-medium text-slate-100">{{ opt.label }}</span>
-                {% if opt.hint %}
-                  <span class="block text-xs text-slate-400 mt-0.5">{{ opt.hint }}</span>
-                {% endif %}
-              </span>
-            </label>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-10">
+            {% for group in groups %}
+              {% with fname="group_weight_"|add:group %}
+                {% include "partials/weight_field.html" with field=form|get_field:fname label=group|capfirst range=weight_range %}
+              {% endwith %}
             {% endfor %}
           </div>
-          {% if field.errors %}
-            <p class="mt-1 text-xs text-red-400">{{ field.errors|join:", " }}</p>
+        {% endif %}
+
+        {% comment %}
+          SECTION 2 — Local weights
+          Visible when weight_mode in {hierarchical, flat}
+        {% endcomment %}
+        {% if session.weight_mode in "hierarchical,flat" %}
+          {% if session.weight_mode == "flat" %}
+          {% include "partials/section_header.html" with title="Criterion weights" hint="Weight of each criterion." %}
+          {% else %}
+          {% include "partials/section_header.html" with title="Local weights" hint="Weight of each criterion within its group." %}
           {% endif %}
-        {% endwith %}
+
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-10">
+            {% for criterion in criteria %}
+              {% with fname="local_weight_"|add:criterion %}
+                {% include "partials/weight_field.html" with field=form|get_field:fname label=criterion range=weight_range%}
+              {% endwith %}
+            {% endfor %}
+          </div>
+        {% endif %}
       {% endif %}
 
       {% comment %}
-         SECTION 2 — Group weights
-         Visible when weight_mode in {group, hierarchical}
-      {% endcomment %}
-      {% if session.weight_mode in "group,hierarchical" %}
-        {% include "partials/section_header.html" with title="Group weights" hint="Relative importance of each pre-defined group. Enter a value or range." %}
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-10">
-          {% for group in groups %}
-            {% with fname="group_weight_"|add:group %}
-              {% include "partials/weight_field.html" with field=form|get_field:fname label=group|capfirst %}
-            {% endwith %}
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      {% comment %}
-         SECTION 3 — Local weights
-         Visible when weight_mode == hierarchical
-      {% endcomment %}
-      {% if session.weight_mode == "hierarchical" %}
-        {% include "partials/section_header.html" with title="Local weights" hint="Weight of each criterion within its group." %}
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 mb-10">
-          {% for criterion in criteria %}
-            {% with fname="local_weight_"|add:criterion %}
-              {% include "partials/weight_field.html" with field=form|get_field:fname label=criterion %}
-            {% endwith %}
-          {% endfor %}
-        </div>
-      {% endif %}
-
-      {% comment %}
-         SECTION 4 — Thresholds (always)
+         SECTION 3 — Thresholds (always)
          Shape differs between promethee (range) and others (float)
       {% endcomment %}
       {% include "partials/section_header.html" with title="Thresholds" hint=threshold_hint %}
@@ -181,12 +149,11 @@
       </div>
 
       {% comment %}
-         SECTION 5 — Veto thresholds
+         SECTION 4 — Veto thresholds
          Visible when veto_type != "no"
       {% endcomment %}
       {% if session.veto_type != "no" %}
         {% include "partials/section_header.html" with title="Veto thresholds" hint="Maximum tolerable disadvantage per criterion." %}
-        {% comment %}
         <div class="rounded-xl border border-slate-700 bg-slate-900 divide-y divide-slate-800 mb-6">
           {% for criterion in criteria %}
             {% with fname="veto_"|add:criterion %}
@@ -216,7 +183,6 @@
             {% endwith %}
           {% endfor %}
         </div>
-        {% endcomment %}
 
         {# ── Penalty factor — only for soft veto ── #}
         {% if session.veto_type == "soft" %}

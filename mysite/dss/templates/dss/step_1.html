@@ -39,6 +39,9 @@
       {# ── Weight mode ── #}
       {% include "partials/radio_group.html" with field=form.weight_mode label="Weight mode" options=weight_mode_options %}
 
+      {# ── Sampling mode ── #}
+      {% include "partials/radio_group.html" with field=form.sampling_mode label="Sampling mode" options=sampling_mode_options %}
+
       {# ── Veto type ── #}
       {% include "partials/radio_group.html" with field=form.veto_type label="Veto type" options=veto_type_options %}
 

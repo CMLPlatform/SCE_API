@@ -76,6 +76,7 @@ class OrderingEntryField(forms.Field):
 class KpiSelectionForm(forms.Form):
     def __init__(self, session: McdaSession, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.session = session
 
         self.groups = (
             CritGroup.objects.filter(session=session).prefetch_related("criteria")
@@ -287,14 +288,31 @@ class WeightsThresholdsForm(forms.Form):
         return cleaned
 
     def save(self, session: McdaSession) -> None:
+        """Normalize the weights and save them as session attributes."""
         d = self.cleaned_data
         criteria = list(session.criteria.values_list("name", flat=True))
 
-        if session.weight_mode in ("group", "hierarchical"):
-            session.group_weights = {g: d[f"group_weight_{g}"] for g in self.groups}
+        if session.sampling_mode != "random":
+            def maybe_normalize(weights: dict, session: McdaSession):
+                if not session.sampling_mode.startswith("bounded"):
+                    total = sum(weights.values())
+                    if total != 1:
+                        return {k: w/total for k, w in weights.items()}
+                return weights
 
-        if session.weight_mode in ("hierarchical", "flat"):
-            session.local_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+            if session.weight_mode in ("group", "hierarchical"):
+                group_weights = {g: d[f"group_weight_{g}"] for g in self.groups}
+                session.group_weights = maybe_normalize(group_weights, session)
+
+            if session.weight_mode == "hierarchical":
+                session.local_weights = {}
+                for group in self.groups:
+                    crit_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+                    session.local_weights[group] = maybe_normalize(crit_weights, session)
+
+            if session.weight_mode == "flat":
+                local_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+                session.local_weights = maybe_normalize(local_weights, session)
 
         session.thresholds = {c: d[f"threshold_{c}"] for c in criteria}
 
@@ -316,8 +334,7 @@ class SamplingConfigForm(forms.Form):
     Only shown when scenario == "uncertain".
     Fields are added dynamically based on scenario, weight_mode, and sampling_mode.
 
-    Saved to: session.n_samples, .alpha, .alpha_group, .alpha_local,
-              .group_order, .local_order
+    Saved to: session.n_samples, .group_order, .local_order
     """
 
     def __init__(self, session: McdaSession, *args, **kwargs):
@@ -328,18 +345,6 @@ class SamplingConfigForm(forms.Form):
         self.fields["n_samples"] = forms.IntegerField(
             label="Number of samples", min_value=1, required=False
         )
-
-        self.fields["alpha"] = PositiveFloatField(
-            label="Alpha (global confidence level)", required=False
-        )
-        if session.weight_mode in ("group", "hierarchical"):
-            self.fields["alpha_group"] = PositiveFloatField(
-                label="Alpha for group level", required=False
-            )
-        if session.weight_mode == "hierarchical":
-            self.fields["alpha_local"] = PositiveFloatField(
-                label="Alpha for local level", required=False
-            )
 
     def _parse_order_lines(self, raw: str, valid_names: list[str]) -> list[tuple]:
         """Parses multi-line ordering constraints into list of (a, b, intensity) tuples."""
@@ -368,27 +373,13 @@ class SamplingConfigForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
-        session = self.session
-
         if not cleaned.get("n_samples"):
             self.add_error("n_samples", "Required for non-deterministic scenarios.")
-
-        if session.scenario == "uncertain":
-            if cleaned.get("alpha") is None:
-                self.add_error("alpha", "Required for uncertain scenario.")
-            if session.weight_mode in ("group", "hierarchical") and cleaned.get("alpha_group") is None:
-                self.add_error("alpha_group", "Required for uncertain + group/hierarchical weighting.")
-            if session.weight_mode == "hierarchical" and cleaned.get("alpha_local") is None:
-                self.add_error("alpha_local", "Required for uncertain + hierarchical weighting.")
-
         return cleaned
 
     def save(self, session: McdaSession) -> None:
         data = self.cleaned_data
         session.n_samples   = data.get("n_samples")
-        session.alpha       = data.get("alpha")
-        session.alpha_group = data.get("alpha_group")
-        session.alpha_local = data.get("alpha_local")
         # session.group_order = data.get("group_order")
         # session.local_order = data.get("local_order")
         session.save()
@@ -425,6 +416,8 @@ class LocalOrderForm(forms.ModelForm):
         cleaned = super().clean()
         if cleaned.get("criterion1") == cleaned.get("criterion2"):
             raise forms.ValidationError("Choose two different criteria.")
+        # if cleaned.get("criterion1").group != cleaned.get("criterion2").group:
+        #     raise forms.ValidationError("Choose criteria from the same group.")
         return cleaned
 
 
