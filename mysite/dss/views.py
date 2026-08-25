@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from django.core import cache
+from django.core.cache import cache
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
 from django.views.generic import DetailView
@@ -11,7 +11,7 @@ from rest_framework import status
 
 from .serializers import ExperimentComparisonSerializer, WeldStationComparisonSerializer, McdaRequestSerializer, McdaResultSerializer
 from .mcda import mcda, McdaConfig, WeightConstraints
-from .models import McdaSession, DecisionMatrix, Criterion, CritGroup
+from .models import McdaSession, DecisionMatrix, Criterion, CritGroup, Results
 from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
 from .plot import fig_to_bytes
 
@@ -487,24 +487,42 @@ class McdaWizardView(View):
         except RuntimeError as e:
             return render(request, "error.html", {"error": e})
 
-        # Redirect to the results page with plots
+        # Cache the created figures
         for name, fig in plots.items():
             cache.set(
                 f"mcda_plot_{session_id}_{name}",
                 fig_to_bytes(fig),
                 timeout=PLOT_TIMEOUT,
             )
-        result_context = {
-            "session": session,
-            "title": title.replace('_', ' ').title(),
-            "plot_names": plots.keys(),
-            "sections": _build_sections(results),
-        }
-        return render(request, "results.html", result_context)
+        # Redirect to the results page with plots
+        result, _ = Results.objects.update_or_create(
+            session=session,
+            defaults={
+                'title': title.replace('_', ' ').title(),
+                'plots': list(plots.keys()),
+                'sections': _build_sections(results),
+            }
+        )
+        return redirect('results', pk=result.pk)
         return Response(response_data, status=status.HTTP_200_OK)
 
-class ExperimentResultsView(DetailView):
-    model = "ExperimentResults"  #NOTE: model not implemented
+
+class McdaResultsView(DetailView):
+    model = Results
+    template_name = "dss/results.html"
+    context_object_name = 'result'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        result = self.object
+        context.update({
+            "session": result.session,
+            "title": result.title + " MCDA results",
+            "plot_names": result.plots,
+            "sections": result.sections,
+        })
+        return context
+
 
 def plot_view(request, session_id: int, plot_name: str) -> HttpResponse:
     """Plots a single figure (embedded in another page)"""

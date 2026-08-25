@@ -15,9 +15,8 @@ class WeightField(forms.Field):
     widget = forms.TextInput(attrs={"placeholder": "e.g. 0.5 or 0.2, 0.8"})
 
     def to_python(self, value):
-        if not value:
-            return None
-        value = value.strip()
+        if not value or value.strip() == "":
+            return 0
 
         if "," in value:
             parts = value.split(",")
@@ -43,10 +42,13 @@ class WeightField(forms.Field):
 
 
 class PositiveFloatField(forms.FloatField):
-    def validate(self, value):
-        super().validate(value)
-        if value is not None and value < 0:
+    def clean(self, value):
+        value = super().clean(value)
+        if value is None:
+            return 0
+        if value < 0:
             raise forms.ValidationError("Value must be positive.")
+        return value
 
 
 class OrderingEntryField(forms.Field):
@@ -276,6 +278,14 @@ class WeightsThresholdsForm(forms.Form):
                             f"local_weight_{name}",
                             "Required for hierarchical weighting."
                         )
+
+        if session.method == "promethee":
+            for crit in session.criteria.values_list("name", flat=True):
+                threshold = cleaned.get(f"threshold_{crit}") 
+                if threshold and not isinstance(threshold, tuple):
+                    self.add_error(
+                        f"threshold_{crit}", "Should be formatted as: 0.1, 0.2."
+                    )
 
         if session.veto_type != "no":
             for name in session.criteria.values_list("name", flat=True):

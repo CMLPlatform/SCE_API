@@ -224,3 +224,14 @@ class LocalOrder(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+class Results(models.Model):
+    session = models.OneToOneField(
+        McdaSession, on_delete=models.CASCADE, primary_key=True, related_name='results'
+    )
+    title = models.CharField(max_length=255)
+    plots = models.JSONField(default=dict)
+    sections = models.JSONField(default=list)
+
+    def __str__(self):
+        return f"Results for {self.title}"

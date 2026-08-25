@@ -1158,7 +1158,7 @@ def mcda(config: McdaConfig):
 
     if config.method == "promethee_like":  # Try to fix if thresholds has tuples
         for c, val in config.thresholds.items():
-            if not isinstance(val, float):
+            if not isinstance(val, (float, int)):
                 config.thresholds[c] = sum(val)/len(val)
 
     # Select the actual analysis type.

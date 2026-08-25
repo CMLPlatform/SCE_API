@@ -2,6 +2,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
 
 
 # Common figure settings
@@ -13,7 +14,7 @@ CELL_FONT = 20
 def fig_to_bytes(fig: plt.Figure) -> bytes:
     """Render a figure to raw SVG bytes and close it."""
     buf = BytesIO()
-    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="#0f172a")
+    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="#ffffff")
     buf.seek(0)
     data = buf.read()
     plt.close(fig)
