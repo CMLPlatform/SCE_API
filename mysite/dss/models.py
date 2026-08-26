@@ -41,8 +41,11 @@ class McdaSession(models.Model):
         COMPLETE    = "complete"     # mcda() has run
 
     class Scenario(models.TextChoices):
-        DETERMINISTIC = "deterministic"
-        UNCERTAIN     = "uncertain"
+        DETERMINISTIC   = "deterministic"
+        RANDOM          = "random"
+        BOUNDED         = "bounded"
+        ORDERED         = "ordered"
+        BOUNDED_ORDERED = "bounded_ordered"
 
     class Method(models.TextChoices):
         PROMETHEE_LIKE = "promethee_like"
@@ -58,12 +61,6 @@ class McdaSession(models.Model):
         HARD = "hard"
         SOFT = "soft"
 
-    class SamplingMode(models.TextChoices):
-        RANDOM          = "random"
-        BOUNDED         = "bounded"
-        ORDERED         = "ordered"
-        BOUNDED_ORDERED = "bounded_ordered"
-
     status      = models.CharField(max_length=11, choices=Status, default=Status.PENDING)
     created_at  = models.DateTimeField(auto_now_add=True)
     user_type   = models.CharField(max_length=3, choices={"pd": "Process developer", "kam": "Key account manager"}, null=True)
@@ -72,12 +69,12 @@ class McdaSession(models.Model):
     scenario    = models.CharField(max_length=15, choices=Scenario, null=True)
     method      = models.CharField(max_length=15, choices=Method, null=True)
     weight_mode = models.CharField(max_length=12, choices=WeightMode, null=True)
-    sampling_mode    = models.CharField(max_length=15, choices=SamplingMode, null=True)
     veto_type   = models.CharField(max_length=4, choices=VetoType, null=True)
 
     # Form 2 - conditional; stored as JSON to handle float|tuple values
     group_weights    = models.JSONField(null=True)  # {"group_name": float | [lo, hi]}
-    local_weights    = models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
+    local_weights    = models.JSONField(null=True)  # {"criterion": {"group": float | [lo, hi]}}
+    criterion_weights= models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
     thresholds       = models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
     veto_thresholds  = models.JSONField(null=True)  # {"criterion": float}
     penalty_factor   = models.FloatField(default=0.5)
@@ -128,6 +125,7 @@ class McdaSession(models.Model):
             group_order = self.group_order,
             local       = self.local_weights,
             local_order = self.local_order,
+            criterion   = self.criterion_weights,
         )
 
         return McdaConfig(
@@ -142,7 +140,6 @@ class McdaSession(models.Model):
             veto_type       = self.veto_type,
             veto_thresholds = self.veto_thresholds,
             penalty_factor  = self.penalty_factor,
-            sampling_mode   = self.sampling_mode,
             n_samples       = self.n_samples,
             constraints     = constraints
         )

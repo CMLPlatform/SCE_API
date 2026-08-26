@@ -176,25 +176,15 @@ class BaseConfigForm(forms.Form):
     weight_mode = forms.ChoiceField(
         choices=McdaSession.WeightMode.choices, widget=forms.RadioSelect
     )
-    sampling_mode = forms.ChoiceField(
-        choices=McdaSession.SamplingMode.choices, widget=forms.RadioSelect
-    )
     veto_type = forms.ChoiceField(
         choices=McdaSession.VetoType.choices, widget=forms.RadioSelect
     )
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("scenario") == "uncertain" and not cleaned.get("sampling_mode"):
-            self.add_error("sampling_mode", "Required for uncertain analysis.")
-        return cleaned
 
     def save(self, session: McdaSession) -> None:
         data = self.cleaned_data
         session.scenario    = data["scenario"]
         session.method      = data["method"]
         session.weight_mode = data["weight_mode"]
-        session.sampling_mode = data["sampling_mode"]
         session.veto_type   = data["veto_type"]
         session.save()
 
@@ -210,7 +200,7 @@ class WeightsThresholdsForm(forms.Form):
     enforced in clean() based on the session context.
 
     Saved to: session.group_weights, .local_weights, .thresholds,
-              .veto_thresholds, .penalty_factor, .sampling_mode
+              .veto_thresholds, .penalty_factor
     """
 
     def __init__(self, session: McdaSession, *args, **kwargs):
@@ -219,7 +209,7 @@ class WeightsThresholdsForm(forms.Form):
         criteria = list(session.criteria.values_list("name", flat=True))
         self.groups = list(session.groups.values_list("name", flat=True))
 
-        if session.sampling_mode != "random":
+        if session.scenario != "random":
             # -- group_weights: weight_mode in {group, hierarchical} -----
             if session.weight_mode in ("group", "hierarchical"):
                 for group in self.groups:
@@ -263,7 +253,7 @@ class WeightsThresholdsForm(forms.Form):
         cleaned = super().clean()
         session = self.session
 
-        if session.sampling_mode != "random":
+        if session.scenario != "random":
             if session.weight_mode in ("group", "hierarchical"):
                 for group in self.groups:
                     if not cleaned.get(f"group_weight_{group}"):
@@ -302,9 +292,9 @@ class WeightsThresholdsForm(forms.Form):
         d = self.cleaned_data
         criteria = list(session.criteria.values_list("name", flat=True))
 
-        if session.sampling_mode != "random":
+        if session.scenario != "random":
             def maybe_normalize(weights: dict, session: McdaSession):
-                if not session.sampling_mode.startswith("bounded"):
+                if not session.scenario.startswith("bounded"):
                     total = sum(weights.values())
                     if total != 1:
                         return {k: w/total for k, w in weights.items()}
@@ -341,8 +331,8 @@ class WeightsThresholdsForm(forms.Form):
 
 class SamplingConfigForm(forms.Form):
     """
-    Only shown when scenario == "uncertain".
-    Fields are added dynamically based on scenario, weight_mode, and sampling_mode.
+    Only shown for uncertain scenarios.
+    Fields are added dynamically based on scenario and weight_mode.
 
     Saved to: session.n_samples, .group_order, .local_order
     """
@@ -356,31 +346,6 @@ class SamplingConfigForm(forms.Form):
             label="Number of samples", min_value=1, required=False
         )
 
-    def _parse_order_lines(self, raw: str, valid_names: list[str]) -> list[tuple]:
-        """Parses multi-line ordering constraints into list of (a, b, intensity) tuples."""
-        result = []
-        for i, line in enumerate(raw.strip().splitlines(), start=1):
-            line = line.strip()
-            if not line:
-                continue
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) != 3:
-                raise forms.ValidationError(f"Line {i}: expected 'A, B, intensity'.")
-            a, b = parts[0], parts[1]
-            for name in (a, b):
-                if name not in valid_names:
-                    raise forms.ValidationError(
-                        f"Line {i}: '{name}' is not a recognised name."
-                    )
-            try:
-                intensity = float(parts[2])
-            except ValueError:
-                raise forms.ValidationError(f"Line {i}: intensity must be a number.")
-            if intensity < 0:
-                raise forms.ValidationError(f"Line {i}: intensity must be positive.")
-            result.append((a, b, intensity))
-        return result
-
     def clean(self):
         cleaned = super().clean()
         if not cleaned.get("n_samples"):
@@ -390,8 +355,6 @@ class SamplingConfigForm(forms.Form):
     def save(self, session: McdaSession) -> None:
         data = self.cleaned_data
         session.n_samples   = data.get("n_samples")
-        # session.group_order = data.get("group_order")
-        # session.local_order = data.get("local_order")
         session.save()
 
 

@@ -30,17 +30,14 @@
         </div>
       {% endif %}
 
-      {# ── Scenario ── #}
-      {% include "partials/radio_group.html" with field=form.scenario label="Scenario" options=scenario_options %}
-
-      {# ── Method ── #}
-      {% include "partials/radio_group.html" with field=form.method label="MCDA method" options=method_options %}
-
       {# ── Weight mode ── #}
       {% include "partials/radio_group.html" with field=form.weight_mode label="Weight mode" options=weight_mode_options %}
 
-      {# ── Sampling mode ── #}
-      {% include "partials/radio_group.html" with field=form.sampling_mode label="Sampling mode" options=sampling_mode_options %}
+      {# ── Scenario ── #}
+      {% include "partials/radio_group.html" with field=form.scenario label="Weight constraints" options=scenario_options %}
+
+      {# ── Method ── #}
+      {% include "partials/radio_group.html" with field=form.method label="Preference model" options=method_options %}
 
       {# ── Veto type ── #}
       {% include "partials/radio_group.html" with field=form.veto_type label="Veto type" options=veto_type_options %}

@@ -75,11 +75,10 @@ class WeldStationComparisonSerializer(serializers.ListSerializer):
     child = WeldStationSerializer()
 
 class McdaRequestSerializer(serializers.Serializer):
-    SCENARIO_CHOICES = ["uncertain", "deterministic"]
+    SCENARIO_CHOICES = ["deterministic", "random", "bounded", "ordered", "bounded_ordered"]
     METHOD_CHOICES = ["promethee", "promethee_like"]
     WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
     VETO_CHOICES = ["no", "soft", "hard"]
-    SAMPLING_CHOICES = ["random", "bounded", "ordered", "bounded_ordered"]
 
     decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value|(min, max)},}
     directions = serializers.DictField()  # {"criterion": "min"|"max"|value}
@@ -97,7 +96,6 @@ class McdaRequestSerializer(serializers.Serializer):
     veto_thresholds = serializers.DictField(required=False)  # {"criterion": value}
     penalty_factor = serializers.FloatField(default=0.5)  # used if veto_type=="soft"
 
-    sampling_mode = serializers.ChoiceField(SAMPLING_CHOICES, required=False)  # If weight_mode=="flat", this must be "random"
     n_samples = serializers.IntegerField(required=False)
     alpha = serializers.FloatField(required=False)
     alpha_group = serializers.FloatField(required=False)

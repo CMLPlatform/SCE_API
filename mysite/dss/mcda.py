@@ -52,7 +52,6 @@ class McdaConfig:
     penalty_factor: float = 0.5
 
     # Sampling
-    sampling_mode: Optional[str] = None
     n_samples: int = 10000
     alpha: float = 1.0
     alpha_group: float = 1.0
@@ -204,7 +203,7 @@ def set_fixed_weights(config: McdaConfig):
             w_c = W_g × w_{c|g}
         where local weights are normalized within each group.
     """
-    if config.sampling_mode == "random":
+    if config.scenario == "random":
         return
 
     if config.weight_mode == "flat":
@@ -344,17 +343,17 @@ def combine_order_constraints(
     ]
 
 # ============================================================
-# ACTIVATE CONSTRAINTS ACCORDING TO SAMPLING MODE
+# ACTIVATE CONSTRAINTS ACCORDING TO SCENARIO
 # ============================================================
 def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     """
-    This block translates the selected sampling_mode into the
-    actual constraints used by the rejection sampler.
+    This block translates the selected sampling scenario into
+    the actual constraints used by the rejection sampler.
 
-    The active constraints depend on sampling_mode:
+    The active constraints depend on the scenario:
 
     ------------------------------------------------------------
-    sampling_mode = "random"
+    scenario = "random"
     - group weights are only constrained by the simplex:
             W_g >= 0, sum_g W_g = 1
     - local weights are only constrained by the simplex:
@@ -363,13 +362,13 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     - no ordinal constraints are used.
 
     ------------------------------------------------------------
-    sampling_mode = "bounded"
+    scenario = "bounded"
     - group lower/upper bounds are activated;
     - local lower/upper bounds are activated;
     - ordinal constraints are not activated.
 
     ------------------------------------------------------------
-    sampling_mode = "ordered"
+    scenario = "ordered"
     - ordinal constraints and preference intensities are activated;
     - specific lower/upper bounds are not activated;
     - only natural simplex bounds 0 <= w <= 1 are used.
@@ -377,7 +376,7 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     groups = config.groups
     active = WeightConstraints()
 
-    if config.sampling_mode == "random":
+    if config.scenario == "random":
         active.group = {g: (0.0, 1.0) for g in groups}
         active.group_order = []
 
@@ -387,12 +386,12 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
         }
         active.local_order = {g: [] for g in groups}
 
-    elif config.sampling_mode == "bounded":
+    elif config.scenario == "bounded":
         active = config.constraints
         active.group_order = []
         active.local_order = {g: [] for g in groups}
 
-    elif config.sampling_mode == "ordered":
+    elif config.scenario == "ordered":
         active.group = {g: (0.0, 1.0) for g in groups}
         active.group_order = config.constraints.group_order
 
@@ -402,12 +401,12 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
         }
         active.local_order = config.constraints.local_order
 
-    elif config.sampling_mode == "bounded_ordered":
+    elif config.scenario == "bounded_ordered":
         active = config.constraints
 
     else:
         raise ValueError(
-            "sampling_mode must be either "
+            "scenario must be either "
             "'random', 'bounded', 'ordered', or 'bounded_ordered'"
         )
 
@@ -987,7 +986,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
             group        -> sample group weights only
             hierarchical -> sample group and local weights
 
-       Active constraints depend on sampling_mode:
+       Active constraints depend on scenario:
            random  -> no specific constraints
            bounded -> lower/upper bounds
            ordered -> ordinal and intensity constraints
@@ -1014,16 +1013,6 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
 
     if rng is None:
         rng = np.random.default_rng()
-
-    # The flat model samples final criterion weights directly.
-    # Since no group or local structure is used, this implementation
-    # allows flat sampling only in the unconstrained random case.
-
-    if config.weight_mode == "flat" and config.sampling_mode != "random":
-        raise ValueError(
-            "With weight_mode='flat', only sampling_mode='random' is supported. "
-            "Use weight_mode='group' or weight_mode='hierarchical' for bounded or ordered sampling."
-        )
 
     alts = config.df.index.tolist()
     n_alts = len(alts)
@@ -1168,16 +1157,11 @@ def mcda(config: McdaConfig):
         else:
             analysis_type = "deterministic"
 
-    elif config.scenario == "uncertain":
+    else:
         if performance_uncertainty:
             analysis_type = "full_smaa"
         else:
             analysis_type = "smaa_weights"
-
-    else:
-        raise ValueError(
-            "scenario must be either 'deterministic' or 'uncertain'"
-        )
 
     # ============================================================
     # CASE 1: DETERMINISTIC PROMETHEE ANALYSIS
@@ -1213,7 +1197,7 @@ def mcda(config: McdaConfig):
     # ============================================================
     """
     This block is executed when:
-        scenario = "uncertain"
+        scenario != "deterministic"
 
     Depending on the automatically selected analysis_type, the function
     run_smaa performs either:
@@ -1232,7 +1216,7 @@ def mcda(config: McdaConfig):
     - pairwise outranking probabilities.
     """
 
-    if config.scenario == "uncertain":
+    if config.scenario != "deterministic":
         rng = np.random.default_rng(42)
         results = run_smaa(config, analysis_type=analysis_type, rng=rng)
         plots = plot.smaa_figures(results)

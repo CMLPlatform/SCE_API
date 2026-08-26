@@ -537,20 +537,20 @@ class McdaTest(TestCase):
 
         # "scenario", "method", "weight", "veto", "sampling"
         test_cases = [
-            ["deterministic", "promethee", "flat", "no", "random"],
-            ["deterministic", "promethee", "flat", "soft", "random"],
-            ["deterministic", "promethee", "flat", "hard", "random"],
-            ["deterministic", "promethee", "group", "no", "random"],
-            ["deterministic", "promethee", "hierarchical", "no", "random"],
-            ["uncertain", "promethee", "flat", "no", "random"],
-            ["uncertain", "promethee", "group", "no", "random"],
-            ["uncertain", "promethee", "hierarchical", "no", "random"],
-            ["uncertain", "promethee", "group", "no", "bounded"],
-            ["uncertain", "promethee", "hierarchical", "no", "bounded"],
-            ["uncertain", "promethee", "group", "no", "ordered"],
-            ["uncertain", "promethee", "hierarchical", "no", "ordered"],
-            ["deterministic", "promethee_like", "group", "no", "ordered"],
-            ["deterministic", "promethee_like", "hierarchical", "no", "bounded_ordered"],
+            ["deterministic", "promethee", "flat", "no"],
+            ["deterministic", "promethee", "flat", "soft"],
+            ["deterministic", "promethee", "flat", "hard"],
+            ["deterministic", "promethee", "group", "no"],
+            ["deterministic", "promethee", "hierarchical", "no"],
+            ["random", "promethee", "flat", "no"],
+            ["random", "promethee", "group", "no"],
+            ["random", "promethee", "hierarchical", "no"],
+            ["bounded", "promethee", "group", "no"],
+            ["bounded", "promethee", "hierarchical", "no"],
+            ["ordered", "promethee", "group", "no"],
+            ["ordered", "promethee", "hierarchical", "no"],
+            ["deterministic", "promethee_like", "group", "no"],
+            ["deterministic", "promethee_like", "hierarchical", "no"],
         ]
         for settings in test_cases:
             logger.debug(f"Testing case: {settings}")
@@ -564,7 +564,6 @@ class McdaTest(TestCase):
                 thresholds=thresholds,
                 veto_type=settings[3],
                 veto_thresholds=veto_thresholds,
-                sampling_mode=settings[4],
                 n_samples=10,
                 constraints=constraints,
             )
@@ -580,11 +579,24 @@ class Explanations():
     # ANALYSIS SCENARIO SELECTION
     # ============================================================
     """
-    The variable `scenario` controls whether the analysis uses:
-        1) Fixed weights
-        scenario = "deterministic"
-        2) Uncertain weights sampled through SMAA
-        scenario = "uncertain"
+    The variable `scenario` controls what weights and constraints are used:
+    deterministic:
+        Fixed weights
+    random:
+        No bounds and no ordinal constraints are imposed.
+    bounded:
+        Lower and upper bounds are imposed, but no ordinal
+        constraints are imposed.
+    ordered:
+        Ordinal constraints and preference intensities are imposed,
+        but specific lower/upper bounds are not imposed.
+    bounded_ordered:
+        Lower/upper bounds and ordinal/intensity constraints are
+        imposed simultaneously.
+
+    If `scenario` is not deterministic, uncertain weights are 
+    sampled through SMAA during weight sampling.
+    ------------------------------------------------------------
 
     The uncertainty on the performances is not selected manually.
     It is detected automatically by checking whether the decision
@@ -602,7 +614,7 @@ class Explanations():
     4. full_smaa: Uncertain weights + uncertain performance values
     """
 
-    scenario = "uncertain"
+    scenario = "bounded"
 
     # ============================================================
     # DETERMINISTIC WEIGHT MODE
@@ -674,9 +686,6 @@ class Explanations():
             w = (w_1, ..., w_m)
             sum_j w_j = 1
 
-        This mode is currently allowed only with:
-            sampling_mode = "random"
-
     2) group
         Only group-level weights are sampled.
         Each sampled group weight is then uniformly distributed
@@ -690,23 +699,6 @@ class Explanations():
         w_j = W_g × w_{j|g}
     This allows criteria in the same group to have different
     local importance.
-
-    ------------------------------------------------------------
-    The variable `sampling_mode` defines which constraints are
-    activated during weight sampling:
-
-    random:
-        no bounds and no ordinal constraints are imposed.
-    bounded:
-        lower and upper bounds are imposed, but no ordinal
-        constraints are imposed.
-    ordered:
-        ordinal constraints and preference intensities are imposed,
-        but specific lower/upper bounds are not imposed.
-    bounded_ordered:
-        lower/upper bounds and ordinal/intensity constraints are
-        imposed simultaneously.
     """
 
     weight_mode = "flat"
-    sampling_mode = "random"

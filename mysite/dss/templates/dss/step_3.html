@@ -24,13 +24,10 @@
     {# ── Session context pills ── #}
     <div class="flex flex-wrap gap-2 mb-10">
       <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
-        Decision data: <strong class="text-slate-100">{{ session.get_scenario_display }}</strong>
-      </span>
-      <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
         Weights: <strong class="text-slate-100">{{ session.get_weight_mode_display }}</strong>
       </span>
       <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
-        Sampling: <strong class="text-slate-100">{{ session.get_sampling_mode_display }}</strong>
+        Constraints: <strong class="text-slate-100">{{ session.get_scenario_display }}</strong>
       </span>
     </div>
 

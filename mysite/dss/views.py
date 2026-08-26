@@ -288,15 +288,21 @@ def step1_context() -> dict:
     return {
         "scenario_options": [
             {"value": "deterministic", "label": "Deterministic",
-             "hint": "Criteria have a fixed importance."},
-            {"value": "uncertain", "label": "Uncertain",
-             "hint": "Criteria weights are given as ranges."},
+             "hint": "Criteria have a fixed importance (weight)."},
+            {"value": "random",  "label": "Random",
+            "hint": "Uncertain importance, without bounds or constraints."},
+            {"value": "bounded", "label": "Bounded",
+            "hint": "The importance of each criterion is within a range."},
+            {"value": "ordered", "label": "Ordered",
+            "hint": "The criteria can be ordered by level of importance."},
+            {"value": "bounded_ordered", "label": "Bounded ordered",
+            "hint": "Both lower and upper bounds, and an importance order apply."},
         ],
         "method_options": [
-            {"value": "promethee", "label": "PROMETHEE",
-             "hint": "Define indifference and preference thresholds."},
-            {"value": "promethee_like", "label": "PROMETHEE-like",
-             "hint": "Define the preference of criteria."},
+            {"value": "promethee_like", "label": "Simple",
+             "hint": "Define the importance of criteria."},
+            {"value": "promethee", "label": "Advanced",
+             "hint": "Also define indifference and preference thresholds."},
         ],
         "weight_mode_options": [
             {"value": "flat", "label": "Flat",
@@ -311,16 +317,6 @@ def step1_context() -> dict:
             {"value": "hard", "label": "Hard",  "hint": "Disqualify alternatives"},
             {"value": "soft", "label": "Soft",  "hint": "Penalise alternatives"},
         ],
-        "sampling_mode_options": [
-            {"value": "random",  "label": "Random",
-            "hint": "No bounds or constraints are imposed."},
-            {"value": "bounded", "label": "Bounded",
-            "hint": "Lower and upper bounds are imposed."},
-            {"value": "ordered", "label": "Ordered",
-            "hint": "A preference order of the importance of groups is imposed."},
-            {"value": "bounded_ordered", "label": "Bounded ordered",
-            "hint": "Both lower and upper bounds, and a preference order imposed."},
-        ]
     }
 
 def step2_context(session) -> dict:
@@ -341,7 +337,7 @@ def step2_context(session) -> dict:
         "criteria": directions,
         "groups": group_names,
         "threshold_hint": threshold_hint,
-        "weight_range": session.sampling_mode.startswith("bounded"),
+        "weight_range": session.scenario.startswith("bounded"),
     }
 
 # -----------------------------------
@@ -382,12 +378,6 @@ class McdaWizardView(View):
                 return 3
             return None  # deterministic: skip Form 3
         return None  # step 3 is always the last
-    
-    def _ask_for_orders(self, session: McdaSession) -> bool:
-        return (
-            session.scenario == "uncertain" and
-            session.sampling_mode in ["ordered", "bounded_ordered"]
-        )
 
     def _get_order_formsets(self, session, data=None):
         """Instantiate both formsets with querysets scoped to this session."""
@@ -425,7 +415,7 @@ class McdaWizardView(View):
         elif step == 2:
             context = step2_context(session)
         elif step == 3:
-            if self._ask_for_orders(session):
+            if session.scenario.endswith("ordered"):
                 context = dict(zip(
                     ["group_order_formset", "local_order_formset"],
                     self._get_order_formsets(session),
@@ -452,7 +442,7 @@ class McdaWizardView(View):
         session = get_object_or_404(McdaSession, pk=session_id)
         form = self.get_form(step, session, data=request.POST)
 
-        if step == 3 and self._ask_for_orders(session):
+        if step == 3 and session.scenario.endswith("ordered"):
             group_order, local_order = self._get_order_formsets(
                 session, data=request.POST
             )
@@ -608,7 +598,6 @@ class McdaCalculationView(APIView):
                 penalty_factor=data.get("penalty_factor"),
 
                 # Sampling
-                sampling_mode=data.get("sampling_mode"),
                 n_samples=data.get("n_samples"),
                 alpha=data.get("alpha"),
                 alpha_group=data.get("alpha_group"),
