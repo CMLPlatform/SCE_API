@@ -81,8 +81,9 @@ class McdaSession(models.Model):
 
     # Form 3 - conditional
     n_samples   = models.IntegerField(null=True)
-    group_order = models.JSONField(null=True)  # [[group1, group2, float], ...]
-    local_order = models.JSONField(null=True)  # [[criterion1, criterion2, float], ...]
+    group_ranks = models.JSONField(default=dict)  # {"group_name": int}
+    local_ranks = models.JSONField(default=dict)  # {"group_name": {"criterion": int}}
+    crit_ranks  = models.JSONField(default=dict)  # {"criterion": int}
 
     @property
     def criteria(self):
@@ -106,6 +107,18 @@ class McdaSession(models.Model):
         #TODO: if self.user_type == self.UserType.KAM:
         # Add more groups and criteria
     
+    def ranking_to_pairwise(self, ranking) -> list[tuple]:
+        sorted_items = sorted(ranking.items(), key=lambda x: x[1])
+        pairwise_list = []
+        n = len(sorted_items)
+        for i in range(n):
+            for j in range(i + 1, n):
+                if sorted_items[i][1] < sorted_items[j][1]:
+                    pairwise_list.append(
+                        (sorted_items[i][0], sorted_items[j][0], 1.0)
+                    )
+        return pairwise_list
+    
     def build_config(self) -> McdaConfig:
         criteria = list(self.criteria)
         criterion_names = [c.name for c in criteria]
@@ -122,11 +135,17 @@ class McdaSession(models.Model):
 
         constraints = WeightConstraints(
             group       = self.group_weights,
-            group_order = self.group_order,
             local       = self.local_weights,
-            local_order = self.local_order,
             criterion   = self.criterion_weights,
+            group_order = self.ranking_to_pairwise(self.group_ranks),
+            criterion_order  = self.ranking_to_pairwise(self.crit_ranks)
         )
+        if self.local_ranks:
+            constraints.local_order = {
+                g: self.ranking_to_pairwise(self.local_ranks[g])
+                if g in self.local_ranks else None
+                for g in groups
+            },
 
         return McdaConfig(
             df              = pd.DataFrame.from_dict(matrix, orient='index', columns=criterion_names),

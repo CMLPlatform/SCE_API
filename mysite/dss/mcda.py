@@ -22,11 +22,10 @@ class WeightConstraints:
     The ordering of groups or criteria can also be specified.
     """
     group: Optional[RangeDict] = None
-    group_order: Optional[OrderConstraint] = None
-    #TODO: local parameters not needed; ungrouped criterion can be used, group can be derived
     local: Optional[RangeDict | dict[str, RangeDict]] = None
-    local_order: Optional[dict[str, OrderConstraint]] = None
     criterion: Optional[RangeDict] = None
+    group_order: Optional[OrderConstraint] = None
+    local_order: Optional[dict[str, OrderConstraint]] = None
     criterion_order: Optional[OrderConstraint] = None
 
 @dataclass(slots=True)
@@ -409,14 +408,6 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
             "scenario must be either "
             "'random', 'bounded', 'ordered', or 'bounded_ordered'"
         )
-
-    # Add ungrouped criterion dict
-    if config.weight_mode == "flat":
-        active.criterion = {}
-        active.criterion_order = []
-        for group in groups:
-            active.criterion.update(active.local[group])
-            active.criterion_order.append(active.local_order[group])
 
     return active
 

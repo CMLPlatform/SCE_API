@@ -311,8 +311,8 @@ class WeightsThresholdsForm(forms.Form):
                     session.local_weights[group] = maybe_normalize(crit_weights, session)
 
             if session.weight_mode == "flat":
-                local_weights = {c: d[f"local_weight_{c}"] for c in criteria}
-                session.local_weights = maybe_normalize(local_weights, session)
+                crit_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+                session.criterion_weights = maybe_normalize(crit_weights, session)
 
         session.thresholds = {c: d[f"threshold_{c}"] for c in criteria}
 
@@ -334,27 +334,70 @@ class SamplingConfigForm(forms.Form):
     Only shown for uncertain scenarios.
     Fields are added dynamically based on scenario and weight_mode.
 
-    Saved to: session.n_samples, .group_order, .local_order
+    Saved to: session.n_samples, .group_ranks, .local_ranks, .crit_ranks
     """
 
     def __init__(self, session: McdaSession, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.session = session
+        criteria = session.criteria
+        groups = session.groups.all()
+        n_crit = len(criteria)
+        n_groups = len(groups)
 
         # -- n_samples: scenario != deterministic
         self.fields["n_samples"] = forms.IntegerField(
             label="Number of samples", min_value=1, required=False
         )
 
+        if session.scenario != "random":
+            # -- group ranks -----
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in groups:
+                    self.fields[f"group_rank_{group.name}"] = forms.IntegerField(
+                        label=group.name, required=False,
+                        min_value=1, max_value=n_groups,
+                    )
+            # -- local criterion ranks --------
+            if session.weight_mode == "hierarchical":
+                for criterion in criteria:
+                    field_name = f"rank_{criterion.group.name}_{criterion.name}"
+                    self.fields[field_name] = forms.IntegerField(
+                        label=criterion.name, required=False, min_value=1
+                    )
+            # -- criterion ranks --------
+            elif session.weight_mode == "flat":
+                for criterion in criteria:
+                    self.fields[f"rank_{criterion.name}"] = forms.IntegerField(
+                        label=criterion.name, required=False,
+                        min_value=1, max_value=n_crit,
+                    )
+
     def clean(self):
         cleaned = super().clean()
         if not cleaned.get("n_samples"):
-            self.add_error("n_samples", "Required for non-deterministic scenarios.")
+            self.add_error("n_samples", "Required for uncertainty analysis.")
         return cleaned
 
     def save(self, session: McdaSession) -> None:
         data = self.cleaned_data
-        session.n_samples   = data.get("n_samples")
+        session.n_samples = data.get("n_samples")
+
+        # Save the ranking fields to the associated session variable
+        for field_name in data:
+            if data[field_name] is None:
+                continue
+            if field_name.startswith("group_rank_"):
+                session.group_ranks[field_name[11:]] = data[field_name]
+            elif field_name.startswith("rank_"):
+                if session.weight_mode == "flat":
+                    session.crit_ranks[field_name[5:]] = data[field_name]
+                elif session.weight_mode == "hierarchical":
+                    group, crit = field_name.split('_', 2)[1:]
+                    if group not in session.local_ranks:
+                        session.local_ranks[group] = {}
+                    session.local_ranks[group][crit] = data[field_name]
+
         session.save()
 
 

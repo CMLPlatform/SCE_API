@@ -340,6 +340,29 @@ def step2_context(session) -> dict:
         "weight_range": session.scenario.startswith("bounded"),
     }
 
+def step3_context(session) -> dict:
+    """
+    Dynamic context for step 3:
+    - All active criteria and groups
+    - Criteria in each group (dict)
+    """
+    criteria = session.criteria
+    groups   = {crit.group for crit in criteria}
+
+    if session.weight_mode == "hierarchical":
+        criteria_by_group = {
+            group.name: [c.name for c in group.criteria.filter(used=True)]
+            for group in groups
+        }
+    else:
+        criteria_by_group = {}
+ 
+    return {
+        "groups":            list(groups),
+        "criteria":          list(criteria),
+        "criteria_by_group": criteria_by_group,
+    }
+
 # -----------------------------------
 # The actual views
 # -----------------------------------
@@ -415,19 +438,7 @@ class McdaWizardView(View):
         elif step == 2:
             context = step2_context(session)
         elif step == 3:
-            if session.scenario.endswith("ordered"):
-                context = dict(zip(
-                    ["group_order_formset", "local_order_formset"],
-                    self._get_order_formsets(session),
-                ))
-                for formset in  ["group_order_formset", "local_order_formset"]:
-                    if formset in kwargs:
-                        context[formset] = kwargs[formset]
-                context["order_hint"] = "Ordering the importance of groups or criteria relative to each other."
-                if session.weight_mode=="hierarchical":
-                    context["order_hint"] += " Only specify the order of criteria belonging to the same group."
-            else:
-                context = {}
+            context = step3_context(session)
         context.update(kwargs)
         context["session"] = session
         return context
@@ -442,29 +453,11 @@ class McdaWizardView(View):
         session = get_object_or_404(McdaSession, pk=session_id)
         form = self.get_form(step, session, data=request.POST)
 
-        if step == 3 and session.scenario.endswith("ordered"):
-            group_order, local_order = self._get_order_formsets(
-                session, data=request.POST
-            )
-        else:
-            group_order = local_order = None
-
-        formsets_valid = (
-            (group_order is None or group_order.is_valid()) and
-            (local_order is None or local_order.is_valid())
-        )
-        if not form.is_valid() or not formsets_valid:
-            context = self.get_context(
-                step, session, form=form, group_order_formset=group_order, local_order_formset=local_order
-            )
+        if not form.is_valid():
+            context = self.get_context(step, session, form=form)
             return render(request, f"dss/step_{step}.html", context)
 
-        # Save the form and GroupOrder + LocalOrder formsets to tables
         form.save(session)
-        if group_order:
-            group_order.save()
-        if local_order:
-            local_order.save()
 
         next_step = self._next_step(step, session)
         if next_step:

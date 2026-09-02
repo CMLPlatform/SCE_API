@@ -436,8 +436,6 @@ class McdaTest(TestCase):
             "Manufacturer": (0.05,0.25),
         }
 
-        group_ranking = None
-        group_pairwise_constraints = []
         group_order_constraints = [
             ("Environmental", "Manufacturer", 1.5),
             ("CRM", "Manufacturer", 1.2),
@@ -526,9 +524,27 @@ class McdaTest(TestCase):
             "Manufacturer": []
         }
 
+        criterion_bounds = {
+            "Ni concentration (%)": (0.0,0.20),
+            "Li concentration (%)": (0.0,0.15),
+            "Mg concentration (%)": (0.0,0.12),
+            "Ti concentration (%)": (0.0,0.12),
+            "Cu concentration (%)": (0.0,0.20),
+            "Recycled input (kg/kg)": (0.1,0.40),
+            "Waste output (kg/kg)": (0.0,0.30),
+            "Climate change (GWP100)": (0.1,0.25),
+            "Acidification (AE)": (0.05,0.20),
+            "Eutrophication Freshwater (P)": (0.05,0.20),
+            "Particulate Matter (human health)": (0.05,0.20),
+            "LandUse (soil quality index)": (0.05,0.20),
+            "WaterUse (m³ world eq deprived)": (0.0,0.30),
+            "Ionising radiation (kBq U-235 eq)": (0.05,0.20),
+            "Operator": (0.05,0.25),
+        }
+
         constraints = WeightConstraints(
-            group_bounds, group_order_constraints,
-            local_bounds, local_order_constraints,
+            group_bounds, local_bounds, criterion_bounds,
+            group_order_constraints, local_order_constraints,
         )
 
         # ============================================================
