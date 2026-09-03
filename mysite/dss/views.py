@@ -386,10 +386,10 @@ class KamComparisonInitView(APIView):
 
         session = calculate_kpis(serializer.validated_data, user="kam")
 
+        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
         return redirect(
             reverse("wizard", kwargs={"session_id": session.id, "step": 0})
         )
-        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
 
 class McdaWizardView(View):
     def _next_step(self, current_step: int, session: McdaSession) -> int | None:
@@ -546,6 +546,7 @@ def parse_request(valid_data: dict) -> McdaSession:
 
     return session
 
+#TODO: remove this View
 class McdaInitView(APIView):
     def post(self, request):
         serializer = McdaRequestSerializer(data=request.data)
@@ -556,7 +557,6 @@ class McdaInitView(APIView):
         return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
 
 
-#TODO: remove this View
 class McdaCalculationView(APIView):
     def post(self, request):
         request_serializer = McdaRequestSerializer(data=request.data)
