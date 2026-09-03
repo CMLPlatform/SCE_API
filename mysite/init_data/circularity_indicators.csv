@@ -1,0 +1,96 @@
+id,name,is_static,original_attribute,unit,description
+R0,Refuse (total),True,,?,
+R0.01,Refuse hazardous substances,True,substitutionOfHazardousSubstances,?,% of harzardous substances used relative to the total material requirements and compared to market reference
+R0.02,Refuse fossil energy use,True,substitutionOfNonrenewableEnergy,?,% of renewable energy consumption relative to total energy requirements and compared to market reference
+R0.03,Refuse non-renewable materials,True,substitutionOfNonrenewableRawMaterials,?,"% of renewable, biobased, or biodegradable materials consumption relative to total material requirements and compared to market reference"
+R0.04,Refuse other materials,True,substitutionOfNonvirginMaterials,?,% of virgin material consumption relative to total material requirements and compared to market reference
+R0.05,Avoided product consumption,True,avoidedProductConsumption,?,% total number of avoided produced units relative to theoretical maximum production and compared to market reference
+R1,Rethink (total),True,,?,
+R1.01,Modularity,True,modularity,?,Time (time unit) and number of products needed for disassembly (n) 
+R1.02,Product take-back,True,productTakeback,?,% of products taken back relative to total sold units
+R1.03,Critical Materials,True,criticalMaterials,?,% of critical materials or materials containing CRM relative to the total material requirements
+R1.04,Shared use,True,sharedUse,?,Number of expected users by product (n)
+R1.05,Durability,True,durability,?,% of time added in lifespan of product or material due to design and business choices
+R1.05d,Durability,False,durability,?,Average of the real durability of selected products (time unit) 
+R1.06,Potential use during lifetime,True,potentialUseDuringLifetime,?,Time of usability (years) 
+R1.06d,Potential use during lifetime,False,potentialUseDuringLifetime,?,Number of possible usages (n) 
+R1.07,Multifunctionality,True,multifunctionality,?,Number of possible functions (n)
+R1.08,Modularity score,True,modularityScore,?,"Quantitative score reflecting how easily components can be separated and replaced. High modularity improves reuse, repair, and upgrade potential."
+R1.09,Materials,True,materials,?,Total number of distinct material types used in the product. Fewer materials typically improve recyclability and reduce environmental impact.
+R1.10,Number of components,True,numberOfComponents,?,"Total number of discrete components in the product. Fewer components may indicate a simpler, more resource-efficient design."
+R1.11,Material composition complexity,True,materialCompositionComplexity,?,"A calculated score reflecting how complex the material mix is (e.g., multi-material composites are more difficult to recycle)."
+R1.12,Number of tools required,True,numberOfToolsRequired,?,Number of different tools required for assembly/disassembly. Fewer tools suggest better maintainability and easier repair.
+R1.13,Separable pieces ratio,True,separablePiecesRatio,?,Indicates what proportion of the product can be physically separated without damage.
+R2,Reduce (total),True,,?,
+R2.01,Raw materials intensity reduction,True,rawMaterialsIntensityReduction,?,% of reduction in materials consumption per production unit relative to compared to market reference
+R2.02,Energy intensity reduction,True,energyIntensityReduction,?,% of reduction in energy consumption per production unit relative to compared to market reference
+R2.03,Energy consumption reduction,True,energyConsumptionReduction,?,% of reduction in energy consumption relative to compared to market reference
+R2.04,Waste generation reduction,True,wasteGenerationReduction,?,% of reductions in waste generation relative to compared to market reference
+R2.05,Material losses reduction,True,materialLossesReduction,?,% of reduction in waste generation per production unit relative to compared to market reference
+R2.06,Water intensity reduction,True,waterIntensityReduction,?,% of reduction in water consumption per production unit relative to compared to market reference
+R2.07,Water consumption,True,waterConsumption,?,% of reduction in water consumption relative to compared to market reference
+R3,Reuse (total),True,,?,
+R3.01,Reuse rate,True,reuseRate,?,% of reused products relative to total sold units
+R3.02,Product take-back,True,productTakeback,?,% of recaptured products relative to total sold units
+R3.03,Consumer awareness,True,consumerAwareness,?,% of second life product units sold relative to total produced unit
+R3.04,Potential use,True,potentialUse,?,Time of usability (time unit) 
+R3.04d,Potential use,False,potentialUse,?,Number of possible uses (n) 
+R3.05,Ownership time,True,ownershipTime,?,Average time of ownership (years)
+R3.06,Voidance of reuse barriers,True,voidanceOfReuseBarriers,?,"Indicates whether there are no physical, technical, or legal barriers that prevent reuse (e.g., glued components, license locks)."
+R3.07,Reuse potential,True,reusePotential,?,Quantitative score measuring how suitable the product is for reuse without extensive processing.
+R3.08,Costs of reuse,True,costsOfReuse,?,"Indicates whether reuse requires costly or energy-intensive refurbishment (e.g., re-coating, testing)."
+R3.09,Access to high-value parts,True,accessToHighValueParts,?,"States whether high-value components (e.g., motors, chips) are easily accessible for reuse or resale."
+R4,Repair (total),True,,?,
+R4.01,Longevity extension,True,longevityExtension,?,Time added in the lifespan of the product or materials (time unit) 
+R4.02,Extension of producer responsibility,True,extensionOfProducerResponsibility,?,Estimated % of users with access to repair and maintenance services 
+R4.03,Consumer awareness,True,consumerAwareness,?,% of units engaged in repair model relative to total produced units
+R4.04,Potential repair,True,potentialRepair,?,% of products successfully repaired relative to total produced units 
+R4.05,Repairability score,True,repairabilityScore,?,"Aggregated metric evaluating ease of repair based on disassembly, availability of spare parts, and repair documentation."
+R4.06,Durability score,True,durabilityScore,?,"Indicates how resistant the product is to wear and tear over time, based on material quality, stress points, and previous service data."
+R4.07,Non-destructive disassembly score,True,nonDestructiveDisassemblyScore,?,"Measures the ability to disassemble components without causing damage (e.g., avoiding cutting, breaking glue seals)."
+R4.08,Ease of reassembly,True,easeOfReassebly,?,"Score indicating how easily the product can be reassembled after repair, based on component orientation, fasteners, and clear labeling."
+R5,Refurbish (total),True,,?,
+R5.01,Product take-back,True,productTakeback,?,% of reclaimed products to refurbishment 
+R5.02,Refurbished content,True,refurbishedContent,?,% of refurbished parts (or components) in product
+R5.03,Refurbishment potential,True,refurbishmentPotential,?,% of units engaged in refurbishing model relative to total produced units
+R5.04,Refurbishment score,True,refurbishmentScore,?,"A score representing how easily and effectively a product can be refurbished—e.g., through cleaning, minor repairs, and testing."
+R5.05,Upgradability score,True,upgradabilityScore,?,"Measures how easily the product can be upgraded with newer components or firmware, promoting longer life cycles."
+R6,Remanufacture (total),True,,?,
+R6.01,Product take-back,True,productTakeback,?,% of product reclaimed for remanufacturing relative to total produced units 
+R6.02,Remanufacturing effectiveness,True,remanufacturingEffectiveness,?,% of remanufactured products relative to total produced units
+R6.03,Consumer awareness,True,consumerAwareness,?,% of units engaged in remanufacturing model relative to total produced units
+R6.04,Remanufacturing content,True,remanufacturingContent,?,Number of remanufactured parts within the produced unit
+R6.05,Remanufacturing score,True,remanufacturingScore,?,"Reflects whether the product is suitable for full remanufacturing: parts tolerance, standardization, testing compatibility."
+R7,Repurpose (total),True,,?,
+R7.01,Secondary raw materials,True,secondaryrawmaterials,?,% of total of seconday raw materials relative to total material requirements
+R7.02,Hazardous waste diverted from disposal,True,hazardouswastedivertedfromdisposal,?,Total weight of hazardous waste diverted from disposal (metric tons) % of repurposing operations 
+R7.03,Non-hazardous waste diverted from disposal,True,nonhazardouswastedivertedfromdisposal,?,% of nonhazardous waste used for repurpose 
+R8,Recycle (total),True,,?,
+R8.01,Overall recycling rates,True,overallRecyclingRates,?,Expected recycling rate of the materials in the product (%) at EoL
+R8.01d,Overall recycling rates,False,overallRecyclingRates,?,Effective recycling rate of the materials in the product (%) at EoL
+R8.02,Recycling rate for waste streams,True,recyclingRateForWasteStreams,?,Recycling rate for waste streams (%) at the process level
+R8.03,Waste generation,True,wasteGeneration,?,% of residual waste 
+R8.04,Reverse logistics,True,reverseLogistics,?,Estimated % of customers with access to reverse logistics services 
+R8.05,Recycling potential,True,recyclingPotential,?,Estimated % of customers reeceiving recycling and composting services
+R8.06,Design for recyclability,True,designForRecyclability,?,"A calculated indicator assessing how well the product design supports recycling processes (e.g., avoiding non-detachable parts or hazardous glues)"
+R8.07,Recycling compatibility score,True,recyclingCompatibilityScore,?,Assesses how compatible the product is with standard recycling technologies and infrastructure.
+R8.08,Material homogeneity score,True,materialHomogeneityScore,?,Measures how uniform the materials are—homogeneous materials are easier and more cost-effective to recycle.
+R8.09,Hazardous substance barrier,True,hazardousSubstanceBarrier,?,"Indicates if hazardous materials in the product (e.g., mercury, lead) obstruct the recycling process."
+R8.10,High purity sorting possible,True,highPuritySortingPossible,?,"Indicates whether components/materials can be sorted to a high level of purity, enabling better-quality recycled materials."
+R8.11,Use of easily recyclable materials,True,useofEasilyRecyclableMaterials,?,"States whether materials like aluminum, PET, or other commonly recyclable materials are used."
+R8.12,Recycling collection rate,True,recyclingCollectionRate,?,The expected or observed percentage of products that are collected and processed at end-of-life for recycling.
+R9,Recover (total),True,,?,
+R9.01,Waste diversion from landfill,True,wasteDiversionFromLandfill,?,% of waste diverted from disposal to energy recovery 
+R9.02,Potential recovery,True,potentialRecovery,?,Estimated cumulative recovered enegy from process and product EOL through energy recovery (mega joules)
+R9.03,Hazardous waste directed to disposal,True,hazardousWasteDirectedToDisposal,?,"Total weight of hazardous waste diverted from disposal (metric tons)
+Breakdown of recovery operations (%)  "
+R9.04,Non-hazardous waste directed to disposal,True,nonhazardousWasteDirectedToDisposal,?,% of nonhazardous waste used for energy recovery 
+R9.05,Energy recoverability benefit,True,energyRecoverabilityBenefit,?,Total energy consumption of landfill vs waste incineration from process and EoL product
+R9.06,Raw materials input,True,rawMaterialsInput,?,% of new materials required for recovery (%) 
+RE,Circularity enablers (total),True,REnabler,?,
+RE.01,Process data access conditions,True,productDataAccessConditions,?,"Describes whether product data (e.g., technical drawings, disassembly instructions) is accessible to third parties."
+RE.02,Hardware and software access conditions,True,hardwareSoftwareAccess,?,"Conditions Specifies whether firmware, diagnostic tools, or software needed for maintenance/repair are accessible (open access, restricted, or proprietary)"
+RE.03,Standardised component ratio,True,standardisedComponentRatio,?,"Percentage of components that follow industry standards—facilitates reuse, repair, remanufacture, and interoperability."
+RE.04,Component coding used,True,componentCodingUsed,?,"Whether components are labeled with codes (e.g., QR codes, part numbers) to aid in identification and reuse."
+RE.05,Material coding used,True,materialCodingUsed,?,"Whether materials are marked according to standards (e.g., plastic resin codes) for improved sorting and recycling."
+RE.06,Tracking device used,True,REnablerType,?,"Presence of traceability systems and devices, and machinereadable identifiers for materials and components "

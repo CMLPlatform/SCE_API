@@ -1,0 +1,141 @@
+{% load static %}
+{% load i18n %}
+<link rel="stylesheet" href="{% static 'css/components.css' %}">
+<link rel="stylesheet" href="{% static 'css/style.css' %}">
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DPP{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% block extra_js %}
+    {% endblock %}
+</head>
+<body class="bg-gray-100">
+    {% if not is_popup %}
+    {% block header %}
+    <div id="header" style="background:#088488; color:white; padding:15px 20px; min-height:60px;">
+        <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+            <!-- Logo + Title -->
+            <div style="display:flex; align-items:center; gap:15px;">
+                <img src="{% static 'img/L4M_logo.png' %}"
+                style="height: 40px; width: auto;"
+                alt="Logo">
+                <a href="/" style="color:white; text-decoration:none; font-size:22px; font-weight:bold;">
+                    Lasers4MaaS Sustainability Cost Evaluation
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
+
+    <!--
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <h1 class="text-xl font-bold">Lasers4MaaS DPP Platform</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    -->
+
+    <!-- END Header -->
+    {% block nav-breadcrumbs %}
+      <nav aria-label="{% translate 'Breadcrumbs' %}">
+        {% block breadcrumbs %}
+        <div id="header" style="background:#173755; color:white; padding:5px 5px; min-height:20px;">
+            <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+                <!-- Breadcrumbs -->
+                <div class="breadcrumbs">
+                    <a href="{%url 'dpp:home' %}">{% translate 'Home' %}</a>
+                    {% if title %} &rsaquo; {{ title }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endblock %}
+      </nav>
+    {% endblock %}
+    {% endif %}
+
+    <div class="flex flex-col lg:flex-row min-h-screen">
+    <!--
+    <div class="sidenav">
+        <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}">Production lines</a>
+        <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}">Products</a>
+        <a href="{% url opts.app_label|add:':'|add:'importer_list' %}">Importers</a>
+        <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}">Sustainability evaluations</a>
+    </div>
+    -->
+    <!-- sidebar -->
+    {% if not is_popup %}
+    <aside class="hidden md:flex flex-col w-74 bg-gray-800 h-screen sticky top-0">
+        <div class="flex items-center justify-center h-16 px-4 bg-gray-900">
+            <span class="text-white font-bold uppercase">Navigation</span>
+        </div>
+        <div class="flex flex-col flex-1 overflow-y-auto">
+            <nav class="flex-1 px-2 py-2">
+                <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}" class="flex items-center px-4 py-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/project-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Production lines
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/package-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Products
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'importer_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/truck-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Importers
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/leaf-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Sustainability evaluations
+                </a>
+                <a href="{% url opts.app_label|add:':'|add:'metadata_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/passport-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Published DPPs
+                </a>
+            </nav>
+        </div>
+        <div class="text-gray-100 px-4 py-2 mt-2">
+            {% if user.is_authenticated %}
+            <div class="flex items-center hover:bg-gray-700">
+                <a href="{% url 'accounts:profile' %}" class="flex items-center">
+                    <object data="/static/img/user-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                    <span class="ml-2">{{ user.username }}</span>
+                </a>
+                <form action="{% url 'logout' %}" method="post" class="ml-auto">
+                    {% csrf_token %}
+                    <button type="submit" class="hover:underline">
+                        Log Out
+                    </button>
+                </form>
+            </div>
+            {% else %}
+            <a href="{% url 'login' %}" class="flex items-center hover:bg-gray-700">
+                <object data="/static/img/user-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
+                <span class="ml-2">Log In</span>
+            </a>
+            {% endif %}
+        </div>
+    </aside>
+    {% endif %} <!-- End of sidebar-->
+
+    <main class="flex-1 flex flex-col max-w-7xl w-full mx-auto py-6 sm:px-6 lg:px-8">
+        {% block content %}{% endblock %}
+    </main>
+    </div>
+
+{% block footer %}
+    <div id="footer" style="text-align:center; padding:20px; color:#666; font-size:12px;">
+        CC-BY CML, Leiden University - 2025
+    </div>
+{% endblock %}
+
+</body>
+</html>

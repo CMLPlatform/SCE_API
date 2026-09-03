@@ -1,0 +1,94 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KAM Comparison - Test data entry</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+
+{% csrf_token %}
+
+<div class="max-w-2xl mx-auto px-6 py-12">
+
+  {# ── Header ── #}
+  <div class="mb-8">
+    <div class="inline-flex items-center gap-1.5 rounded-full bg-amber-900/40
+                border border-amber-700 px-3 py-1 text-xs text-amber-300 mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94
+                 a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      Test page: simulate an API call from L4M platform
+    </div>
+    <h1 class="text-3xl font-bold tracking-tight text-white">KAM Comparison</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Enter data for 2 or more weld stations/experiments, then submit to
+      <code class="text-indigo-300 text-xs">POST /dss/welding-stations/</code>.
+    </p>
+  </div>
+
+  {# ── Tab bar ── #}
+  <div class="flex items-center gap-2 mb-6 border-b border-slate-800 pb-0 overflow-x-auto"
+       id="tab-bar">
+    {# tabs injected by JS #}
+    <button id="add-tab-btn"
+            class="mb-[-1px] flex-none flex items-center gap-1 px-3 py-2 text-xs
+                   text-slate-500 hover:text-indigo-400 transition rounded-t-md">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+      </svg>
+      Add experiment
+    </button>
+  </div>
+
+  {# ── Tab panels ── #}
+  <div id="tab-panels"></div>
+
+  {# ── Submit ── #}
+  <div class="mt-10 flex items-center justify-between">
+    <span class="text-xs text-slate-500" id="exp-count-label">2 experiments</span>
+    <button id="submit-btn"
+            class="inline-flex items-center gap-2 rounded-lg bg-indigo-600
+                   hover:bg-indigo-500 px-6 py-3 text-sm font-semibold text-white
+                   transition focus:outline-none focus:ring-2 focus:ring-indigo-400
+                   focus:ring-offset-2 focus:ring-offset-slate-950">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Submit to API
+    </button>
+  </div>
+
+  {# ── Response panel ── #}
+  <div id="response-panel" class="hidden mt-8">
+    <div class="flex items-center gap-3 mb-3">
+      <div id="response-status-dot" class="h-2.5 w-2.5 rounded-full bg-slate-600"></div>
+      <span id="response-status-label" class="text-sm font-semibold text-slate-300"></span>
+    </div>
+    <pre id="response-body"
+         class="rounded-xl border border-slate-700 bg-slate-900 px-5 py-4 text-xs
+                text-slate-300 overflow-x-auto whitespace-pre-wrap break-words"></pre>
+    <a id="response-link" href="#" class="hidden mt-3 inline-flex items-center gap-2
+       text-sm text-indigo-400 hover:text-indigo-300 transition">
+      Go to DSS session
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
+    </a>
+  </div>
+
+</div>{# /container #}
+
+<script src="{% static 'kam_input_funcs.js' %}"></script>
+</body>
+</html>

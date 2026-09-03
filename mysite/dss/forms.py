@@ -1,0 +1,458 @@
+from django import forms
+from django.forms import inlineformset_factory
+from .models import McdaSession, Criterion, CritGroup, GroupOrder, LocalOrder, DecisionMatrix
+
+
+# ------------------------------------------------------------------
+# Custom fields                                                     
+# ------------------------------------------------------------------
+
+class WeightField(forms.Field):
+    """
+    Accepts a single positive float ("0.5") or a range ("0.2, 0.8").
+    Returns float | tuple[float, float].
+    """
+    widget = forms.TextInput(attrs={"placeholder": "e.g. 0.5 or 0.2, 0.8"})
+
+    def to_python(self, value):
+        if not value or value.strip() == "":
+            return 0
+
+        if "," in value:
+            parts = value.split(",")
+            if len(parts) != 2:
+                raise forms.ValidationError("Range must be exactly two values.")
+            try:
+                lo, hi = float(parts[0].strip()), float(parts[1].strip())
+            except ValueError:
+                raise forms.ValidationError("Range values must be numbers.")
+            if lo < 0 or hi < 0:
+                raise forms.ValidationError("Values must be positive.")
+            if lo > hi:
+                raise forms.ValidationError("min must be ≤ max.")
+            return (lo, hi)
+
+        try:
+            v = float(value)
+        except ValueError:
+            raise forms.ValidationError("Must be a positive number or range 'min, max'.")
+        if v < 0:
+            raise forms.ValidationError("Value must be positive.")
+        return v
+
+
+class PositiveFloatField(forms.FloatField):
+    def clean(self, value):
+        value = super().clean(value)
+        if value is None:
+            return 0
+        if value < 0:
+            raise forms.ValidationError("Value must be positive.")
+        return value
+
+
+class OrderingEntryField(forms.Field):
+    """
+    Represents a single ordering constraint: "A > B, 0.8"
+    Returns tuple[str, str, float].
+    Rendered as a set of rows via OrderingWidget (see below).
+    """
+    def to_python(self, value):
+        if not value:
+            return None
+        try:
+            parts = [p.strip() for p in value.split(",")]
+            if len(parts) != 3:
+                raise ValueError
+            a, b, intensity = parts[0], parts[1], float(parts[2])
+            if intensity < 0:
+                raise forms.ValidationError("Strength must be positive.")
+            return (a, b, intensity)
+        except ValueError:
+            raise forms.ValidationError("Format must be 'A, B, intensity'.")
+
+# ------------------------------------------------------------------
+# Form 0: criteria selection (always shown)
+# ------------------------------------------------------------------
+
+class KpiSelectionForm(forms.Form):
+    def __init__(self, session: McdaSession, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.session = session
+
+        self.groups = (
+            CritGroup.objects.filter(session=session).prefetch_related("criteria")
+        )
+
+        for group in self.groups:
+            criteria = group.criteria.all()
+            field_name = f"group_{group.pk}"
+
+            # Group checkbox
+            self.fields[field_name] = forms.BooleanField(
+                required=False,
+                initial=all(c.used for c in criteria),
+                label=group.name,
+            )
+            group.field = self[field_name]
+
+            # Criterion checkboxes
+            for criterion in criteria:
+                field_name = f"criterion_{criterion.pk}"
+                self.fields[field_name] = (
+                    forms.BooleanField(
+                        required=False,
+                        initial=criterion.used,
+                        label=criterion.name,
+                    )
+                )
+                criterion.field = self[field_name]
+
+        # Find KPI values that are missing in the input
+        self.alternatives = session.alternatives.all()
+        self.value_rows = []
+
+        for criterion in session.criteria:
+            row = {"criterion": criterion, "cells": []}
+            has_missing = False
+
+            for alternative in self.alternatives:
+                if criterion.name in alternative.values:
+                    row["cells"].append(None)
+                else:
+                    has_missing = True
+                    field_name = (f"value_{criterion.pk}_{alternative.pk}")
+                    self.fields[field_name] = forms.FloatField()
+                    row["cells"].append(self[field_name])
+
+            if has_missing:
+                self.value_rows.append(row)
+
+    def save(self, *args):
+        criteria = []
+
+        for name, value in self.cleaned_data.items():
+            if name.startswith("criterion_"):
+                pk = int(name.split("_")[1])
+                criteria.append((pk, value))
+
+        criterion_map = Criterion.objects.in_bulk(pk for pk, _ in criteria)
+        for pk, used in criteria:
+            criterion = criterion_map[pk]
+            criterion.used = used
+
+        Criterion.objects.bulk_update(criterion_map.values(), ["used"])
+
+        # Add newly provided KPI values to DecisionMatrix.values
+        alternatives = {alt.pk: alt for alt in self.session.alternatives.all()}
+
+        for name, value in self.cleaned_data.items():
+            if not name.startswith("value_"):
+                continue
+
+            _, criterion_id, alternative_id = name.split("_")
+            alternative = alternatives[int(alternative_id)]
+            criterion = Criterion.objects.get(pk=int(criterion_id))
+            alternative.values[criterion.name] = value
+
+        # Save the changes made to all alternative.values
+        DecisionMatrix.objects.bulk_update(alternatives.values(), ["values"])
+
+# ------------------------------------------------------------------
+# Form 1: basic settings (always shown)
+# ------------------------------------------------------------------
+
+class BaseConfigForm(forms.Form):
+    """
+    Collects the top-level choices that drive which fields appear in Forms 2 and 3.
+    Saved to: session.scenario, .method, .weight_mode, .veto_type
+    """
+    scenario = forms.ChoiceField(
+        choices=McdaSession.Scenario.choices, widget=forms.RadioSelect
+    )
+    method = forms.ChoiceField(
+        choices=McdaSession.Method.choices, widget=forms.RadioSelect
+    )
+    weight_mode = forms.ChoiceField(
+        choices=McdaSession.WeightMode.choices, widget=forms.RadioSelect
+    )
+    veto_type = forms.ChoiceField(
+        choices=McdaSession.VetoType.choices, widget=forms.RadioSelect
+    )
+
+    def save(self, session: McdaSession) -> None:
+        data = self.cleaned_data
+        session.scenario    = data["scenario"]
+        session.method      = data["method"]
+        session.weight_mode = data["weight_mode"]
+        session.veto_type   = data["veto_type"]
+        session.save()
+
+
+# ------------------------------------------------------------------
+# Form 2: conditional fields, dynamically built from session state
+# ------------------------------------------------------------------
+
+class WeightsThresholdsForm(forms.Form):
+    """
+    Fields are added dynamically in __init__ based on Form 1 choices.
+    All fields are optional at the Django level; required-ness is
+    enforced in clean() based on the session context.
+
+    Saved to: session.group_weights, .local_weights, .thresholds,
+              .veto_thresholds, .penalty_factor
+    """
+
+    def __init__(self, session: McdaSession, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.session = session
+        criteria = list(session.criteria.values_list("name", flat=True))
+        self.groups = list(session.groups.values_list("name", flat=True))
+
+        if session.scenario != "random":
+            # -- group_weights: weight_mode in {group, hierarchical} -----
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in self.groups:
+                    self.fields[f"group_weight_{group}"] = WeightField(
+                        label=f"Weight — {group.title()}", required=False
+                    )
+
+            # -- local_weights: weight_mode in hierarchical, flat --------
+            if session.weight_mode in ("hierarchical", "flat"):
+                for criterion in criteria:
+                    self.fields[f"local_weight_{criterion}"] = WeightField(
+                        label=f"Criterion weight — {criterion}", required=False
+                    )
+
+        # -- thresholds: always, shape depends on method --------------
+        for criterion in criteria:
+            if session.method == "promethee":
+                self.fields[f"threshold_{criterion}"] = WeightField(
+                    label=f"Threshold — {criterion} (indifference, preference)",
+                    required=False,
+                )
+            else:
+                self.fields[f"threshold_{criterion}"] = PositiveFloatField(
+                    label=f"Threshold — {criterion}", required=False
+                )
+
+        # -- veto_thresholds: veto_type != "no" -----------------------
+        if session.veto_type != "no":
+            for criterion in criteria:
+                self.fields[f"veto_{criterion}"] = PositiveFloatField(
+                    label=f"Veto threshold — {criterion}", required=False
+                )
+
+        # -- penalty_factor: veto_type == "soft" ----------------------
+        if session.veto_type == "soft":
+            self.fields["penalty_factor"] = PositiveFloatField(
+                label="Penalty factor", required=False
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        session = self.session
+
+        if session.scenario != "random":
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in self.groups:
+                    if not cleaned.get(f"group_weight_{group}"):
+                        self.add_error(
+                            f"group_weight_{group}",
+                            "Required when weight mode is group or hierarchical."
+                        )
+            if session.weight_mode in ("hierarchical", "flat"):
+                for name in session.criteria.values_list("name", flat=True):
+                    if not cleaned.get(f"local_weight_{name}"):
+                        self.add_error(
+                            f"local_weight_{name}",
+                            "Required for hierarchical weighting."
+                        )
+
+        if session.veto_type != "no":
+            for name in session.criteria.values_list("name", flat=True):
+                if cleaned.get(f"veto_{name}") is None:
+                    self.add_error(f"veto_{name}", "Required when veto is active.")
+
+        if session.veto_type == "soft" and cleaned.get("penalty_factor") is None:
+            self.add_error("penalty_factor", "Required for soft veto.")
+
+        return cleaned
+
+    def save(self, session: McdaSession) -> None:
+        """Normalize the weights and save them as session attributes."""
+        d = self.cleaned_data
+        criteria = list(session.criteria.values_list("name", flat=True))
+
+        if session.scenario != "random":
+            def maybe_normalize(weights: dict, session: McdaSession):
+                if not session.scenario.startswith("bounded"):
+                    total = sum(weights.values())
+                    if total != 1:
+                        return {k: w/total for k, w in weights.items()}
+                return weights
+
+            if session.weight_mode in ("group", "hierarchical"):
+                group_weights = {g: d[f"group_weight_{g}"] for g in self.groups}
+                session.group_weights = maybe_normalize(group_weights, session)
+
+            if session.weight_mode == "hierarchical":
+                session.local_weights = {}
+                for group in self.groups:
+                    crit_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+                    session.local_weights[group] = maybe_normalize(crit_weights, session)
+
+            if session.weight_mode == "flat":
+                crit_weights = {c: d[f"local_weight_{c}"] for c in criteria}
+                session.criterion_weights = maybe_normalize(crit_weights, session)
+
+        session.thresholds = {c: d[f"threshold_{c}"] for c in criteria}
+        if session.method == "promethee":
+            for crit in criteria:
+                threshold = session.thresholds[crit]
+                if threshold == 0:
+                    session.thresholds[crit] = (0, 1e10)
+                elif threshold and not isinstance(threshold, tuple):
+                    # self.add_error(
+                    raise forms.ValidationError({
+                        f"threshold_{crit}": "Should be formatted as: 0.1, 0.2."
+                    })
+
+        if session.veto_type != "no":
+            session.veto_thresholds = {c: d[f"veto_{c}"] for c in criteria}
+
+        if session.veto_type == "soft":
+            session.penalty_factor = d["penalty_factor"]
+
+        session.save()
+
+
+# ------------------------------------------------------------------
+# Form 3: sampling & uncertainty parameters
+# ------------------------------------------------------------------
+
+class SamplingConfigForm(forms.Form):
+    """
+    Only shown for uncertain scenarios.
+    Fields are added dynamically based on scenario and weight_mode.
+
+    Saved to: session.n_samples, .group_ranks, .local_ranks, .crit_ranks
+    """
+
+    def __init__(self, session: McdaSession, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.session = session
+        criteria = session.criteria
+        groups = session.groups.all()
+        n_crit = len(criteria)
+        n_groups = len(groups)
+
+        # -- n_samples: scenario != deterministic
+        self.fields["n_samples"] = forms.IntegerField(
+            label="Number of samples", min_value=1, required=False
+        )
+
+        if session.scenario != "random":
+            # -- group ranks -----
+            if session.weight_mode in ("group", "hierarchical"):
+                for group in groups:
+                    self.fields[f"group_rank_{group.name}"] = forms.IntegerField(
+                        label=group.name, required=False,
+                        min_value=1, max_value=n_groups,
+                    )
+            # -- local criterion ranks --------
+            if session.weight_mode == "hierarchical":
+                for criterion in criteria:
+                    field_name = f"rank_{criterion.group.name}_{criterion.name}"
+                    self.fields[field_name] = forms.IntegerField(
+                        label=criterion.name, required=False, min_value=1
+                    )
+            # -- criterion ranks --------
+            elif session.weight_mode == "flat":
+                for criterion in criteria:
+                    self.fields[f"rank_{criterion.name}"] = forms.IntegerField(
+                        label=criterion.name, required=False,
+                        min_value=1, max_value=n_crit,
+                    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("n_samples"):
+            self.add_error("n_samples", "Required for uncertainty analysis.")
+        return cleaned
+
+    def save(self, session: McdaSession) -> None:
+        data = self.cleaned_data
+        session.n_samples = data.get("n_samples")
+
+        # Save the ranking fields to the associated session variable
+        for field_name in data:
+            if data[field_name] is None:
+                continue
+            if field_name.startswith("group_rank_"):
+                session.group_ranks[field_name[11:]] = data[field_name]
+            elif field_name.startswith("rank_"):
+                if session.weight_mode == "flat":
+                    session.crit_ranks[field_name[5:]] = data[field_name]
+                elif session.weight_mode == "hierarchical":
+                    group, crit = field_name.split('_', 2)[1:]
+                    if group not in session.local_ranks:
+                        session.local_ranks[group] = {}
+                    session.local_ranks[group][crit] = data[field_name]
+
+        session.save()
+
+
+class GroupOrderForm(forms.ModelForm):
+    class Meta:
+        model  = GroupOrder
+        fields = ["group1", "group2", "intensity"]
+        widgets = {
+            "group1":    forms.Select(),
+            "group2":    forms.Select(),
+            "intensity": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("group1") == cleaned.get("group2"):
+            raise forms.ValidationError("Choose two different groups.")
+        return cleaned
+
+
+class LocalOrderForm(forms.ModelForm):
+    class Meta:
+        model  = LocalOrder
+        fields = ["criterion1", "criterion2", "intensity"]
+        widgets = {
+            "criterion1": forms.Select(),
+            "criterion2": forms.Select(),
+            "intensity":  forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("criterion1") == cleaned.get("criterion2"):
+            raise forms.ValidationError("Choose two different criteria.")
+        # if cleaned.get("criterion1").group != cleaned.get("criterion2").group:
+        #     raise forms.ValidationError("Choose criteria from the same group.")
+        return cleaned
+
+
+# Formsets
+# extra=1 shows one blank row by default; can_delete=True adds a remove checkbox
+GroupOrderFormSet = inlineformset_factory(
+    parent_model = McdaSession,
+    model        = GroupOrder,
+    form         = GroupOrderForm,
+    extra        = 1,
+    can_delete   = True,
+)
+
+LocalOrderFormSet = inlineformset_factory(
+    parent_model = McdaSession,
+    model        = LocalOrder,
+    form         = LocalOrderForm,
+    extra        = 1,
+    can_delete   = True,
+)

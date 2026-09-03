@@ -1,0 +1,25 @@
+{% comment %}
+  Partial: weight_field.html
+  Variables:
+    field  — form field (WeightField instance)
+    label  — display label string
+    range  — boolean
+{% endcomment %}
+<div>
+  <label for="{{ field.id_for_label }}"
+         class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+    {{ label }}
+  </label>
+  <input type="text"
+         id="{{ field.id_for_label }}"
+         name="{{ field.html_name }}"
+         value="{{ field.value|default:'' }}"
+         placeholder="e.g. {% if range %}0.2, 0.8{% else %}0.5{% endif %}"
+         class="w-full rounded-md border
+                {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}
+                px-3 py-2 text-sm text-slate-100 placeholder-slate-500
+                focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+  {% if field.errors %}
+    <p class="mt-1 text-xs text-red-400">{{ field.errors|join:", " }}</p>
+  {% endif %}
+</div>

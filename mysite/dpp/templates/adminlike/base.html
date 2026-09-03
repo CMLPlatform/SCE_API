@@ -1,0 +1,90 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ title|default:"My App" }} — My App{% endblock %}</title>
+    
+    {% block extrastyle %}
+        <link rel="stylesheet" href="{% static 'admin/css/base.css' %}">
+        <link rel="stylesheet" href="{% static 'admin/css/forms.css' %}">
+        <link rel="stylesheet" href="{% static 'admin/css/widgets.css' %}">
+        <link rel="stylesheet" href="{% static 'admin/css/changelists.css' %}">
+    {% endblock %}
+
+    {% block extrahead %}{% endblock %}
+</head>
+<body class="{% if is_popup %}popup {% endif %}{% block bodyclass %}{% endblock %}">
+
+{% block header %}
+<div id="header" style="background:#0d6efd; color:white; padding:15px 20px; min-height:60px;">
+    <div style="max-width:1200px; margin:auto; display:flex; align-items:center; justify-content:space-between;">
+        <!-- Logo + Title -->
+        <div style="display:flex; align-items:center; gap:15px;">
+            <img src="{% static 'img/logo-white.png' %}" height="40" alt="Logo">
+            <a href="/" style="color:white; text-decoration:none; font-size:22px; font-weight:bold;">
+                Lasers4MaaS Sustainability Cost Evaluation
+            </a>
+        </div>
+
+        <!-- User menu -->
+        <!-- Enable once the login/logout urls are set up
+        <div style="font-size:14px;">
+            {% if user.is_authenticated %}
+                {{ user.get_full_name|default:user.username }}
+                | <a href="{% url 'dpp:home' %}" style="color:white;">Log out</a>
+            {% else %}
+                <a href="{% url 'dpp:home' %}?next={{ request.path }}" style="color:white;">Log in</a>
+            {% endif %}
+        </div>
+        -->
+    </div>
+</div>
+{% endblock %}
+
+<div id="container">
+<div id="content" class="colM" style="margin: 30px auto; max-width: 1200px; padding:20px;">
+        
+        {% block breadcrumbs %}
+        <div class="breadcrumbs" style="margin:0 0 20px; padding:10px 0; border-bottom:1px solid #eee; font-size:14px;">
+            <a href="{% url 'dpp:home' %}">Home</a>
+            {% if opts %} › <a href="../">{{ opts.verbose_name_plural|capfirst }}</a>{% endif %}
+            {% if title and 'add' in title|lower %} › Add {{ opts.verbose_name }}{% endif %}
+            {% if title and 'change' in title|lower %} › {{ title }}{% endif %}
+        </div>
+        {% endblock %}
+
+        <h1>{% block pagetitle %}{{ title }}{% endblock %}</h1>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        {% block content %}
+            {{ block.super }}
+        {% endblock %}
+    </div>
+</div>
+
+{% block footer %}
+    <div id="footer" style="text-align:center; padding:20px; color:#666; font-size:12px;">
+        CC-BY CML, Leiden University - 2025
+    </div>
+{% endblock %}
+
+{% block extrajs %}
+    <script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+    <script src="{% static 'admin/js/jquery.init.js' %}"></script>
+    <script src="{% static 'admin/js/core.js' %}"></script>
+    <script src="{% static 'admin/js/admin/RelatedObjectLookups.js' %}"></script>
+    <script src="{% static 'admin/js/actions.js' %}"></script>
+    <script src="{% static 'admin/js/urlify.js' %}"></script>
+    <script src="{% static 'admin/js/prepopulate.js' %}"></script>
+{% endblock %}
+
+</body>
+</html>

@@ -1,0 +1,80 @@
+{% extends "dpp/generic_detail.html" %}
+
+{% block content %}
+
+{{ block.super }}
+
+<!--Mermaid flowchart - uses scropt at the bottom-->
+<pre class="mermaid py-6">{{ mermaid_code|safe }}</pre>
+
+<div class="reference-list">
+  <h2>Associated Processes</h2>
+  {% if processes %}
+  <ul>
+    {% for process in processes %}
+    <li>
+      <a href="{% url 'dpp:process_detail' process.pk %}">{{ process.name }}
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No processes associated with this production line.</p>
+  {% endif %}
+</div>
+
+<div class="add-button">
+  <a href="{% url 'dpp:process_add' %}?production_line={{object.pk}}" class="btn btn-primary">
+    Add new process
+  </a>
+</div>
+
+<div class="reference-list">
+  {% if transport_list %}
+  <h2>Transport</h2>
+  <ul>
+    {% for transport in transport_list %}
+    <li>
+      <a href="{% url 'dpp:transport_update' transport.pk %}" title="Edit transport">
+        {{ transport.product}}: {{ transport }}
+      </a>
+    </li>
+    {% endfor %}
+    <li>
+      <a href="{% url 'dpp:transport_subset' object.pk %}">
+        <i>Full list of transport details</i>
+      </a>
+    </li>
+  </ul>
+  {% else %}
+  <div class="add-button">
+    <a href="{% url 'dpp:transport_subset' productionline.pk %}" class="btn btn-primary">
+      Add transport operations
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="publisher-section">
+    {% if publisher %}
+        <p>Publisher status: <strong>{{ publisher.show_status }}</strong></p>
+        <a href="{% url 'dpp:publisher_detail' publisher.pk %}" class="btn btn-primary">
+            Proceed with publishing the DPP
+        </a>
+    {% else %}
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create_publisher">
+            <button type="submit" class="btn btn-success">
+                Review & Publish DPP
+            </button>
+        </form>
+    {% endif %}
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, flowchart: { useMaxWidth: true }});
+</script>
+
+{% endblock %}

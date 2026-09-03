@@ -1,0 +1,131 @@
+{% extends "dpp/generic_detail.html" %}
+{% load i18n %}
+{% load dpp_extras %} <!-- contains get_attr and get_fields filters -->
+
+{% block title %} Publish DPP: {{object.production_line.name}} {% endblock %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-semibold text-gray-900">Publish DPP: {{ object.production_line.name }}</h2>
+
+    <div>
+        <a href="{% url opts.app_label|add:':publisher_update' object.pk %}" 
+            class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
+            Edit
+        </a>
+        <a href="{% url opts.app_label|add:':production_line_detail' object.production_line.pk%}" 
+            class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+            View production line
+        </a>
+    </div>
+</div>
+
+<div class="publisher-status">
+    
+    <div class="status-indicator">
+        <p>Current Status: <strong>{{ object.show_status }}</strong></p>
+        <p>Last run: {{ object.last_run|date:"Y-m-d H:i" }}</p>
+        {% if object.error_message %}
+            <div class="alert alert-danger">{{ object.error_message }}</div>
+        {% endif %}
+    </div>
+    
+    <div class="steps-list">
+        {% for step in steps %}
+            <div class="step {% if step.completed %}completed{% endif %}">
+                <span>{% if step.completed %}✅{% elif step.number == object.status|add:1 %}❌{% else %}🔵{% endif %}</span>
+                <span class="step-number">{{ step.number }}</span>
+                <span class="step-name">{{ step.name }}</span>
+                
+                {% if step.can_rerun %}
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="rerun_step">
+                        <input type="hidden" name="step" value="{{ step.number }}">
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            Rerun from here
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    
+    <div class="actions">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="run_all">
+            <button type="submit" class="btn btn-primary">Run All Steps</button>
+        </form>
+        
+        {% if object.status >= 3 %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_subcomponents">
+                <button type="submit" class="btn btn-secondary">Add Subcomponents</button>
+            </form>
+        {% endif %}
+        
+        {% if object.can_publish %}
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="publish">
+                <button type="submit" class="btn btn-success">Publish DPP</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="bg-white shadow overflow-hidden sm:rounded-lg">
+    <div class="px-4 py-5">
+        <h3 class="px-4 text-lg font-medium">Details</h3>
+    </div>
+    <div class="border-t border-gray-200">
+        <dl>
+        {% for field in object|get_fields %}
+            {% if field.editable %}
+            <div class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt class="text-sm font-medium text-gray-500">
+                    {{ field.verbose_name|sentencecase }}
+                </dt>
+                <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
+                    {{ field.value|default:"—" }}
+                </dd>
+            </div>
+            {% endif %}
+        {% endfor %}
+        </dl>
+    </div>
+</div>
+
+<div class="bg-white shadow overflow-hidden">
+    <h3 class="font-semibold font-large">LCA results</h3>
+    <table class="table table-striped">
+        <thead>
+            <tr class="px-4 py-2">
+                <th>Assessment date</th>
+                <th>Assessed by</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for result in lca_results %}
+            <tr class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2">
+                <td>{{ result.assessment_date }}</td>
+                <td>{{ result.assessed_by }}</td>
+                <td>
+                    <a href="{% url 'dpp:sustainabilityevaluation_detail' result.pk %}"
+                        class="btn btn-sm btn-outline-primary">
+                        See results
+                    </a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="3">No LCA results available.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

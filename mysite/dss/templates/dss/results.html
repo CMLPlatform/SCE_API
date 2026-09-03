@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-950 text-slate-100 font-sans">
+
+  {# ── Finished progress bar ── #}
+  <div class="fixed top-0 inset-x-0 z-50 h-1 bg-indigo-500"></div>
+
+  <div class="max-w-5xl mx-auto px-6 py-16">
+
+    {# HEADER #}
+    <div class="mb-10 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-semibold tracking-widest text-indigo-400 uppercase mb-2">
+          Analysis completed
+        </p>
+        <h1 class="text-3xl font-bold tracking-tight text-white">{{ title }}</h1>
+        <p class="mt-1 text-slate-500 text-sm">Session #{{ session.id }}</p>
+      </div>
+
+    {# ── Session context pills ── #}
+      <div class="flex flex-wrap gap-2 justify-end">
+        <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+          Weights: <strong class="text-slate-100">{{ session.get_weight_mode_display }}</strong>
+        </span>
+        <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+          Constraints: <strong class="text-slate-100">{{ session.get_scenario_display }}</strong>
+        </span>
+        <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+          Preference model: <strong class="text-slate-100">{{ session.get_method_display }} mode</strong>
+        </span>
+        <span class="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-xs text-slate-300">
+          Veto: <strong class="text-slate-100">{{ session.get_veto_type_display }}</strong>
+        </span>
+      </div>
+    </div>
+
+    {% comment %}
+       PLOTS
+       Each <img> makes a separate call to plot_view;
+       skeleton shown until the image arrives.
+    {% endcomment %}
+    {% if plot_names %}
+      {% include "partials/section_header.html" with title="Plots" hint="Right-click an image to save." %}
+
+      <div class="grid grid-cols-1 gap-6 mb-12 {% if plot_names|length > 1 %}sm:grid-cols-2{% endif %}">
+        {% for plot_name in plot_names %}
+          <figure class="rounded-xl border border-slate-700 overflow-hidden bg-slate-900">
+
+            <div class="plot-skeleton h-56 bg-slate-800 animate-pulse flex items-center justify-center text-slate-600 text-xs">
+              Loading {{ plot_name }}...
+            </div>
+
+            <img src="{% url 'mcda-plot' session_id=session.id plot_name=plot_name %}"
+                 alt="{{ plot_name|capfirst }} plot"
+                 class="w-full hidden"
+                 onload="this.classList.remove('hidden');
+                         this.previousElementSibling.remove();"
+                 onerror="this.previousElementSibling.textContent='Failed to load {{ plot_name }}.';">
+
+            <figcaption class="px-4 py-2 text-slate-400 border-t border-slate-800">
+              {{ plot_name|capfirst }}
+            </figcaption>
+          </figure>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% comment %}
+       DYNAMIC SECTIONS
+       Each section is one of: scalar | series | dataframe.
+    {% endcomment %}
+    {% for section in sections %}
+
+      {% include "partials/section_header.html" with title=section.label hint=None %}
+
+      {% if section.type == "scalar" %}
+        <p class="mb-10 text-2xl font-semibold text-indigo-300 tabular-nums">
+          {{ section.data }}
+        </p>
+
+      {% elif section.type == "series" %}
+        <div class="w-fit rounded-xl border border-slate-700 overflow-hidden mb-10">
+          <table class="text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <th class="px-4 py-2 text-left font-semibold">
+                  {{ section.data.index_name }}
+                </th>
+                <th class="px-4 py-2 text-right font-semibold">
+                  {{ section.data.value_name }}
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              {% for idx, val in section.data.rows %}
+                <tr class="{% cycle 'bg-slate-900' 'bg-slate-800' %} hover:bg-slate-700 transition-colors">
+                  <td class="px-4 py-2.5 font-medium text-white">{{ idx }}</td>
+                  <td class="px-4 py-2.5 tabular-nums text-slate-100 text-right">{{ val }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      {% elif section.type == "dataframe" %}
+        <div class="overflow-x-auto mb-10">
+        <div class="w-fit rounded-xl border border-slate-700 overflow-hidden">
+          <table class="text-sm whitespace-nowrap border-collapse">
+            <thead>
+              <tr class="bg-slate-900 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                {# Index column header #}
+                <th class="px-4 py-2 text-left sticky left-0 bg-slate-900/70 z-10 border-r border-slate-700">
+                  {{ section.data.index_name }}
+                </th>
+                {% for col in section.data.headers %}
+                  <th class="px-4 py-2 text-right">{{ col }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              {% for idx, values in section.data.rows %}
+                <tr class="{% cycle 'bg-slate-900' 'bg-slate-800' %} hover:bg-slate-700 transition-colors">
+                  {# Index cell is sticky, so wide tables stay readable #}
+                  <td class="px-4 py-2.5 font-medium text-slate-100 sticky left-0 {% cycle 'bg-slate-900' 'bg-slate-800' %} z-10 border-r border-slate-700">
+                    {{ idx }}
+                  </td>
+                  {% for val in values %}
+                    <td class="px-4 py-2.5 tabular-nums text-slate-300 text-right">
+                      {{ val }}
+                    </td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        </div>
+
+      {% endif %}
+    {% endfor %}
+
+    {# ACTIONS #}
+    <div class="flex flex-wrap items-center justify-between gap-4 pt-6 border-t border-slate-800">
+
+      <a href="{% url 'pd-init' %}"
+         class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        New analysis
+      </a>
+
+      {# href="{% url 'mcda-results-pdf' session_id=session.id %}" #}
+      <a href=""
+         class="inline-flex items-center gap-2 rounded-lg border border-slate-700
+                bg-slate-800 hover:bg-slate-700 px-5 py-2.5 text-sm font-semibold
+                text-slate-100 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M16 12l-4 4-4-4M12 16V4"/>
+        </svg>
+        Download PDF (feature coming soon)
+      </a>
+
+    </div>
+
+  </div>
+</div>
+{% endblock %}

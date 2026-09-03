@@ -1,173 +1,308 @@
 from rest_framework import serializers
-from dpp.models import Institution, Company, Importer, ServiceOperator, Metadata, Instruction, Document, Material, HazardousMaterial, CriticalRawMaterial, ProductType, Packaging, SecondaryProduct, Emission, Composition, Product, ProductionLine, Process, SharedProcess, ProductExchange, EnvExchange, BillOfMaterials, PackagingInfo, ServiceEvent, ServiceRecord, ReplacedComponents, EndOfLife, ImpactCategory, SustainablityEvaluation, SustainabilityScore, CircularityEvaluation, OldCircularityIndicator, CircularityIndicator, CircularityScore, CircularityEnabler, CircularityTracker
+from dpp.models import *
+from django_countries.serializers import CountryFieldMixin
 
 
-class InstitutionSerializer(serializers.ModelSerializer):
+class DocumentLinkSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    
     class Meta:
+        model = Document
+        fields=['file_url']
+    
+    def get_file_url(self, document: Document):
+        request = self.context.get('request')
+        file_url = document.file.url
+        return request.build_absolute_uri(file_url)
+
+class OrganizationSerializer(CountryFieldMixin, serializers.ModelSerializer):
+    legal_documents = DocumentLinkSerializer()
+    class Meta:
+        model = Organization
+        fields = '__all__'
+
+class InstitutionSerializer(OrganizationSerializer):
+    class Meta(OrganizationSerializer.Meta):
         model = Institution
-        fields = ['type']
 
-class CompanySerializer(serializers.ModelSerializer):
-    class Meta:
+class CompanySerializer(OrganizationSerializer):
+    class Meta(OrganizationSerializer.Meta):
         model = Company
-        fields = ['vat_number']
 
-class ImporterSerializer(serializers.ModelSerializer):
-    class Meta:
+class ImporterSerializer(CompanySerializer):
+    class Meta(CompanySerializer.Meta):
         model = Importer
-        fields = ['EORI_number']
 
 class ServiceOperatorSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceOperator
         fields = ['service_description']
 
-class MetadataSerializer(serializers.ModelSerializer):
+class FacilitySerializer(CountryFieldMixin, serializers.ModelSerializer):
+    operator = CompanySerializer(read_only=True)
     class Meta:
-        model = Metadata
-        fields = ['registration_number', 'issuer', 'creation_date', 'last_modified', 'version', 'access_link', 'access_policy', 'access_log_enabled', 'verification_type', 'credential_format', 'storage_location', 'audit_trail_mechanism', 'update_interval']
+        model = Facility
+        fields = ['uuid', 'operator', 'country', 'address']
+
+class InstructionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Instruction
+        fields = ['label']
 
 class DocumentSerializer(serializers.ModelSerializer):
+    issuer = InstitutionSerializer(read_only=True)
+    file_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Document
-        fields = ['file', 'type', 'instructions', 'language', 'file_type', 'upload_date']
+        fields = ['file', 'type', 'issuer', 'instructions', 'language', 'issue_date', 'expiry_date', 'file_url']
+    
+    def get_document_url(self):
+        request = self.context.get('request')
+        file_url = self.file.url
+        return request.build_absolute_uri(file_url)
 
-class MaterialSerializer(serializers.ModelSerializer):
+class ProductPropertiesSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Material
-        fields = ['name', 'density', 'recycled_content', 'recyclable_percentage', 'biobased_percentage', 'reused_fraction', 'renewable_fraction']
+        model = ProductProperties
+        exclude = ['product']
 
-class HazardousMaterialSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = HazardousMaterial
-        fields = ['CAS_number', 'safety_instructions', 'substance_concentration', 'concentration_unit', 'substance_location']
+class DppDetailsSerializer(serializers.ModelSerializer):
+    compliance_documents = serializers.SerializerMethodField()
+    importer = ImporterSerializer()
 
-class CriticalRawMaterialSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CriticalRawMaterial
-        fields = ['supply_risk_level', 'substance_concentration', 'concentration_unit']
-
-class ProductTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductType
-        fields = ['name', 'unit', 'description', 'unit_price', 'weight', 'weight_unit', 'volume', 'volume_unit', 'vendor_or_importer', 'origin', 'taric_code', 'hs_code', 'quality_compliance_documents', 'warranty_duration', 'spare_parts_availability_duration', 'takeback_system']
-
-class PackagingSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Packaging
-        fields = '__all__'
-
-class SecondaryProductSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SecondaryProduct
-        fields = ['circularity', 'is_waste']
+        model = DppDetails
+        exclude = ['product']
+    
+    def get_compliance_documents(self, obj):
+        doc_dict = {}
+        for doc in obj.compliance_documents.all():
+            doc_dict.setdefault(doc.type, []).append(doc.file.url)
+            #FIXME: could also use DocumentLinkSerializer
+        return doc_dict
 
 class EmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Emission
-        fields = ['name']
-
-class CompositionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Composition
-        fields = ['product', 'material', 'fraction']
-
-class ProductSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Product
-        fields = ['product_type', 'DPP_metadata', 'serial_number', 'batch_number', 'CPV_code', 'GS1_GPC_code', 'GTIN_code', 'production_date']
-
-class ProductionLineSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductionLine
-        fields = ['name', 'description', 'final_product', 'operator', 'modified_at']
-
-class ProcessSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Process
-        fields = ['production_line', 'name', 'is_outsourced', 'operator', 'functional_flow', 'created_at', 'modified_at']
-
-class SharedProcessSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SharedProcess
-        fields = '__all__'
+        fields = ['name', 'unit']
 
 class ProductExchangeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductExchange
-        fields = ['product']
+        exclude = ['process']
 
 class EnvExchangeSerializer(serializers.ModelSerializer):
+    substance = EmissionSerializer(read_only=True)
     class Meta:
         model = EnvExchange
-        fields = ['substance', 'compartment']
+        exclude = ['process']
 
-class BillOfMaterialsSerializer(serializers.ModelSerializer):
+class ActivitySerializer(serializers.ModelSerializer):
+    prod_exchanges = ProductExchangeSerializer()
+    env_exchanges = EnvExchangeSerializer()
     class Meta:
-        model = BillOfMaterials
-        fields = ['product', 'component', 'amount', 'unit']
+        model = Activity
+        fields = '__all__'
 
-class PackagingInfoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PackagingInfo
-        fields = ['product', 'packaging', 'packaging_ratio']
+class ManufacturingProcessSerializer(ActivitySerializer):
+    class Meta(ActivitySerializer.Meta):
+        model = ManufacturingProcess
+        fields = ['name', 'amount', 'facility', 'description', 'modified_at']
+        #, 'prod_exchanges', 'env_exchanges']
 
-class ServiceEventSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ServiceEvent
-        fields = ['service_id', 'product', 'operator', 'service_type', 'date', 'maintenance_plan']
+class BackgroundProcessSerializer(ManufacturingProcessSerializer):
+    class Meta(ManufacturingProcessSerializer.Meta):
+        model = BackgroundProcess
+        fields = ['name', 'amount', 'description', 'modified_at', 'database']
 
-class ServiceRecordSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ServiceRecord
-        fields = ['description', 'service_event']
+class ProcessSerializer(ActivitySerializer):
+    class Meta(ActivitySerializer.Meta):
+        model = Process
 
-class ReplacedComponentsSerializer(serializers.ModelSerializer):
+class ProductionLineSerializer(serializers.ModelSerializer):
+    mass_balance = DocumentLinkSerializer()
+    energy_balance = DocumentLinkSerializer()
     class Meta:
-        model = ReplacedComponents
-        fields = ['service_record', 'old_component', 'new_component']
+        model = ProductionLine
+        fields = ['name', 'description', 'final_product', 'facility', 'modified_at', 'mass_balance', 'energy_balance']
 
-class EndOfLifeSerializer(serializers.ModelSerializer):
+class AliasSerializer(serializers.ModelSerializer):
     class Meta:
-        model = EndOfLife
-        fields = ['service_record', 'treatment_type', 'affected_component']
+        model = Alias
+        fields = ['product', 'user', 'alt_name']
+
+class TransportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transport
+        fields = ['production_line', 'product', 'distance', 'mode']
+
+class MaterialSerializer(CountryFieldMixin, serializers.ModelSerializer):
+    is_critical = serializers.BooleanField()
+
+    class Meta:
+        model = Material
+        exclude = ['density', 'recycled_fraction', 'recyclable_fraction', 'biobased_fraction', 'renewable_fraction']
+
+class HazardousMaterialSerializer(MaterialSerializer):
+    safety_instructions = DocumentLinkSerializer()
+    class Meta(MaterialSerializer.Meta):
+        model = HazardousMaterial
+
+class CompositionSerializer(serializers.ModelSerializer):
+    material = MaterialSerializer(read_only=True)
+    class Meta:
+        model = Composition
+        exclude = ['id', 'product']
+
+class ConcentrationSerializer(serializers.ModelSerializer):
+    material = MaterialSerializer(read_only=True)
+    class Meta:
+        model = Concentration
+        exclude = ['id', 'product']
+
+class ComponentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Component
+        exclude = ['id', 'product']
+
+class ItemExchangeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemExchange
+        exclude = ['id', 'event']
+
+class LifeCycleEventSerializer(serializers.ModelSerializer):
+    item_exchanges = ItemExchangeSerializer(many=True, read_only=True)
+    activity_data = ManufacturingProcessSerializer()
+    class Meta:
+        model = LifeCycleEvent
+        exclude = ['product']
+
+class InspectionEventSerializer(LifeCycleEventSerializer):
+    diagnostic_results = DocumentLinkSerializer()
+    class Meta(LifeCycleEventSerializer.Meta):
+        model = InspectionEvent
+
+class MaintenanceEventSerializer(LifeCycleEventSerializer):
+    maintenance_plan = DocumentLinkSerializer()
+    class Meta(LifeCycleEventSerializer.Meta):
+        model = MaintenanceEvent
+
+class DisassemblyEventSerializer(LifeCycleEventSerializer):
+    class Meta(LifeCycleEventSerializer.Meta):
+        model = DisassemblyEvent
+
+class IndicatorSetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndicatorSet
+        fields = ['name', 'start_date', 'end_date']
 
 class ImpactCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = ImpactCategory
-        fields = ['name', 'description', 'unit', 'is_environmental']
+        fields = ['name']
 
-class SustainablityEvaluationSerializer(serializers.ModelSerializer):
+class ImpactIndicatorSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SustainablityEvaluation
-        fields = ['product_line', 'functional_amount', 'system_boundaries', 'geographical_scope', 'temporal_scope', 'impact_assessment_method', 'software_used', 'allocation_method', 'assessment_date', 'assessed_by']
+        model = ImpactIndicator
+        fields = ['method', 'description', 'unit', 'is_environmental', 'indicator_set', 'impact_category']
 
 class SustainabilityScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = SustainabilityScore
-        fields = ['impact_category', 'evaluation', 'impact_value', 'upstream_phase', 'manufacturing_phase', 'use_phase', 'end_of_life_phase', 'scope_1_2_3']
+        exclude = ['id', 'evaluation']
 
-class CircularityEvaluationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CircularityEvaluation
-        fields = ['product', 'assessment_date', 'assessed_by']
+class SustainabilityEvaluationSerializer(serializers.ModelSerializer):
+    sustainability_score = SustainabilityScoreSerializer(many=True, read_only=True)
+    assessed_by = InstitutionSerializer(read_only=True)
 
-class OldCircularityIndicatorSerializer(serializers.ModelSerializer):
     class Meta:
-        model = OldCircularityIndicator
-        fields = ['product', 'is_static', 'name', 'value', 'unit']
+        model = SustainabilityEvaluation
+        exclude = ['id', 'product']
 
 class CircularityIndicatorSerializer(serializers.ModelSerializer):
     class Meta:
         model = CircularityIndicator
-        fields = ['name', 'description', 'is_static', 'unit']
+        fields = ['id', 'name', 'description', 'is_static', 'unit']
 
 class CircularityScoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = CircularityScore
-        fields = ['evaluation', 'indicator', 'value', 'modified_at', 'uncertainty', 'comment']
+        fields = ['evaluation', 'indicator', 'value', 'uncertainty', 'comment']
 
-class CircularityEnablerSerializer(serializers.ModelSerializer):
+class CircularityEvaluationSerializer(serializers.ModelSerializer):
+    circularility_score = CircularityScoreSerializer(many=True, read_only=True)
+    report = DocumentLinkSerializer()
+    assessed_by = InstitutionSerializer(read_only=True)
     class Meta:
-        model = CircularityEnabler
-        fields = ['type', 'description']
+        model = CircularityEvaluation
+        exclude = ['id', 'product']
+
+class CircularityTrackerSerializer(CircularityScoreSerializer):
+    class Meta(CircularityScoreSerializer.Meta):
+        model = CircularityTracker
+        fields = ['name', 'description', 'functionality']
+
+class FlowSerializer(serializers.ModelSerializer):
+    # Serialize foreign keys (left variable is related_name)
+    properties = ProductPropertiesSerializer(read_only=True)
+    concentration = ConcentrationSerializer(many=True, read_only=True)
+    composed_of = ComponentSerializer(many=True, read_only=True)
+    details = DppDetailsSerializer(read_only=True, allow_null=True)
+    # sustainability_evaluation = SustainabilityEvaluationSerializer(many=True, allow_null=True)
+    # circularity_evaluation = CircularityEvaluationSerializer(many=True, allow_null=True)
+    latest_socioecon_evaluation = serializers.SerializerMethodField()
+    latest_environmental_evaluation = serializers.SerializerMethodField()
+    latest_circularity_evaluation = serializers.SerializerMethodField()
+    manufacturing_info = ManufacturingProcessSerializer(allow_null=True)
+
+    class Meta:
+        model = Flow
+        fields = '__all__'
+        depth = 1
+
+    def get_latest_socioecon_evaluation(self, obj):
+        latest = obj.sustainability_evaluation.order_by('-assessment_date').first()
+        if latest is None:
+            return None
+        return SustainabilityEvaluationSerializer(latest).data
+
+    def get_latest_environmental_evaluation(self, obj):
+        latest = obj.sustainability_evaluation.order_by('-assessment_date').first()
+        if latest is None:
+            return None
+        return SustainabilityEvaluationSerializer(latest).data
+
+    def get_latest_circularity_evaluation(self, obj):
+        latest = obj.circularity_evaluation.order_by('-assessment_date').first()
+        if latest is None:
+            return None
+        return CircularityEvaluationSerializer(latest).data
+
+class ProductModelSerializer(FlowSerializer):
+    class Meta(FlowSerializer.Meta):
+        model = ProductModel
+
+class SecondaryProductSerializer(ProductModelSerializer):
+    class Meta(ProductModelSerializer.Meta):
+        model = SecondaryProduct
+
+class ProductBatchSerializer(FlowSerializer):
+    model = ProductModelSerializer()
+    class Meta(FlowSerializer.Meta):
+        model = ProductBatch
+
+class ProductItemSerializer(serializers.ModelSerializer):
+    product_batch = ProductBatchSerializer(read_only=True)
+    service_events = LifeCycleEventSerializer(many=True, read_only=True)
+    class Meta:
+        model = ProductItem
+        fields = '__all__'
+
+class MetadataSerializer(serializers.ModelSerializer):
+    issuer = OrganizationSerializer(read_only=True)
+    reo = CompanySerializer(read_only=True)
+    product_item = ProductItemSerializer()
+    class Meta:
+        model = Metadata
+        fields = '__all__'

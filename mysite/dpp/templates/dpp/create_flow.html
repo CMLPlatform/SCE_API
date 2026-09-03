@@ -1,0 +1,24 @@
+{% load i18n %}
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/components.css' %}">
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Create a new product | Lasers4MaaS SCE{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+{% block content %}
+<h1>Create a new product</h1>
+
+{% csrf_token %}
+
+<div class="add-button">
+  <a href="{% url 'dpp:productmodel_add' %}?_popup=1" class="btn btn-primary">Create Product Model</a>
+  <a href="{% url 'dpp:productbatch_add' %}?_popup=1" class="btn btn-primary">Create Product Batch</a>
+</div>
+
+{% endblock %}

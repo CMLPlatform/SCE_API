@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Create an account{% endblock %}
+
+{% block content %}
+<h2 class="text-2xl font-semibold">Create an account for the Sustainability & Cost Evaluator</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ form|crispy }}
+  <button type="submit" class="px-4 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-700 transition">Sign Up</button>
+</form>
+{% endblock %}

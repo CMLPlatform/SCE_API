@@ -1,4 +1,9 @@
 django
 djangorestframework
 django-countries
+django-extensions
+django-crispy-forms
+crispy-tailwind
 environs
+pandas
+brightway25

@@ -25,6 +25,25 @@ SECRET_KEY = 'django-insecure-4(nj$n*iw98^--gz@^1p-)!&4xi12y_wy5!=d86w9i=njb(aih
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "file": {
+            "level": "DEBUG",
+            "class": "logging.FileHandler",
+            "filename": "logs/debug.log",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["file"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+    },
+}
+
 ALLOWED_HOSTS = []
 
 
@@ -38,8 +57,13 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_countries',
+    'django_extensions',
+    'crispy_forms',
+    'crispy_tailwind',
     'api',
+    'accounts',
     'dpp.apps.DppConfig',
+    'dss',
     'rest_framework',
 ]
 
@@ -58,7 +82,7 @@ ROOT_URLCONF = 'mysite.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -71,6 +95,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'mysite.wsgi.application'
+
+CRISPY_TEMPLATE_PACK = 'tailwind'
 
 
 # Database
@@ -132,3 +158,7 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Redirect users to the homepage
+LOGIN_REDIRECT_URL = "/dpp/welcome"
+LOGOUT_REDIRECT_URL = "/dpp/welcome"

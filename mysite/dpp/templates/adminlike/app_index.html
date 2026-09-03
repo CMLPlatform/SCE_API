@@ -1,0 +1,20 @@
+{% extends "adminlike/index.html" %}
+{% load i18n %}
+
+{% block bodyclass %}{{ block.super }} app-{{ app_label }}{% endblock %}
+
+{% if not is_popup %}
+{% block nav-breadcrumbs %}
+  <nav aria-label="{% translate 'Breadcrumbs' %}">
+    <div class="breadcrumbs">
+      <a href="{% url 'dpp:home' %}">{% translate 'Home' %}</a>
+      &rsaquo;
+      {% for app in app_list %}
+        {{ app.name }}
+      {% endfor %}
+    </div>
+  </nav>
+{% endblock %}
+{% endif %}
+
+{% block sidebar %}{% endblock %}

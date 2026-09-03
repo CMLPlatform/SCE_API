@@ -19,6 +19,9 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include("api.urls")),  # API endpoints
-    path('', include("dpp.urls")),  # Frontend application
+    path('api/', include("api.urls")),  # API endpoints for DPP models
+    path('dpp/', include("dpp.urls")),  # Frontend for DPP creation
+    path('dss/', include("dss.urls")),  # API for decision support
+    path("accounts/", include("accounts.urls")),            # User registration
+    path("accounts/", include("django.contrib.auth.urls")), # User login
 ]

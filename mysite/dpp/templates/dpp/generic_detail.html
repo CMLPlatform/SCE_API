@@ -1,0 +1,45 @@
+{% extends "dpp/base.html" %}
+{% load dpp_extras %} <!-- contains get_attr and get_fields filters -->
+
+{% block title %}{{ object }} Detail{% endblock %}
+
+{% block content %}
+<div>
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-semibold text-gray-900">{{ object }}</h2>
+        <div>
+            <a href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_update' object.pk %}" 
+               class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
+                Edit
+            </a>
+            <a href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_list' %}" 
+               class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                Back to List
+            </a>
+        </div>
+    </div>
+
+    {% block special_detail %}
+    {% endblock %}
+
+    <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <div class="px-4 py-5 sm:px-6">
+            <h3 class="px-4 text-lg font-medium">Details</h3>
+        </div>
+        <div class="border-t border-gray-200">
+            <dl>
+                {% for field in object|get_fields %}
+                <div class="{% cycle 'bg-teal-50' 'bg-white' %} px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                    <dt class="text-sm font-medium text-gray-500">
+                        {{ field.verbose_name|sentencecase }}
+                    </dt>
+                    <dd class="mt-1 text-sm text-gray-900 sm:mt-0">
+                        {{ field.value|default:"—" }}
+                    </dd>
+                </div>
+                {% endfor %}
+            </dl>
+        </div>
+    </div>
+</div>
+{% endblock %}

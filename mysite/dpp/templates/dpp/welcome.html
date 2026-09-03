@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block title %}Welcome | Lasers4MaaS SCE{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl py-3 font-bold">Welcome to the Lasers4MaaS SCE Platform</h1>
+
+{% if user.is_authenticated %}
+<p>Logged in as {{user.username}}</p>
+<form action="{% url 'logout' %}" method="post">
+  {% csrf_token %}
+  <button type="submit" class="px-4 py-2 bg-black text-white font-bold rounded hover:bg-gray-700 transition">Log Out</button>
+</form>
+
+{% if latest_lines %}
+  <p>Recently modified production lines:</p>
+  <div class="overflow-x-auto">
+    <table class="divide-gray-200">
+      <thead class="bg-gray-100">
+        <tr>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+            Name
+          </th>
+          <th scope="col" class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+            Last Modified
+          </th>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-200">
+        {% for production_line in latest_lines %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-2 py-4 whitespace-nowrap text-sm font-medium">
+            <a href="{% url 'dpp:productionline_detail' production_line.pk %}"
+              class="text-indigo-600 hover:text-indigo-800 hover:underline">
+              {{ production_line.name }}
+            </a>
+          </td>
+          <td class="px-2 py-4 whitespace-nowrap text-sm text-gray-500">
+            {{ production_line.modified_at|date:"d M Y" }}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="2" class="px-6 py-4 text-center text-gray-500">
+            No production lines created yet.
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-medium">
+            <a href="{% url 'dpp:productionline_list' %}"
+              class="text-indigo-600 hover:text-indigo-800 hover:underline">
+              See detailed list
+            </a>
+          </td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p>No production lines created yet.</p>
+{% endif %}
+
+<div class="add-button">
+  <a href="{% url 'dpp:productionline_add' %}" class="btn btn-primary">
+    Start a new production line
+  </a>
+</div>
+
+{% else %}
+<p>You are not logged in</p>
+<a href="{% url 'login' %}" class="px-4 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-700 transition">Log In</a>
+{% endif %}
+{% endblock %}
