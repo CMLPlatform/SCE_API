@@ -1,0 +1,53 @@
+{% comment %}
+  Partial: radio_group.html
+  Variables:
+    field        — form field (for id, name, errors)
+    label        — display label
+    options      — list of dicts: [{value, label, hint}]
+                   hint is optional; used for a short explanatory line below the label
+{% endcomment %}
+<fieldset class="mb-8">
+  <legend class="block text-sm font-semibold text-slate-200 mb-3">
+    {{ label }}
+    {% if field.errors %}
+      <span class="ml-2 text-xs text-red-400">{{ field.errors|join:", " }}</span>
+    {% endif %}
+  </legend>
+
+  <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    {% for opt in options %}
+    <label for="{{ field.id_for_label }}_{{ opt.value }}"
+           class="group relative flex cursor-pointer items-start rounded-lg border
+                  border-slate-700 bg-slate-900 px-4 py-3 transition
+                  hover:border-indigo-500 hover:bg-slate-800
+                  has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-950">
+
+      <input type="radio"
+             id="{{ field.id_for_label }}_{{ opt.value }}"
+             name="{{ field.html_name }}"
+             value="{{ opt.value }}"
+             {% if field.value == opt.value %}checked{% endif %}
+             class="peer sr-only">
+
+      {# Custom radio dot #}
+      <span class="mt-0.5 mr-3 flex h-4 w-4 shrink-0 items-center justify-center
+                   rounded-full border border-slate-600
+                   peer-checked:border-indigo-400 peer-checked:bg-indigo-500
+                   transition-colors">
+        <span class="h-1.5 w-1.5 rounded-full bg-white opacity-0 peer-checked:opacity-100"></span>
+      </span>
+
+      <span>
+        <span class="block text-sm font-medium text-slate-100">{{ opt.label }}</span>
+        {% if opt.hint %}
+          <span class="block text-xs text-slate-400 mt-0.5">{{ opt.hint }}</span>
+        {% endif %}
+      </span>
+
+      {# Checked indicator — top-right corner dot #}
+      <span class="absolute top-2 right-2 h-2 w-2 rounded-full bg-indigo-500
+                   opacity-0 peer-checked:opacity-100 transition-opacity"></span>
+    </label>
+    {% endfor %}
+  </div>
+</fieldset>

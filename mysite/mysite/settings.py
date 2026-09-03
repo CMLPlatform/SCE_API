@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'api',
     'accounts',
     'dpp.apps.DppConfig',
+    'dss',
     'rest_framework',
 ]
 
