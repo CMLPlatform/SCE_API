@@ -107,8 +107,9 @@ class McdaSession(models.Model):
         #TODO: if self.user_type == self.UserType.KAM:
         # Add more groups and criteria
     
-    def ranking_to_pairwise(self, ranking) -> list[tuple]:
-        sorted_items = sorted(ranking.items(), key=lambda x: x[1])
+    def ranking_to_pairwise(self, ranking: dict) -> list[tuple]:
+        filtered_items = [(k, v) for k, v in ranking.items() if v is not None]
+        sorted_items = sorted(filtered_items, key=lambda x: x[1])
         pairwise_list = []
         n = len(sorted_items)
         for i in range(n):
@@ -143,9 +144,9 @@ class McdaSession(models.Model):
         if self.local_ranks:
             constraints.local_order = {
                 g: self.ranking_to_pairwise(self.local_ranks[g])
-                if g in self.local_ranks else None
+                if g in self.local_ranks else []
                 for g in groups
-            },
+            }
 
         return McdaConfig(
             df              = pd.DataFrame.from_dict(matrix, orient='index', columns=criterion_names),

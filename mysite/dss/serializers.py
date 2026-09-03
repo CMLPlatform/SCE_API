@@ -65,7 +65,7 @@ class ExperimentComparisonSerializer(serializers.ListSerializer):
 
 class WeldStationSerializer(ExperimentSerializer):
     maintenanceCosts = serializers.FloatField()
-    cycleTime = serializers.FloatField()
+    cycleTime = serializers.FloatField(min_value=0.1)
     scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
     recyclability = serializers.FloatField(min_value=0, max_value=1)
     materials = MaterialSerializer(many=True)

@@ -269,14 +269,6 @@ class WeightsThresholdsForm(forms.Form):
                             "Required for hierarchical weighting."
                         )
 
-        if session.method == "promethee":
-            for crit in session.criteria.values_list("name", flat=True):
-                threshold = cleaned.get(f"threshold_{crit}") 
-                if threshold and not isinstance(threshold, tuple):
-                    self.add_error(
-                        f"threshold_{crit}", "Should be formatted as: 0.1, 0.2."
-                    )
-
         if session.veto_type != "no":
             for name in session.criteria.values_list("name", flat=True):
                 if cleaned.get(f"veto_{name}") is None:
@@ -315,6 +307,16 @@ class WeightsThresholdsForm(forms.Form):
                 session.criterion_weights = maybe_normalize(crit_weights, session)
 
         session.thresholds = {c: d[f"threshold_{c}"] for c in criteria}
+        if session.method == "promethee":
+            for crit in criteria:
+                threshold = session.thresholds[crit]
+                if threshold == 0:
+                    session.thresholds[crit] = (0, 1e10)
+                elif threshold and not isinstance(threshold, tuple):
+                    # self.add_error(
+                    raise forms.ValidationError({
+                        f"threshold_{crit}": "Should be formatted as: 0.1, 0.2."
+                    })
 
         if session.veto_type != "no":
             session.veto_thresholds = {c: d[f"veto_{c}"] for c in criteria}

@@ -44,7 +44,7 @@
          SECTION 1 — Sampling parameters
          SamplingConfigForm fields rendered individually
       {% endcomment %}
-      {% include "partials/section_header.html" with title="Sampling parameters" hint="All values must be positive." %}
+      {% include "partials/section_header.html" with title="Sampling parameters" %}
 
       {# n_samples — always shown #}
       {% with field=form.n_samples %}
@@ -57,7 +57,7 @@
                   id="{{ field.id_for_label }}"
                   name="{{ field.html_name }}"
                   value="{{ field.value|default:'' }}"
-                  min="1" step="1"
+                  min="1" step="100"
                   placeholder="e.g. 1000"
                   class="w-full rounded-md border
                         {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}
@@ -128,12 +128,13 @@
               <span class="col-span-4 text-right">Rank</span>
             </div>
             {% for criterion in criteria_by_group|get_item:group.name %}
-              {% with fname="rank_"|add:group.name|add:"_"|add:criterion.name field=form|get_field:fname %}
+              {% with fname="rank_"|add:group.name|add:"_"|add:criterion %}
+              {% with field=form|get_field:fname %}
                 <div class="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-800
                             {% cycle 'bg-slate-900' 'bg-slate-900/50' %}">
                   <label for="{{ field.id_for_label }}"
                           class="col-span-8 text-sm font-medium text-slate-100">
-                    {{ criterion.name }}
+                    {{ criterion }}
                   </label>
                   <div class="col-span-4 flex flex-col items-end">
                     <input type="number"
@@ -152,6 +153,7 @@
                   </div>
                 </div>
               {% endwith %}
+              {% endwith %}
             {% endfor %}
           </div>
         {% endfor %}
@@ -168,7 +170,8 @@
             <span class="col-span-4 text-right">Rank</span>
           </div>
           {% for criterion in criteria %}
-            {% with fname="rank_"|add:criterion.name field=form|get_field:fname %}
+            {% with fname="rank_"|add:criterion.name %}
+            {% with field=form|get_field:fname %}
               <div class="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-800
                           {% cycle 'bg-slate-900' 'bg-slate-900/50' %}">
                 <label for="{{ field.id_for_label }}"
@@ -191,6 +194,7 @@
                   {% endif %}
                 </div>
               </div>
+            {% endwith %}
             {% endwith %}
           {% endfor %}
         </div>

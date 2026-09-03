@@ -196,7 +196,7 @@
                      id="{{ field.id_for_label }}"
                      name="{{ field.html_name }}"
                      value="{{ field.value|default:'' }}"
-                     min="0" step="any"
+                     min="0" step="0.1"
                      placeholder="e.g. 1.5"
                      class="w-48 rounded-md border
                             {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}

@@ -107,15 +107,20 @@ def preference_difference(x_a: float, x_b: float, direction: str) -> float:
 
     For cost criteria:
         lower values are better, so difference = x_b - x_a
+
+    For target criteria:
+        closer to target is better, so difference = |x_b - t| - |x_a - t|
     """
-    if isinstance(direction, (int, float)):
-        return abs(x_b - direction) - abs(x_a - direction)
-    elif direction == "max":
-        return x_a - x_b
-    elif direction == "min":
-        return x_b - x_a
-    else:
-        raise ValueError(f"Unknown direction: {direction}")
+    try:
+        target = float(direction)
+        return abs(x_b - target) - abs(x_a - target)
+    except ValueError:
+        if direction == "max":
+            return x_a - x_b
+        elif direction == "min":
+            return x_b - x_a
+        else:
+            raise ValueError(f"Unknown direction: {direction}")
 
 
 def promethee_like_preference(d: float, q: float = 0.0) -> float:
@@ -228,6 +233,8 @@ def set_fixed_weights(config: McdaConfig):
                 for v in config.constraints.local[g].values()
             ])
             for c in crits:
+                if c not in config.criteria:
+                    continue
                 w_local = config.constraints.local[g][c]
                 if isinstance(w_local, (list, tuple)):
                     w_local = sum(w_local)
@@ -459,13 +466,12 @@ def sample_weights_dirichlet_constrained(
     if stats is not None and stats_key not in stats:
         stats[stats_key] = {"draws": 0, "accepted": 0, "rejected": 0}
 
-    keys = list(bounds_dict.keys())
-    idx = {x: i for i, x in enumerate(keys)}
+    idx = {x: i for i, x in enumerate(bounds_dict.keys())}
     bounds_arr = np.array(
-        [v if isinstance(v, tuple) else (v, v) for v in bounds_dict.values()],
+        [v if isinstance(v, (tuple, list)) else (v, v) for v in bounds_dict.values()],
         dtype=float
     )
-    alpha_vec = np.full(len(keys), alpha, dtype=float)
+    alpha_vec = np.full(len(idx), alpha, dtype=float)
 
     # Precompute constraint indices/intensities once, outside the loop
     hi_idx, lo_idx, intensities = [], [], []
@@ -531,13 +537,12 @@ def sample_weights_dirichlet_constrained(
 
 
 def sample_hierarchical_weights(
-    groups,
-    constraints,
-
+    groups: dict,
+    constraints: WeightConstraints,
     alpha_group=1.0,
     alpha_local=1.0,
     rng=None,
-    sampler_stats=None
+    sampler_stats: dict=None
 ):
     """
     Sample hierarchical criterion weights.
@@ -643,11 +648,11 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     if rng is None:
         rng = np.random.default_rng()
 
+    active_constr = get_active_constraints(config)
+
     if config.weight_mode == "flat":
-        active_constr = get_active_constraints(config)
         config._weights = sample_weights_dirichlet_constrained(
             bounds_dict=active_constr.criterion,
-            order_cons=[],
             alpha=config.alpha,
             rng=rng,
             stats=sampler_stats,
@@ -655,7 +660,6 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
         )
 
     elif config.weight_mode == "group":
-        active_constr = get_active_constraints(config)
         group_weights_sampled = sample_weights_dirichlet_constrained(
             bounds_dict=active_constr.group,
             order_cons=active_constr.group_order,
@@ -674,7 +678,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     elif config.weight_mode == "hierarchical":
         config._weights = sample_hierarchical_weights(
             groups=config.groups,
-            constraints=config.constraints,
+            constraints=active_constr,
             alpha_group=config.alpha_group,
             alpha_local=config.alpha_local,
             rng=rng,
@@ -768,11 +772,7 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
 
             # Apply optional veto / penalty after aggregation
             if config._use_veto and veto_is_triggered(
-                a=a,
-                b=b,
-                df=df,
-                directions_dict=config.directions,
-                veto_thresholds_dict=config.veto_thresholds,
+                a, b, df, config.directions, config.veto_thresholds
             ):
                 if config.veto_type == "hard":
                     score = 0.0
@@ -1125,6 +1125,11 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
 
 
 def mcda(config: McdaConfig):
+    if len(config.df) < 2:
+        raise RuntimeError(
+            "At least two alternatives are needed for comparison. "
+        )
+
     # ============================================================
     # UNCERTAINTY SETTINGS
     # ============================================================

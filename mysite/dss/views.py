@@ -328,9 +328,9 @@ def step2_context(session) -> dict:
 
     threshold_hint = (
         "PROMETHEE requires an indifference and preference threshold per criterion "
-        "(enter as a range: q, p)."
+        "(leave empty or enter a range: q, p)."
         if session.method == "promethee"
-        else "Enter the threshold value for each criterion."
+        else "Enter the threshold value for each criterion. (Optional)"
     )
 
     return {
@@ -468,7 +468,7 @@ class McdaWizardView(View):
         try:
             results, plots, title = mcda(config)
         except RuntimeError as e:
-            return render(request, "error.html", {"error": e})
+            return render(request, "dss/error.html", {"error": e})
 
         # Cache the created figures
         for name, fig in plots.items():
@@ -481,7 +481,7 @@ class McdaWizardView(View):
         result, _ = Results.objects.update_or_create(
             session=session,
             defaults={
-                'title': title.replace('_', ' ').title(),
+                'title': title.replace('_', ' ').title().replace("maa", "MAA"),
                 'plots': list(plots.keys()),
                 'sections': _build_sections(results),
             }
