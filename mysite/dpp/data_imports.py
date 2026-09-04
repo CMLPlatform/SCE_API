@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from django.conf import settings
 # from django.contrib.auth.models import User
 from dpp.models import CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory
 """NOTE: to run this, use a command, I think manage.py runscript data_imports"""
@@ -29,13 +30,13 @@ def csv_to_django(file_path: Path | str, Model, relations={}):
 
 
 def __main__():
-    circularity_csv = 'init_data/circularity_indicators.csv'
+    circularity_csv = settings.DATA_DIR / "circularity_indicators.csv"
     csv_to_django(circularity_csv, CircularityIndicator)
-    label_csv = 'init_data/document_labels.csv'
+    label_csv = settings.DATA_DIR / "document_labels.csv"
     csv_to_django(label_csv, Instruction)
     socioecon, _ = ImpactCategory.objects.get_or_create(name="Socio-economic impact")
-    socioecon_csv = 'init_data/socioecon_indicators.csv'
-    csv_to_django(socioecon_csv, ImpactIndicator, relations={'impact_category': socioecon.pk})
+    socioecon_csv = settings.DATA_DIR / "socioecon_indicators.csv"
+    csv_to_django(socioecon_csv, ImpactIndicator, relations={"impact_category": socioecon.pk})
 
 """
 R_CHOICES = {

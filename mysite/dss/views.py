@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render, reverse
@@ -90,9 +91,9 @@ def _build_sections(result: dict) -> list[dict]:
 # -----------------------------------
 
 # wages, electricity carbon intensity, electricity price
-country_data = pd.read_csv("init_data/country_data.csv", index_col="country")
+country_data = pd.read_csv(settings.DATA_DIR / "country_data.csv", index_col="country")
 # price, carbon footprint of consumables
-material_data = pd.read_csv("init_data/material_data.csv", index_col="material")
+material_data = pd.read_csv(settings.DATA_DIR / "material_data.csv", index_col="material")
 MULTIPLIERS = {"h": 1/3600, "min": 1/60, "s": 1, "kg": 1, "g": 1/1000, "mg": 10**-6, "m3": 1, "L": 1/1000}
 
 def lookup(info: str, country: str):
