@@ -6,7 +6,7 @@ from . import views
 app_name = "dpp"
 
 urlpatterns = [
-    path("welcome", views.home, name="home"),
+    path("welcome/", views.home, name="home"),
     path('productionline/<int:pk>/', views.ProductionLineDetailView.as_view(), name='production_line_detail'),
     path('process/<int:pk>/', views.ProcessDetailView.as_view(), name='process_detail'),
     path('product/<int:pk>/', views.ProductDetailView.as_view(), name='product_detail'),

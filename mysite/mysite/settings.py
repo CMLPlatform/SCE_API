@@ -46,7 +46,7 @@ LOGGING = {
     },
 }
 
-ALLOWED_HOSTS = ['.eu.pythonanywhere.com']
+ALLOWED_HOSTS = ['127.0.0.1', '.eu.pythonanywhere.com']
 
 
 # Application definition
@@ -154,7 +154,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_ROOT = BASE_DIR / "mysite/mysite/static"
+STATIC_ROOT = BASE_DIR / "mysite/static"
 STATIC_URL = 'static/'
 
 # Default primary key field type
