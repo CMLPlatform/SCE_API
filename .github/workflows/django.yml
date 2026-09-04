@@ -26,8 +26,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest-django
-    - name: Create log directory
-      run: mkdir -p mysite/logs
     - name: Run tests
       working-directory: ./mysite
       run: |

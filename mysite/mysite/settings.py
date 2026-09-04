@@ -25,6 +25,7 @@ SECRET_KEY = 'django-insecure-4(nj$n*iw98^--gz@^1p-)!&4xi12y_wy5!=d86w9i=njb(aih
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+(BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -32,7 +33,7 @@ LOGGING = {
         "file": {
             "level": "DEBUG",
             "class": "logging.FileHandler",
-            "filename": "logs/debug.log",
+            "filename": BASE_DIR / "logs/debug.log",
         },
     },
     "loggers": {
@@ -44,7 +45,7 @@ LOGGING = {
     },
 }
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['.eu.pythonanywhere.com']
 
 
 # Application definition

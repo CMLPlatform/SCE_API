@@ -391,6 +391,7 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
             for g, crits in groups.items()
         }
         active.local_order = {g: [] for g in groups}
+        active.criterion = {c: (0.0, 1.0) for c in config.criteria}
 
     elif config.scenario == "bounded":
         active = config.constraints
