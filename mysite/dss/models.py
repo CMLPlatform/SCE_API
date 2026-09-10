@@ -1,5 +1,5 @@
 from django.db import models
-from .mcda import McdaConfig, WeightConstraints
+from .mcda import McdaConfig, WeightConstraints, ranking_to_pairwise
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 import pandas as pd
@@ -107,19 +107,6 @@ class McdaSession(models.Model):
         #TODO: if self.user_type == self.UserType.KAM:
         # Add more groups and criteria
     
-    def ranking_to_pairwise(self, ranking: dict) -> list[tuple]:
-        filtered_items = [(k, v) for k, v in ranking.items() if v is not None]
-        sorted_items = sorted(filtered_items, key=lambda x: x[1])
-        pairwise_list = []
-        n = len(sorted_items)
-        for i in range(n):
-            for j in range(i + 1, n):
-                if sorted_items[i][1] < sorted_items[j][1]:
-                    pairwise_list.append(
-                        (sorted_items[i][0], sorted_items[j][0], 1.0)
-                    )
-        return pairwise_list
-    
     def build_config(self) -> McdaConfig:
         criteria = list(self.criteria)
         criterion_names = [c.name for c in criteria]
@@ -138,12 +125,12 @@ class McdaSession(models.Model):
             group       = self.group_weights,
             local       = self.local_weights,
             criterion   = self.criterion_weights,
-            group_order = self.ranking_to_pairwise(self.group_ranks),
-            criterion_order  = self.ranking_to_pairwise(self.crit_ranks)
+            group_order = ranking_to_pairwise(self.group_ranks),
+            criterion_order  = ranking_to_pairwise(self.crit_ranks),
         )
         if self.local_ranks:
             constraints.local_order = {
-                g: self.ranking_to_pairwise(self.local_ranks[g])
+                g: ranking_to_pairwise(self.local_ranks[g])
                 if g in self.local_ranks else []
                 for g in groups
             }

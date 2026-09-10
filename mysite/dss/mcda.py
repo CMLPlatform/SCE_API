@@ -242,10 +242,34 @@ def set_fixed_weights(config: McdaConfig):
 
     config._weights = weights
 
-
 # ============================================================
 # WEIGHTING AND RANKING HELPER FUNCTIONS
 # ============================================================
+
+def ranking_to_pairwise(ranking: dict) -> list[tuple]:
+    """
+    Convert an ordinal ranking dictionary into pairwise constraints.
+    
+    Parameters:
+        ranking: Dict with groups/criteria as keys
+                 and ordinal ranks (1/2/3/...) as values
+    Returns:
+        pairwise_list: List of pairwise constraint tuples
+                       (superior, inferior, 1.0)
+    """
+    filtered_items = [(k, v) for k, v in ranking.items() if v is not None]
+    sorted_items = sorted(filtered_items, key=lambda x: x[1])
+    pairwise_list = []
+    n = len(sorted_items)
+    for i in range(n):
+        for j in range(i + 1, n):
+            if sorted_items[i][1] < sorted_items[j][1]:
+                pairwise_list.append(
+                    (sorted_items[i][0], sorted_items[j][0], 1.0)
+                )
+    return pairwise_list
+
+
 def ranking_to_pairwise_constraints(ranking: list, expected_items: list=None):
     """
     Convert a complete or incomplete ordinal ranking into
@@ -856,8 +880,9 @@ def deterministic_promethee(config: McdaConfig):
     nfs_df = pd.DataFrame({
         "FOR (phi+)": phi_plus,
         "AGAINST (phi-)": phi_minus,
-        "NFS (phi)": nfs
-    }).sort_values("NFS (phi)", ascending=False)
+        "NFS (phi)": nfs,
+        "rank": nfs.rank(method="dense", ascending=False),
+    }).sort_values("rank")
     return {"net_flow_scores": nfs_df, "pairwise_prefs": S}
 
 def run_performance_uncertainty(config: McdaConfig, rng=None):

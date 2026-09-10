@@ -10,8 +10,12 @@ from rest_framework.views import APIView, View
 from rest_framework.response import Response
 from rest_framework import status
 
-from .serializers import ExperimentComparisonSerializer, WeldStationComparisonSerializer, McdaRequestSerializer, McdaResultSerializer
-from .mcda import mcda, McdaConfig, WeightConstraints
+from .serializers import (
+    ExperimentSerializer, ExperimentComparisonSerializer,
+    WeldStationSerializer, WeldStationComparisonSerializer,
+    McdaRequestSerializer,
+)
+from .mcda import McdaConfig, WeightConstraints, mcda, ranking_to_pairwise
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup, Results
 from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
 from .plot import fig_to_bytes
@@ -25,7 +29,7 @@ PLOT_TIMEOUT = 3600  # Cache storage time for figures
 
 # Define display order and labels
 RESULT_NAMES = {
-    "decision_matrix":     "Decision matrix",
+    "decision_matrix":     "Performance matrix",
     "pairwise_prefs":      "Pairwise preference matrix",
     "net_flow_scores":     "PROMETHEE flows & Net flow scores (NFS)",
     "outrank_probability": "Pairwise outranking probabilities (based on NFS)",
@@ -114,7 +118,7 @@ def create_criteria(session: McdaSession, user_type: str="pd"):
     Criterion.objects.create(session=session, name="Process energy use", group=sust, direction="min")
     Criterion.objects.create(session=session, name="Process carbon footprint", group=sust, direction="min")
     if user_type == "kam":
-        circ = CritGroup.objects.create(session=session, name="Circularity", weight=0)
+        circ = CritGroup.objects.create(session=session, name="Circularity")
         oper = CritGroup.objects.create(session=session, name="Productivity")
         Criterion.objects.create(session=session, name="Total production costs", group=cost, direction="min")
         Criterion.objects.create(session=session, name="Maintenance costs", group=cost, direction="min")
@@ -368,7 +372,26 @@ def step3_context(session) -> dict:
 # The actual views
 # -----------------------------------
 
+class ExperimentKpiView(APIView):
+    """Receives an experiment, returns a KPI set."""
+    def post(self, request):
+        serializer = ExperimentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        kpi_dict = calculate_experiment_kpis(serializer.validated_data, "pd")
+        return Response(kpi_dict, status=status.HTTP_200_OK)
+
+class WeldStationKpiView(APIView):
+    """Receives a weld station, returns a KPI set."""
+    def post(self, request):
+        serializer = WeldStationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        kpi_dict = calculate_experiment_kpis(serializer.validated_data, "kam")
+        return Response(kpi_dict, status=status.HTTP_200_OK)
+
 class ExperimentComparisonInitView(APIView):
+    """Receives an experiment list, redirects to MCDA wizard."""
     def post(self, request):
         serializer = ExperimentComparisonSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -381,6 +404,7 @@ class ExperimentComparisonInitView(APIView):
         return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
 
 class KamComparisonInitView(APIView):
+    """Receives a weld station list, returns an MCDA session ID."""
     def post(self, request):
         serializer = WeldStationComparisonSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -393,6 +417,7 @@ class KamComparisonInitView(APIView):
         )
 
 class McdaWizardView(View):
+    """View multiple forms, guiding the user in seting up MCDA configuration"""
     def _next_step(self, current_step: int, session: McdaSession) -> int | None:
         """Decision tree: select the next form"""
         if current_step < 2:  # Form 0 and 1 are always shown
@@ -492,6 +517,7 @@ class McdaWizardView(View):
 
 
 class McdaResultsView(DetailView):
+    """View figures and tables of MCDA results"""
     model = Results
     template_name = "dss/results.html"
     context_object_name = 'result'
@@ -519,90 +545,97 @@ def plot_view(request, session_id: int, plot_name: str) -> HttpResponse:
         )
     return HttpResponse(fig_bytes, content_type="image/svg+xml")
 
-def parse_request(valid_data: dict) -> McdaSession:
-    """
-    Converts validated serializer output → ORM models.
-    Called once when the initial API request comes in.
-    """
-    session = McdaSession.objects.create()
-
-    if valid_data["groups"] is not None:
-        for criterion_name, direction in valid_data["directions"].items():
-            Criterion(session, name=criterion_name, direction=direction).save()
-        for group_name, criteria in valid_data["groups"].items():
-            group = CritGroup(session, name=group_name)
-            group.save()
-            Criterion.objects.filter(name__in=criteria).update(group=group)
-
-    quality_grp = create_criteria(session)
-
-    for alt_name, values in valid_data["decision_matrix"].items():
-        DecisionMatrix(session=session, name=alt_name, values=values).save()
-
-    for criterion_name, direction in valid_data["directions"].items():
-        if not Criterion.objects.filter(name=criterion_name).exists():
-            Criterion(
-                session, name=criterion_name, group=quality_grp, direction=direction
-            ).save()
-
-    return session
-
-#TODO: remove this View
-class McdaInitView(APIView):
-    def post(self, request):
-        serializer = McdaRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        session = parse_request(serializer.validated_data)
-
-        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
-
 
 class McdaCalculationView(APIView):
+    """
+    Receives: decision matrix & MCDA setttings.
+    Returns: ranking and score of alternatives.
+    """
+    DEFAULT_GROUPS = {
+        "Technical quality": {"Porosity", "Tensile strength", "Weld depth"},
+        "Economic": {
+            "Operating costs",
+            "Total production costs",
+            "Maintenance costs",
+        },
+        "Sustainability": {
+            "Process energy use",
+            "Process carbon footprint",
+            "Product carbon footprint",
+        },
+        "Circularity": {"Scrap rate", "Recyclability"},
+        "Productivity": {
+            "Production cycle time",
+            "Process automation level",
+            "Operator specialisation level",
+            "Process monitoring",
+            "Production lead time",
+            "Machine saturation",
+        },
+    }
+
+    def serialize_results(self, data: dict):
+        if "net_flow_scores" in data:
+            df = data["net_flow_scores"][["NFS (phi)", "rank"]]
+        else:
+            df = pd.concat(
+                [data["mean_net_flows"], data["expected_rank"]], axis=1
+            )
+
+        df.columns = ["score", "rank"]
+        return df.to_dict('index')
+
     def post(self, request):
         request_serializer = McdaRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         data = request_serializer.validated_data
 
-        # Convert some raw data to read-to-use data types
-        try:
-            decision_matrix = pd.DataFrame(data["decision_matrix"])
+        try:  # Convert decision matrix to a DataFrame
+            decision_matrix = pd.DataFrame.from_dict(
+                data["decision_matrix"], orient='index'
+            )
         except BaseException as e:
-            return Response({"Issue with decision matrix": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"Issue with decision matrix": str(e)},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        try:
+        try:  # Compile a config object, run MCDA
+            groups = data.get("groups", self.DEFAULT_GROUPS)
             constraints = WeightConstraints(
                 group=data.get("group_weights"),
-                group_order=data.get("group_order_constraints"),
                 local=data.get("local_weights"),
-                local_order=data.get("local_order_constraints"),
+                criterion=data.get("crit_weights"),
+                group_order=ranking_to_pairwise(data.get("group_ranks")),
+                criterion_order=ranking_to_pairwise(data.get("crit_ranks")),
             )
+            if local_ranks := data.get("local_ranks"):
+                constraints.local_order = {
+                    g: ranking_to_pairwise(local_ranks[g])
+                    if g in local_ranks else []
+                    for g in groups
+                }
+
             config = McdaConfig(
-                df=decision_matrix,
-                directions=data["directions"],
-                scenario=data["scenario"],
-                method=data["method"],
-                weight_mode=data["weight_mode"],
-                groups=data.get("groups"),
-                thresholds=data.get("thresholds"),
-
+                df              = decision_matrix,
+                directions      = data["directions"],
+                scenario        = data["scenario"],
+                method          = data["method"],
+                weight_mode     = data["weight_mode"],
+                groups          = groups,
+                thresholds      = data.get("thresholds"),
                 # Veto settings
-                veto_type=data["veto_type"],
-                veto_thresholds=data.get("veto_thresholds"),
-                penalty_factor=data.get("penalty_factor"),
-
+                veto_type       = data.get("veto_type", "no"),
+                veto_thresholds = data.get("veto_thresholds"),
+                penalty_factor  = data.get("penalty_factor", 0.5),
                 # Sampling
-                n_samples=data.get("n_samples"),
-                alpha=data.get("alpha"),
-                alpha_group=data.get("alpha_group"),
-                alpha_local=data.get("alpha_local"),
-
-                # Weight structure settings (group-level and local)
-                constraints=constraints,
+                n_samples       = data.get("n_samples", 10000),
+                alpha           = data.get("alpha", 1.0),
+                alpha_group     = data.get("alpha_group", 1.0),
+                alpha_local     = data.get("alpha_local", 1.0),
+                # Weights & constraints
+                constraints     = constraints,
             )
-            result = mcda(config)
+            result = mcda(config)[0]
         except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"Error": e}, status=status.HTTP_400_BAD_REQUEST)
 
-        results = McdaResultSerializer(result)
-        return Response(results.data, status=status.HTTP_200_OK)
+        return Response(self.serialize_results(result), status=status.HTTP_200_OK)
