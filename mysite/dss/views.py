@@ -17,7 +17,7 @@ from .serializers import (
 )
 from .mcda import McdaConfig, WeightConstraints, mcda, ranking_to_pairwise
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup, Results
-from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm, GroupOrderFormSet, LocalOrderFormSet
+from .forms import KpiSelectionForm, BaseConfigForm, WeightsThresholdsForm, SamplingConfigForm
 from .plot import fig_to_bytes
 
 
@@ -427,23 +427,6 @@ class McdaWizardView(View):
                 return 3
             return None  # deterministic: skip Form 3
         return None  # step 3 is always the last
-
-    def _get_order_formsets(self, session, data=None):
-        """Instantiate both formsets with querysets scoped to this session."""
-        session_groups    = CritGroup.objects.filter(session=session)
-        session_criteria  = Criterion.objects.filter(session=session)
-
-        group_formset = GroupOrderFormSet(data, instance=session, prefix="gfs")
-        for form in group_formset.forms:
-            form.fields["group1"].queryset = session_groups
-            form.fields["group2"].queryset = session_groups
-
-        local_formset = LocalOrderFormSet(data, instance=session, prefix="lfs")
-        for form in local_formset.forms:
-            form.fields["criterion1"].queryset = session_criteria
-            form.fields["criterion2"].queryset = session_criteria
-
-        return group_formset, local_formset
     
     def get_form(self, step: int, session: McdaSession, data=None):
         """Returns the right form for the current step."""

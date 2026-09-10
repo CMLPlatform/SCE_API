@@ -201,34 +201,6 @@ class Criterion(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-class GroupOrder(models.Model):
-    """Defines the importance order of groups"""
-    session = models.ForeignKey(McdaSession, on_delete=models.CASCADE, related_name="group_orders")
-    group1 = models.ForeignKey(CritGroup, on_delete=models.CASCADE, related_name="ordered_higher")
-    group2 = models.ForeignKey(CritGroup, on_delete=models.CASCADE, related_name="ordered_lower")
-    intensity = models.FloatField(validators=[MinValueValidator(0)], default=1)
-
-    class Meta:
-        unique_together = ['session', 'group1', 'group2']
-
-class LocalOrder(models.Model):
-    """Defines the importance order of criteria in a group"""
-    session = models.ForeignKey(McdaSession, on_delete=models.CASCADE, related_name="local_orders")
-    criterion1 = models.ForeignKey(Criterion, on_delete=models.CASCADE, related_name="ordered_higher")
-    criterion2 = models.ForeignKey(Criterion, on_delete=models.CASCADE, related_name="ordered_lower")
-    intensity = models.FloatField(validators=[MinValueValidator(0)], default=1)
-
-    class Meta:
-        unique_together = ['session', 'criterion1', 'criterion2']
-    
-    def clean(self):
-        if self.criterion1.group != self.criterion2.group:
-            raise ValidationError("Criteria must belong to the same group.")
-    
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
 class Results(models.Model):
     session = models.OneToOneField(
         McdaSession, on_delete=models.CASCADE, primary_key=True, related_name='results'
