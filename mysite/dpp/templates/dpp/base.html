@@ -84,6 +84,10 @@
                     <object data="/static/img/project-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Production lines
                 </a>
+                <a href="{% url opts.app_label|add:':'|add:'process_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                    <object data="/static/img/cogs.svg" type="image/svg+xml" width="24" height="24"></object>
+                    Processes
+                </a>
                 <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/package-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Products
@@ -133,7 +137,7 @@
 
 {% block footer %}
     <div id="footer" style="text-align:center; padding:20px; color:#666; font-size:12px;">
-        CC-BY CML, Leiden University - 2025
+        CC-BY CML, Leiden University – 2025-2026
     </div>
 {% endblock %}
 
