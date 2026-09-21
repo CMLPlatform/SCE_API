@@ -758,8 +758,7 @@ class BackgroundProcess(ManufacturingProcess):
     type = models.CharField(max_length=50, blank=True)
 
     class Meta:
-        verbose_name = "Average market process"
-        verbose_name_plural = "Average market processes"
+        verbose_name_plural = "Background processes"
 
 class Exchange(models.Model):
     """ Represents the input to or output of a Process."""

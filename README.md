@@ -1,16 +1,40 @@
 # Installation
 To install the application on your computer, open a command line and run:
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install sce@git+https://github.com/CMLPlatform/SCE_API.git
 ```
+Windows users can either use `Git Bash` and follow the steps above, or run:
+```sh
+py -m venv .venv
+.\.env\Scripts\activate
+git clone "https://github.com/CMLPlatform/SCE_API"
+```
+
+In the same command line, change to the project directory to install and initiate the app:
+```bash
+cd SCE_API
+pip install -r requirements.txt
+python3 manage.py migrate
+python3 manage.py runserver
+```
+
+Then you can use the app in your web browser at http://127.0.0.1:8000/dpp/welcome.
 
 # User Manual
 ## Key features
 This software helps you to create Digital Product Passports in a streamlined way, to comply with the EU ESPR regulations. It is designed for manufacturers of consumer goods such as clothes, electronics, and batteries.
 There are two parts: a web-based interface to conveniently construct datasets, and a API module that can be used to share data with other parties.
 
+The web app is built with Django. To test the features, you have two options: 
+
 ## Recommended workflow
 In the sections below, instructions are provided for using the data collector app. These instructions are ordered following the recommended workflow. It is possible to follow a different route.
+
+## Log in or sign up
+[-> Try live](http://127.0.0.1:8000/dpp/welcome)
+Provide your username and password to create a new account, or to login to your existing account.
 
 ## Start page
 [-> Try live](http://127.0.0.1:8000/dpp/welcome)
@@ -51,6 +75,8 @@ Multiple production lines can refer to the same facility. The above information 
 - **VAT number**
 
 ## Product
+[-> Try live](http://127.0.0.1:8000/dpp/flow/add/)
+
 A 'product', can by any good or item that can be purchased on a market, both consumer goods and intermediate products. There are four different types of products:
 - **Product model**: describes a specific model or version of a product. All items of a product model share the same design, weight, and manuals.
 - **Product batch**: describes a specific batch of products, indicated by a batch number. All items of a product batch share the same supply chain (production processes).
@@ -72,7 +98,9 @@ It is possible - and sometimes mandatory - to specify some details about a [prod
 - **Take-back system\***: Specify which system is in place for taking back used products. Select one of the options.
 
 ## Process
-Now it is time to add a production process to the production line. A process is described by:
+Now it is time to add a production process to the production line. On the production line page, click 'Add new process'.
+
+A process is described by:
 - **Name\***
 - **Production line\***: The production line that it belongs to. (Automatically filled when you use the 'Add new process' button in a [production line](production-line)).
 - **Main output**: The main product produced by this process. It could be an intermediate product or a final product. It is important that each product is only produced by a single process! Even if two processes produce a similar product, you need to define a separate product for each.
@@ -100,6 +128,7 @@ After adding a process, you can see the following process details:
 To verify that all processes are connected properly, go back to the [production line](#production-line) page and check the process diagram.
 
 ## Inputs and outputs
+After creating a process, go back to the production line. Then click the new process to modify its inputs and outputs. 
 Inputs to processes and outputs of processes all fall in the category of Exchanges. Two types of exchanges exist:
 - Product exchanges: refers to inputs and outputs of man-made products and goods, including energy cariers and even services. 
 - Environmental exchanges: refers to inputs of natural resources (directly extracted from the environment), and emissions of substances to the environment (e.g. to air or surface water).
@@ -119,7 +148,7 @@ If the amount of input or output is uncertain, you can specify the uncertainty d
 The uncertainty paramters follow the conventions of [Brightway2 uncertainty data](https://deepwiki.com/maximikos/Brightway2_Intro/4.6.1-understanding-uncertainty-data).
 
 ## Average market process
-An 'average market process' describes common activities, such as electricity production or the operation of a natural gas boiler. As a user, you should usually import these processes from an LCA database rather than creating them yourself. Average market processes can in turn link to products from other processes, thereby describing the whole supply chain and the associated environmental [exchanges](#inputs-and-outputs).
+An 'average market process' ('background process' in LCA terminology) describes common activities, such as electricity production or the operation of a natural gas boiler. As a user, you should usually import these processes from an LCA database rather than creating them yourself. Average market processes can in turn link to products from other processes, thereby describing the whole supply chain and the associated environmental [exchanges](#inputs-and-outputs).
 
 ## Transport
 Transport operations are conveniently modeled in a separate section. This way, it is not needed to create a separate transport process for each product that is used by your manufacturing process. Instead, you can directly select products purchased from suppliers as [inputs and outputs](#inputs-and-outputs).
@@ -221,10 +250,11 @@ Required fields that must be filled are indicated with an asterisk, e.g. **Name\
 Some fields ask to link to another item, such as the operator of a process. These fields can be recognized as a drop-down box with a green plus sign (**+**) next to it. If you already created the item you wan to link to, select it in the dropdown list. Otherwise, click the **+** to create it in a pop-up window. 
 After filling the form, click the 'Save' button at the bottom. In case there are any issues with the information, an error message will explain what went wrong and how to correct it. 
 
-# API Manual
-Full Digital Product Passports (DPPs) and parts of a DPP can be retrieved using the API functionality.
 
-A DPP is uniquely identified by its registration number. It can be accessed through **www.company-website.com/api/metadata/<registration_number>**. The API response follows the basic structure of the example below. Note that, for clarity, some 'branches' are left out (indicated by `[]` and `None`).
+# API Manual
+Full Digital Product Passports (DPPs) and parts of a DPP can be retrieved using the API functionality. In the examples below, `base_url` denotes the company website that hosts the DPP service. It can also be the localhost address, http://127.0.0.1:8000/.
+
+A DPP is uniquely identified by its registration number. It can be accessed through **<base_url>/api/metadata/<registration_number>**. The API response follows the basic structure of the example below. Note that, for clarity, some 'branches' are left out (indicated by `[]` and `None`).
 
 ```JSON
 {
@@ -351,57 +381,150 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
 ```
 
 # Decision Support System manual
-The Sustainability and Cost Module features a Decision Support System (DSS) that can be accessed through an API. It is specifically designed for supporting decisions in laser welding. The DSS has a user interface to guide you through the process of setting decision preferences. 
+The Sustainability and Cost Module features a Decision Support System (DSS) that can be accessed through an API. It is specifically designed for supporting decisions in laser welding. The DSS has an application programming interface (API) and a user interface to guide you through the process of setting decision preferences. 
 
-## API access
-To receive decision support for comparing different laser welding parameters, send a post request to [main-domain.com/dss/experiments/]. The request should contain a list of experiments with the following structure:
+The following API endpoints are available. Each one is described in more detail below. 
+
+| Name | Endpoint | Receives | Response |
+| ---- | -------- | -------- | -------- |
+| KPI calculation (experiment)   | base_url/dss/experiment/      | 1 experiment      | KPI set |
+| KPI calculation (weld station) | base_url/dss/welding-station/ | 1 welding station | KPI set |
+| Experiment comparison          | base_url/dss/experiments/     | list of experiments | MCDA session ID |
+| Welding station comparison    | base_url/dss/welding-stations/ | list of welding stations | MCDA session ID |
+| MCDA calculation              | base_url/dss/calculate/        | performance matrix, MCDA settings | ranking and score of alternatives |
+
+
+## KPI calculation (experiment)
+To receive the KPIs relevant for process development, send a POST request with the laser welding parameters of one experiment to **<base_url>/dss/experiment/**. (Again, `base_url` can be the company website or the localhost address.) The request should describe an experiment with the following structure:
 ```JSON
-[
-  {
-    "experimentId": 12,
-    "weldLength": 29,
-    "weldSpeed": 100,
-    "country": "DE",
-    "laserPowerkW": 4,
-    "weldingStationPowerkW": 12,
-    "consumables": [
-      {
-        "name": "Nitrogen",
-        "flowRate": 15.2,
-        "unit": "m3/h"
-      },
-      {
-        "name": "Argon",
-        "flowRate": 6,
-        "unit": "m3/h"
-      },
-      {
-        "name": "Aluminium (filler wire)",
-        "flowRate": 0.02,
-        "unit": "kg/h"
-      }
-    ],
-    "qualityParameters": [
-      {
-        "name": "Porosity",
-        "value": 3.2,
-        "target": "min"
-      },
-      {
-        "name": "Tensile strength",
-        "value": 0.18,
-        "target": "max"
-      },
-      {
-        "name": "Weld depth",
-        "value": 3,
-        "target": 3.5
-      }
-    ]
-  }
-]
+{
+  "experimentId": 12,
+  "weldLength": 29,
+  "weldSpeed": 100,
+  "country": "DE",
+  "laserPowerkW": 4,
+  "weldingStationPowerkW": 12,
+  "consumables": [
+    {
+      "name": "Nitrogen",
+      "flowRate": 15.2,
+      "unit": "m3/h"
+    },
+    {
+      "name": "Argon",
+      "flowRate": 6,
+      "unit": "m3/h"
+    },
+    {
+      "name": "Aluminium (filler wire)",
+      "flowRate": 0.02,
+      "unit": "kg/h"
+    }
+  ],
+  "qualityParameters": [
+    {
+      "name": "Porosity",
+      "value": 3.2,
+      "target": "min"
+    },
+    {
+      "name": "Tensile strength",
+      "value": 0.18,
+      "target": "max"
+    },
+    {
+      "name": "Weld depth",
+      "value": 3,
+      "target": 3.5
+    }
+  ]
+}
 ```
 
+## KPI calculation (welding station)
+To receive the KPIs relevant for process deployment in industrial welding setting, send a POST request with the parameters of one laser welding station and settings to **<base_url>/dss/welding-station/**. The request should describe a welding station with the following structure:
+
+```JSON
+{
+  "experimentId": 12,
+  "weldLength": 29,
+  "weldSpeed": 100,
+  "country": "DE",
+  "laserPowerkW": 4,
+  "weldingStationPowerkW": 12,
+  "materials": [
+    {
+      "name": "Stainless steel",
+      "weight": 14.3
+    }
+  ],
+  "maintenanceCosts": 2050.50,
+  "cycleTime": 30,
+  "scrapRate": 0.15,
+  "recyclability":"high",
+  "consumables": [
+    {
+      "name": "Nitrogen",
+      "flowRate": 15.2,
+      "unit": "m3/h"
+    },
+    {
+      "name": "Argon",
+      "flowRate": 6,
+      "unit": "m3/h"
+    },
+    {
+      "name": "Aluminium (filler wire)",
+      "flowRate": 0.02,
+      "unit": "kg/h"
+    }
+  ],
+  "qualityParameters": [
+    {
+      "name": "Porosity",
+      "value": 3.2,
+      "target": "min"
+    },
+    {
+      "name": "Tensile strength",
+      "value": 0.18,
+      "target": "max"
+    },
+    {
+      "name": "Weld depth",
+      "value": 3,
+      "target": 3.5
+    }
+  ],
+  "productivity": [
+    {
+      "name": "Process automation level",
+      "value": "medium",
+      "target": "max"
+    },
+    {
+      "name": "Operator specialisation level",
+      "value": "low",
+      "target": "min"
+    },
+    {
+      "name": "Process monitoring",
+      "value": 30,
+      "target": "min"
+    },
+    {
+      "name": "Production lead time",
+      "value": 75,
+      "target": "min"
+    },
+    {
+      "name": "Machine saturation",
+      "value": 0.65,
+      "target": "max"
+    }
+  ]
+}
+```
 
 ## Criteria calculations
 
@@ -435,3 +558,13 @@ Calculations for deriving KPIs for the Key Account Manager. This is not implemen
 - Materials footprint = Σ material weight × material carbon footprint / (1 – scrap rate) (for all parts)
 - Product carbon footprint = process carbon footprint + materials footprint
 - The remaining KPIs are directly used without calculations: recyclability, process monitoring, process automation level, operator specialization level, production lead time, machine saturation, technical quality indicators.
+
+## Experiment comparison
+This API endpoint receives a list of experiments (with each experiment formatted as shown above in (#kpi-calculation-experiment)). It returns an MCDA session ID. This ID can be used to access the MCDA wizard, a GUI for configuring the MCDA.
+
+## Welding station comparison
+This API endpoint receives a list of welding stations (with each welding station formatted as shown above in (#kpi-calculation-welding-station)). It returns an MCDA session ID. This ID can be used to access the MCDA wizard, a GUI for configuring the MCDA.
+
+## MCDA calculation
+This API endpoint receives a performance matrix (a 'table' of alternatives and performance indicators) and several MCDA settings. It returns the alternatives, each with a ranking and a score. These indicate to what extent each alternative meets the decision preferences. 
+
