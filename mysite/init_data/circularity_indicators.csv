@@ -82,15 +82,14 @@ R8.12,Recycling collection rate,True,recyclingCollectionRate,?,The expected or o
 R9,Recover (total),True,,?,
 R9.01,Waste diversion from landfill,True,wasteDiversionFromLandfill,?,% of waste diverted from disposal to energy recovery 
 R9.02,Potential recovery,True,potentialRecovery,?,Estimated cumulative recovered enegy from process and product EOL through energy recovery (mega joules)
-R9.03,Hazardous waste directed to disposal,True,hazardousWasteDirectedToDisposal,?,"Total weight of hazardous waste diverted from disposal (metric tons)
-Breakdown of recovery operations (%)  "
+R9.03,Hazardous waste directed to disposal,True,hazardousWasteDirectedToDisposal,?,"Total weight of hazardous waste diverted from disposal (metric tons); Breakdown of recovery operations (%)"
 R9.04,Non-hazardous waste directed to disposal,True,nonhazardousWasteDirectedToDisposal,?,% of nonhazardous waste used for energy recovery 
 R9.05,Energy recoverability benefit,True,energyRecoverabilityBenefit,?,Total energy consumption of landfill vs waste incineration from process and EoL product
 R9.06,Raw materials input,True,rawMaterialsInput,?,% of new materials required for recovery (%) 
 RE,Circularity enablers (total),True,REnabler,?,
 RE.01,Process data access conditions,True,productDataAccessConditions,?,"Describes whether product data (e.g., technical drawings, disassembly instructions) is accessible to third parties."
-RE.02,Hardware and software access conditions,True,hardwareSoftwareAccess,?,"Conditions Specifies whether firmware, diagnostic tools, or software needed for maintenance/repair are accessible (open access, restricted, or proprietary)"
+RE.02,Hardware and software access conditions,True,hardwareSoftwareAccess,?,"Specifies whether firmware, diagnostic tools, or software needed for maintenance/repair are accessible (open access, restricted, or proprietary)"
 RE.03,Standardised component ratio,True,standardisedComponentRatio,?,"Percentage of components that follow industry standards—facilitates reuse, repair, remanufacture, and interoperability."
 RE.04,Component coding used,True,componentCodingUsed,?,"Whether components are labeled with codes (e.g., QR codes, part numbers) to aid in identification and reuse."
 RE.05,Material coding used,True,materialCodingUsed,?,"Whether materials are marked according to standards (e.g., plastic resin codes) for improved sorting and recycling."
-RE.06,Tracking device used,True,REnablerType,?,"Presence of traceability systems and devices, and machinereadable identifiers for materials and components "
+RE.06,Tracking device used,True,REnablerType,?,"Presence of traceability systems and devices, and machinereadable identifiers for materials and components"

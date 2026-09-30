@@ -13,6 +13,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator, FileExt
 from django_countries.fields import CountryField
 from . import lca
 
+import logging
+logger = logging.getLogger(__name__)
+
 FRACTION_VALIDATOR = [MinValueValidator(0), MaxValueValidator(1)]
 
 UNIT_CHOICES = {
@@ -241,7 +244,9 @@ class Flow(models.Model):
             production_line = self.produced_by.production_line
             composition = self.calc_composition(production_line)
             if len(composition) == 0:
-                print("No material composition specified for any component.")
+                logger.warning(
+                    "No material composition specified for any component."
+                )
             for mat, value in composition.items():
                 Composition.objects.update_or_create(
                     product=self, material=mat, defaults={'quantity': value}
@@ -254,10 +259,10 @@ class Flow(models.Model):
         try:
             product_weight = self.properties.weight * CONVERSIONS[self.properties.weight_unit]
         except ProductProperties.DoesNotExist:
-            print(f"Weight of {self} unknown; cannot calculate concentration.")
-        bom = self.get_composition()
+            logger.error(f"Weight of {self} unknown; cannot calculate concentration.")
+        bom = self.get_composition().select_related('material__hazardousmaterial')
         for content in bom:
-            if isinstance(mat := content.material, HazardousMaterial):
+            if (mat := content.material).is_hazardous:
                 concentrations[mat] += content.quantity * CONVERSIONS[content.unit] / product_weight
         return concentrations
     
@@ -308,24 +313,27 @@ class Flow(models.Model):
         Add all subcomponents of `component` to this product.
         If a subcomponent already exists, its amount is increased.
         """
-        this_entry = Component.objects.get(product=self, component=component)
+        this_entry = Component.objects.filter(product=self, component=component)
         if not this_entry.exists():
             raise Component.DoesNotExist(
                 f"'{self}' does not contain component '{component}'"
             )
         subcomponents = component.composed_of.all()
         if not subcomponents.exists():
-            print(f"No components found for {component}")
+            logger.warning(f"No components found for {component}")
             return
         with transaction.atomic():
             for subcomp in subcomponents:
                 # Update, or if component already exists, sum amounts
-                new_amount = this_entry.amount * subcomp.amount
-                Component.objects.update_or_create(
+                new_amount = this_entry[0].amount * subcomp.amount
+                entry, created = Component.objects.select_for_update().get_or_create(
                     product=self,
                     component=subcomp.component,
-                    defaults={'amount': models.F('amount') + new_amount},
+                    defaults={'amount': new_amount},
                 )
+                if not created:
+                    entry.amount += new_amount
+                    entry.save(update_fields=['amount'])
             this_entry.delete()
 
 class ProductModel(Flow):
@@ -347,7 +355,7 @@ class ProductModel(Flow):
 class ProductBatch(Flow):
     batch_number = models.PositiveIntegerField()
     model = models.ForeignKey(ProductModel, on_delete=models.RESTRICT, related_name='batch')
-    GTIN = models.CharField(max_length=13, unique=True, help_text="Global Trade Item Number (or EAN)")
+    GTIN = models.CharField(max_length=13, help_text="Global Trade Item Number (or EAN)")
     
     class Meta:
         verbose_name_plural = 'Product batches'
@@ -381,8 +389,9 @@ class ProductProperties(models.Model):
         if self.weight == 0:
             return 0
         package_weight = 0
-        for pack in self.product.produced_by.prod_exchanges.filter(type='pack'):
-            package_weight += pack.properties.weight * CONVERSIONS[pack.weight_unit]
+        for exc in self.product.produced_by.prod_exchanges.filter(type='pack'):
+            package = exc.product.properties
+            package_weight += package.weight * CONVERSIONS[package.weight_unit]
         if self.includes_packaging:
             return package_weight / (self.weight - package_weight)
         else:
@@ -468,7 +477,6 @@ class ProductItem(models.Model):
                 new_item = ProductItem.objects.create(
                     product_batch=component,
                     serial_number=component_serial,
-                    GTIN_code="",  # Components may not have GTIN initially
                     production_date=self.production_date,
                 )
                 created_items.append(new_item)
@@ -608,7 +616,7 @@ class ProductionLine(models.Model):
                 product=func_flow, process__in=process_list
             ).exists()
             
-            if not is_linked and func_flow != self.final_product:
+            if (not is_linked) and (func_flow.pk != self.final_product.pk):
                 unused_outputs.append(func_flow)
         
         if unused_outputs:
@@ -864,7 +872,7 @@ class EnvExchange(Exchange):
 
     def save(self, *args, **kwargs):
         if not self.direction:
-            self.direction == 'out'
+            self.direction = 'out'
         self.clean()
         super().save(*args, **kwargs)
 
@@ -1286,6 +1294,7 @@ class Publisher(models.Model):
     # Metadata info - to be conveyed to Metadata object
     amount = models.PositiveSmallIntegerField(help_text="How many items need a DPP.")
     registration_numbers = models.CharField(max_length=500, blank=True, help_text="Range of numbers (comma-separated)")
+    gtin = models.CharField(max_length=13, verbose_name='GTIN', help_text="Global Trade Item Number (or EAN)")
     issuer = models.ForeignKey(Organization, on_delete=models.PROTECT)
     reo = models.ForeignKey(Company, on_delete=models.PROTECT, verbose_name='Responsible economic operator', related_name='responsible_for', help_text="The entity bearing legal responsibility for the DPP and the product.")
     version = models.CharField(max_length=10, default='1.0')
@@ -1401,27 +1410,31 @@ class Publisher(models.Model):
         if self.registration_numbers:
             return [nr.strip() for nr in self.registration_numbers.split(',')]
         else:
-            return [uuid4() for i in range(self.amount)]
+            return [str(uuid4()) for i in range(self.amount)]
     
     def create_dpps(self):
         """Create self.amount number of ProductItem and Metadata objects
         """
-        if not self.can_publish:
-            print("Please solve all issues before publishing.")
+        if not self.can_publish():
+            logger.error("Please solve all issues before publishing.")
             return
         
         # Create ProductBatch if needed
-        prod = self.production_line.final_product
-        if isinstance(prod, ProductModel):
-            prod = ProductBatch.objects.create(batch_number=1, model=prod)
+        flow = self.production_line.final_product
+        if hasattr(flow, 'productmodel'):
+            batch = ProductBatch.objects.create(
+                batch_number=1, model=flow.model, GTIN=self.gtin
+            )
+        else:
+            batch = flow.productbatch
         
         numbers = self.get_registration_nrs()
         with transaction.atomic():
             for i, reg_nr in enumerate(numbers):
                 item = ProductItem.objects.create(
-                    product_batch=prod,
+                    product_batch=batch,
                     serial_number='-'.join(
-                        [str(prod.model.id), str(prod.batch_number), str(i)]
+                        [str(batch.model.id), str(batch.batch_number), str(i)]
                     ),
                 )
                 metadata = Metadata.objects.create(

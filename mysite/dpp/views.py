@@ -290,6 +290,7 @@ class ProductionLineDetailView(DetailView):
             publisher, created = Publisher.objects.get_or_create(
                 production_line=pl,
                 amount=100,
+                gtin="please enter",  #FIXME: must be specified
                 issuer=pl.facility.operator,
                 reo=pl.facility.operator,
                 credential_format='other',

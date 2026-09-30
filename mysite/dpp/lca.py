@@ -1,4 +1,4 @@
-"""Basic outline and functions for doing LCA calculations,
+"""Toolbox with functions for doing LCA calculations,
 and to import and export DPP data to Brightway.
 """
 import bw2data as bwd
