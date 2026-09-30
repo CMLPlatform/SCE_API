@@ -144,8 +144,7 @@ class Document(models.Model):  #TODO: security check on files
             },
         "Compliance document":
         {'compliance': 'Compliance report', 'quality_cert': 'Quality certificate', 'safety_data': 'Safety data sheet', 'legal': 'Legal document', 'labor': 'Labor compliance', 'qms': 'Quality Management System certificate', 'warranty': 'Warranty information', 'spare_parts': 'Spare parts availability', 'takeback': 'Return and take-back'},
-        "Manual":
-        {'manual': 'User manual', 'maintenance': 'Maintenance manual', 'installation': 'Installation guide', 'eol': 'End-of-life guidelines'}, #FIXME: remove manual types
+        "manual": "Manual",
         "Label":
         {'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'circularity_label': 'Circularity label', 'legal': 'Legal markings'},
     }
@@ -155,7 +154,7 @@ class Document(models.Model):  #TODO: security check on files
         "Document type", max_length=25, choices=DOCUMENT_TYPES, default='other'
     )
     issuer = models.ForeignKey(Organization, blank=True, null=True, on_delete=models.SET_NULL, help_text="Author, issuer or publisher")
-    instructions = models.ManyToManyField(Instruction, blank=True, help_text="Select all that apply. Instructions included in this document (ony for manauals)")
+    instructions = models.ManyToManyField(Instruction, blank=True, help_text="Select all that apply. Instructions included in this document (only for manuals)")
     language = models.CharField(max_length=40, blank=True)
     # file_type = models.CharField(max_length=5, default=file.split('.')[-1])
     issue_date = models.DateTimeField(default=datetime.date.today)
@@ -171,10 +170,9 @@ class Document(models.Model):  #TODO: security check on files
 def validate_instructions(sender, instance, action, **kwargs):
     """Ensure that all and only manuals have instructions."""
     if action == "post_add" or action == "post_remove" or action == "post_clear":
-        manuals = instance.DOCUMENT_TYPES['Manuals']
-        if instance.type in manuals and not instance.instructions.exists():
+        if instance.type == "manual" and not instance.instructions.exists():
             raise ValidationError("A manual must have at least one instruction type.")
-        if instance.instructions.exists() and instance.type not in manuals:
+        if instance.instructions.exists() and instance.type != "manual":
             raise ValidationError("Instructions can only be associated with manuals.")
 
 
