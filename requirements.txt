@@ -6,4 +6,5 @@ django-crispy-forms
 crispy-tailwind
 environs
 pandas
+psycopg2
 brightway25
