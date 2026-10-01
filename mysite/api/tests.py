@@ -392,7 +392,7 @@ class ComponentAndConcentrationSerializerTests(TestCase):
                     'name': 'Oak wood',
                     'chemical_formula': '',
                     'criticality_level': '',
-                    'origin_country': '',
+                    'origin_country': None,
                 },
                 'fraction': 0.1,
             },
@@ -531,4 +531,3 @@ class SustainabilityEvaluationSerializerTests(TestCase):
             },
         }
         self.assertDictEqual(expected_output, data)
-
