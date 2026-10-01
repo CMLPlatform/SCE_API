@@ -1,6 +1,6 @@
 from django import forms
 from django.forms import inlineformset_factory
-from .models import McdaSession, Criterion, CritGroup, GroupOrder, LocalOrder, DecisionMatrix
+from .models import McdaSession, Criterion, CritGroup, DecisionMatrix
 
 
 # ------------------------------------------------------------------
@@ -401,58 +401,3 @@ class SamplingConfigForm(forms.Form):
                     session.local_ranks[group][crit] = data[field_name]
 
         session.save()
-
-
-class GroupOrderForm(forms.ModelForm):
-    class Meta:
-        model  = GroupOrder
-        fields = ["group1", "group2", "intensity"]
-        widgets = {
-            "group1":    forms.Select(),
-            "group2":    forms.Select(),
-            "intensity": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
-        }
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("group1") == cleaned.get("group2"):
-            raise forms.ValidationError("Choose two different groups.")
-        return cleaned
-
-
-class LocalOrderForm(forms.ModelForm):
-    class Meta:
-        model  = LocalOrder
-        fields = ["criterion1", "criterion2", "intensity"]
-        widgets = {
-            "criterion1": forms.Select(),
-            "criterion2": forms.Select(),
-            "intensity":  forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
-        }
-
-    def clean(self):
-        cleaned = super().clean()
-        if cleaned.get("criterion1") == cleaned.get("criterion2"):
-            raise forms.ValidationError("Choose two different criteria.")
-        # if cleaned.get("criterion1").group != cleaned.get("criterion2").group:
-        #     raise forms.ValidationError("Choose criteria from the same group.")
-        return cleaned
-
-
-# Formsets
-# extra=1 shows one blank row by default; can_delete=True adds a remove checkbox
-GroupOrderFormSet = inlineformset_factory(
-    parent_model = McdaSession,
-    model        = GroupOrder,
-    form         = GroupOrderForm,
-    extra        = 1,
-    can_delete   = True,
-)
-
-LocalOrderFormSet = inlineformset_factory(
-    parent_model = McdaSession,
-    model        = LocalOrder,
-    form         = LocalOrderForm,
-    extra        = 1,
-    can_delete   = True,
-)

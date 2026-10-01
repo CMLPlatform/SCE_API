@@ -2,12 +2,18 @@ import logging
 import pytest
 from unittest.mock import patch
 
-from django.test import TestCase
 import pandas as pd
 import matplotlib.pyplot as plt
-from .views import lookup, calculate_experiment_kpis, calculate_kpis
+
+from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APITestCase, APIClient
+from rest_framework import status
+
 from .models import DecisionMatrix, Criterion
 from .mcda import McdaConfig, WeightConstraints, mcda
+from .serializers import ExperimentSerializer, WeldStationSerializer
+from .views import lookup, calculate_experiment_kpis, calculate_kpis
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
@@ -94,6 +100,43 @@ class TestLookup:
 
     def test_falls_back_to_default_when_value_is_false(self, country_data_df):
         assert lookup("wages", "DE") == 20.0
+
+# ---------------------------------------------------------------------------
+# test serializers
+# ---------------------------------------------------------------------------
+class TestSerializers(TestCase):
+
+    def test_weld_station_serializer(self):
+        input = {
+            "experimentId": 402,
+            "weldLength": 1300,
+            "weldSpeed": 100,
+            "country": "NL",
+            "laserPowerkW": 50,
+            "weldingStationPowerkW": 8.5,
+            "maintenanceCosts": 26.40,
+            "cycleTime": 21,
+            "scrapRate": 0.05,
+            "recyclability": 0.93,
+            "consumables": [
+                {"name": "gold", "flowRate": 5.5, "unit": "g/h"},
+                {"name": "oil", "flowRate": 1, "unit": "ml/min"},
+            ],
+            "qualityParameters": [
+                {"name": "cost", "value": 200, "target": "min"},
+                {"name": "depth", "value": 5, "target": "3.9"},
+            ],
+            "materials": [{"name": "steel", "weight": 3}],
+            "productivity": [
+                {"name": "expertise", "value": 0.5, "target": "max"},
+            ],
+        }
+        expected_output = input
+        
+        result = WeldStationSerializer(data=input)
+        result.is_valid(raise_exception=True)
+        assert result.validated_data == expected_output
+
 
 # ---------------------------------------------------------------------------
 # calculate_experiment_kpis
@@ -206,7 +249,6 @@ class TestCalculateKpis:
         session = calculate_kpis([pd_experiment], user="pd")
 
         names = set(Criterion.objects.filter(session=session).values_list("name", flat=True))
-        print(names)
         assert "Tensile strength" in names
 
         row = DecisionMatrix.objects.get(session=session, name="Experiment #1")
@@ -589,6 +631,80 @@ class McdaTest(TestCase):
         assert set(plots.keys()) == {"Net Flow Score", "Pairwise Preference Matrix"}
         assert title == "deterministic"
         return
+
+
+class McdaCalculationViewTest(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('mcda')  # Access to McdaCalculationView
+        self.valid_payload = {
+            "decision_matrix": {
+                "alt1": {"crit1": 10,     "crit2": 20},
+                "alt2": {"crit1": (8, 9), "crit2": 25},
+            },
+            "directions": {"crit1": "max", "crit2": "min"},
+            "scenario": "ordered",
+            "method": "promethee",
+            "weight_mode": "hierarchical",
+            "groups": {"group1": ["crit1", "crit2"]},
+            "group_weights": {"group1": 1.0},
+            "local_weights": {"group1": {"crit1": 0.4, "crit2": 0.6}},
+            "crit_weights": {"crit1": 0.6, "crit2": 0.4},
+            "thresholds": {"crit1": (0.5, 5), "crit2": (1, 6)},
+            "veto_type": "soft",
+            "veto_thresholds": {"crit1": 6, "crit2": 7},
+            "penalty_factor": 0.5,
+            "n_samples": 100,
+            "alpha": 0.5,
+            "alpha_group": 1,
+            "alpha_local": 1.5,
+            "group_ranks": {"group1": 1},
+            "local_ranks": {"group1": {"crit1": 2, "crit2": 1}},
+            "crit_ranks": {"crit1": 1, "crit2": 2},
+        }
+        self.invalid_payload = {
+            "decision_matrix": {
+                "alt1": {"crit1": 10,     "crit2": 20},
+                "alt2": {"crit1": (8, 9), "crit3": 25},
+            },
+            "directions": {"crit1": 12, "crit2": "low"},
+            "scenario": "bounded",
+            "method": "promethee",
+            "weight_mode": "hierarchical",
+            "groups": {"group1": ["crit1", "crit2"], "group2": ["crit3"]},
+            "group_weights": {"group1": 0.7},
+            "local_weights": {"group1": {"crit1": 0.8, "crit2": 0.6}},
+            "crit_weights": {"crit1": 0.6, "crit2": 0.4},
+            "thresholds": {"crit1": (5, 0.5), "crit2": (1, 6)},
+            "veto_type": "true",
+            "veto_thresholds": {"crit1": 6, "crit2": 7},
+            "group_ranks": {"group1": "1"},
+            "local_ranks": {"group1": {"crit1": ["nonsense"]}},
+            "crit_ranks": {"crit1": 1, "crit2": 2},
+        }
+        self.expected_result = {
+            'alt1': {'score': 0.6347775757345835, 'rank': 1.0},
+            'alt2': {'score': -0.6347775757345835, 'rank': 2.0},
+   }
+
+    def test_valid_post_request(self):
+        response = self.client.post(
+            self.url, data=self.valid_payload, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertListEqual(list(response.data.keys()), ["alt1", "alt2"])
+        self.assertDictEqual(response.data, self.expected_result)
+
+    def test_invalid_post_request(self):
+        response = self.client.post(
+            self.url, data=self.invalid_payload, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertListEqual(
+            list(response.data.keys()),
+            ["directions", "thresholds", "veto_type", "local_ranks"]
+        )
+        # print(response.data)
 
 class Explanations():
     # ============================================================
