@@ -466,16 +466,18 @@ class ProductItem(models.Model):
         Returns a list of created ProductItems.
         """
         created_items = []
+        entries = self.product_batch.model.composed_of.select_related('component')
         
-        for i, component in enumerate(self.components.all()):
-            component_serial = f"{self.serial_number}-C{i}"
-            for j in range(component.amount):
+        for i, entry in enumerate(entries):
+            part_batch = entry.component.productbatch
+            for j in range(entry.amount):
                 # Generate unique serial number for each component
-                if component.amount > 1:
+                component_serial = f"{self.serial_number}-C{i}"
+                if entry.amount > 1:
                     component_serial += f"-{j}"
                 
                 new_item = ProductItem.objects.create(
-                    product_batch=component,
+                    product_batch=part_batch,
                     serial_number=component_serial,
                     production_date=self.production_date,
                 )
