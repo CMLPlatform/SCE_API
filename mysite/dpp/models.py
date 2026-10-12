@@ -664,8 +664,8 @@ class ProductionLine(models.Model):
         pl_map = {}  #FIXME: unused ManufacturingProcess to Process map
         for p in other_source:
             pl = p.production_line
-            mp = pl.create_public_tables()
-            suppliers += [mp]
+            mp = pl.aggregate_production()
+            suppliers = list(suppliers) + [mp]
             pl_map[mp.pk] = p.pk
         
         exchanges = (

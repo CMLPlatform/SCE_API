@@ -244,7 +244,7 @@ function buildPayload() {
         { name: 'Operator specialisation level', value: gl('specialisation'), target: 'min' },
         { name: 'Process monitoring', value: gi('monitoring'), target: 'min' },
         { name: 'Production lead time', value: gi('leadTime'), target: 'min' },
-        { name: 'Machine saturation', value: gf('saturation'), target: 'max' },
+        { name: 'Machine saturation', value: gf('saturation'), target: 'min' },
       ],
     };
   });
