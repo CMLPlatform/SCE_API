@@ -8,3 +8,4 @@ environs
 pandas
 psycopg2
 brightway25
+sentier_brightway @ git+https://github.com/sentier-dev/sentier-brightway
