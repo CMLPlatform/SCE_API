@@ -5,6 +5,7 @@ import pandas as pd
 from django.conf import settings
 # from django.contrib.auth.models import User
 from dpp.models import CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory
+from dpp.lca import biosphere_to_dpp_flows
 
 def csv_to_django(file_path: Path | str, Model, relations={}):
     """
@@ -36,3 +37,4 @@ def run():
     socioecon, _ = ImpactCategory.objects.get_or_create(name="Socio-economic impact")
     socioecon_csv = settings.DATA_DIR / "socioecon_indicators.csv"
     csv_to_django(socioecon_csv, ImpactIndicator, relations={"impact_category": socioecon.pk})
+    biosphere_to_dpp_flows()

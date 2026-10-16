@@ -208,7 +208,6 @@ class TestCalculateExperimentKpisKam:
         result = calculate_experiment_kpis(kam_experiment, "kam")
 
         assert result["Process energy use"] > pd_result["Process energy use"]
-
         assert result["Total production costs"] > result["Operating costs"]
 
     def test_scrap_rate_of_one_raises_zero_division(self, kam_experiment):
@@ -235,7 +234,6 @@ def test_calculate_kpis_propagates_unrecognised_unit_error(pd_experiment):
 
 @pytest.mark.django_db
 class TestCalculateKpis:
-
     def test_creates_session_and_matrix(self, pd_experiment):
         exp2 = dict(pd_experiment, experimentId=2)
         valid_data = [pd_experiment, exp2]

@@ -1,10 +1,20 @@
 """Toolbox with functions for doing LCA calculations,
 and to import and export DPP data to Brightway.
 """
+import datetime
+import json
+import logging
+import time
+import requests
+
+from pathlib import Path
+import pandas as pd
+from django.conf import settings
+
 import bw2data as bwd
 import bw2io as bwi
-import datetime
-import logging
+from sentier_brightway import import_db
+
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +35,121 @@ EXCLUDED_METHODS = {
 	"human toxicity: non-carcinogenic, inorganics', 'comparative toxic unit for human (CTUh)",
 	"human toxicity: non-carcinogenic, organics', 'comparative toxic unit for human (CTUh)')",
 }
-DEFAULT_REMOTE_PROJECT = "ecoinvent-3.12-biosphere"
+DPP_PROJECT = "L4M-DPP"
+BIOSPHERE = "ecoinvent-3.12-biosphere"
 ECOINVENT = "ecoinvent-3-12-cutoff"
+BONSAI_DB = "BONSAI v2.4.0"
+BAFU_DB = "bafu-2026"
 
-def setup_project(project_name: str) -> None:
-    """Initialize the project if needed, and check that it is complete."""
+CACHE_DIR = Path.cwd() / "_cache"
+BONSAI_EXPORT_DIR = Path.cwd() / "bonsai_data"
+CACHE_DIR.mkdir(exist_ok=True)
+BONSAI_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Project setup and database import
+# ---------------------------------------------------------------------------
+
+country_data = pd.read_csv(settings.DATA_DIR / "country_data.csv", index_col="country")
+
+def project_status(project_name: str) -> dict[str, bool]:
+    """Check if all databases in a project are fully processed.
+
+    A database counts as True only if its processed file exists on disk
+    (an import that failed half-way leaves only a registered DB).
+    Returns {db_name: processed}, or {} if the project does not exist.
+    """
+    if project_name not in bwd.projects:
+        return {}
+    bwd.projects.set_current(project_name)
+    return {
+        name: Path(bwd.Database(name).filepath_processed()).is_file()
+        for name in bwd.databases
+    }
+
+def staged_bonsai_export(export_dir: Path|None=None) -> tuple[Path, dict]:
+    """
+    The export staged in the cache with its units fixed, plus the BONSAI -> biosphere map.
+
+    v2.4.0 labels standing wood "standard cubic meter", ecoinvent "cubic meter", and the
+    importer's unit library does not know the former. For solid wood the two are the same
+    volume, so the label is aligned 1:1. The export itself is not modified.
+    """
+    export_dir = export_dir or BONSAI_EXPORT_DIR
+    export_files = [
+        "io_metadata.json", "product_value_table.gzip",
+        "technosphere_value_table.gzip", "extensions_value_table.gzip",
+        "index_table_technosphere.gzip", "index_table_extensions.gzip",
+    ]
+    stage = CACHE_DIR / "bonsai_export"
+    stage.mkdir(exist_ok=True)
+    for name in export_files:
+        link = stage / name
+        link.unlink(missing_ok=True)
+        if name != "io_metadata.json":
+            link.symlink_to((export_dir / name).resolve())
+
+    metadata = json.loads((export_dir / "io_metadata.json").read_text(encoding="utf-8"))
+    biosphere = bwd.Database(bwd.config.biosphere)
+    to_biosphere = {}
+    for code, flow in metadata.items():
+        if "compartment" not in flow or not flow.get("source_id"):
+            continue  # unlinked flows go to "<database> biosphere"
+        target = biosphere.get(code=flow["source_id"])
+        to_biosphere[code] = target["code"]
+        if flow.get("unit") == "standard cubic meter" and target["unit"] == "cubic meter":
+            print(f"  unit aligned 1:1 to 'cubic meter': {flow['name']}")
+            flow["unit"] = "cubic meter"
+    (stage / "io_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    return stage, to_biosphere
+
+class BonsaiImporter():
+    """
+    Replacement for `from bw2io.importers.bonsai import BonsaiImporter`,
+    which requires a fork of bw2io. For now, we stick to core bw2io.
+    """
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError()
+
+def import_bonsai() -> None:
+    """Import the BONSAI database using a staged export approach."""
+    stage, to_biosphere = staged_bonsai_export()
+    importer = BonsaiImporter(stage, BONSAI_DB, b3mapping=to_biosphere)
+    importer.apply_strategies()
+    importer.write_database()
+
+def setup_project(project_name: str=DPP_PROJECT, background="BAFU") -> None:
+    """Initialize the project if needed. Add biosphere and background DB
+    and check the completeness.
+    """
+    status = project_status(project_name)
+
     if project_name not in bwd.projects:
         logger.debug("Creating a new Brightway project setup.")
-        bwi.remote.install_project(DEFAULT_REMOTE_PROJECT, project_name)
-    bwd.projects.set_current(project_name)
+    if background=="BAFU" and (BAFU_DB not in status or not status[BAFU_DB]):
+        import_db(project=project_name, overwrite=False)
+    elif BIOSPHERE not in status or not status[BIOSPHERE]:
+        scratch = f"{project_name}_setup"
+        bwd.projects.set_current(scratch)
+        bwi.remote.install_project(project_key=BIOSPHERE,
+                project_name=project_name, overwrite_existing=True)
+        bwd.projects.set_current(project_name)
+        bwd.projects.delete_project(scratch, delete_dir=True)
+    else:
+        bwd.projects.set_current(project_name)
+    if background=="BONSAI" and (BONSAI_DB not in status or not status[BONSAI_DB]):
+        started = time.perf_counter()
+        logger.info(f"  importing {BONSAI_DB} from {BONSAI_EXPORT_DIR} …")
+        if BONSAI_DB in bwd.databases: # left behind by an import that failed half-way
+            logger.info(f"  removing an incomplete '{BONSAI_DB}'")
+            del bwd.databases[BONSAI_DB]
+        import_bonsai()
+        logger.info(f"  done in {time.perf_counter() - started:,.0f} s")
+    
+    # Check and log the new status
+    for db, present in project_status(project_name).items():
+        logger.info(f"{db:<10} {'present' if present else 'MISSING'}")
+
 
 def ensure_methods(family: str):
     """
@@ -89,9 +205,46 @@ def prompt_choice(title: str, options: list, default_index: int = 0):
     print("Invalid choice, using default.")
     return options[default_index]
 
+
+# ---------------------------------------------------------------------------
+# Conversion and communication functions
+# ---------------------------------------------------------------------------
+
+def bonsai_api(endpoint: str) -> list:
+    """Pages of BONSAI API endpoint (no account needed), cached in CACHE_DIR.
+    Examples of `endpoint`: 'products/', 'activities/', 'product-corr/'
+    """
+    # Load data from cache if available
+    path = CACHE_DIR / f"bonsai_api_{endpoint.strip('/')}.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    rows = []
+    url = "https://lca.aau.dk/api/" + endpoint
+    while url:
+        page = requests.get(url, headers={"Accept": "application/json"}, timeout=60)
+        page.raise_for_status()
+        data = page.json()
+        rows += data["results"]
+        url = (data.get("next") or "").replace("http://", "https://")
+    path.write_text(json.dumps(rows), encoding="utf-8")
+    return rows
+
+
 def get_or_create_bw_process(dpp_product):
     raise NotImplementedError()
     return
+
+def get_biosphere_db():
+    """Get the biosphere database of the currently active project."""
+    databases = list(bwd.databases)
+    for name in [BIOSPHERE, "ef-3.1-biosphere"]:
+        if name in databases:
+            return bwd.Database(name)
+    for name in databases:
+        if "biosphere" in name:
+            return bwd.Database(name)
+    raise FileNotFoundError(f"No biosphere database found in {bwd.projects.current}.")
 
 def biosphere_to_dpp_flows():
     """Convert all biosphere flows to Emission objects"""
@@ -106,8 +259,8 @@ def biosphere_to_dpp_flows():
         'square meter-year': 'm2-yr',
         'standard cubic meter': 'Nm3',
     }
-    setup_project("L4M-DPP")
-    biosphere_db = bwd.Database(DEFAULT_REMOTE_PROJECT)
+    setup_project()
+    biosphere_db = get_biosphere_db()
     bio_flows = set((i['name'], i['unit']) for i in list(biosphere_db))
     if len(bio_flows) <= len(Emission.objects.all()): return
     for name, unit in bio_flows:
@@ -166,6 +319,9 @@ def make_transport_exchange(transports, product, amount):
         transports: QuerySet of Transport table
         product: ProductModel, input to some process
         amount: int, amount of product transported
+    
+    Returns:
+        Brightway exchange, describing transport input
     """
     # Import here to avoid circular imports
     from .models import UNIT_CHOICES, CONVERSIONS
@@ -177,6 +333,24 @@ def make_transport_exchange(transports, product, amount):
         "airplane": '96a835b204d1d9327b56bca7995dc24f', # aircraft, unspecified, GLO
         "delivery van": '558949a7ddfcccba760eab39bda68e88', # light commercial vehicle, EU
         "NA": 'dd736ab7d965646d04b091ae5fa68d97', #FIXME defaults to truck for now
+    }
+    bafu_codes = {
+        "train": 'aacc6120-0e68-3835-8303-5ae37d62c030', # freight train, average, EU
+        "ocean ship": 'dc299788-d8c5-3adc-b025-d607edd4d973', # sea freight container ship, GLO
+        "truck": '99f8a4b0-99b5-3130-924c-5de4c10b62ef',  # lorry, fleet average, RER
+        "inland ship": 'missing', # inland waterways, RER
+        "airplane": '1313d894-5c0a-38cd-b06c-fcce93e52cf9', # aircraft, medium-haul, GLO
+        "delivery van": 'c21996a4-ec68-361e-8fda-dc3ad1081e7d', #FIXME Operation, van, CH
+        "NA": '99f8a4b0-99b5-3130-924c-5de4c10b62ef', #FIXME defaults to truck for now
+    }
+    bonsai_codes = {
+        "train": "M_TLAND_ALL",
+        "ocean ship": "M_TWATR_ALL",
+        "truck": "M_TLAND_ALL",
+        "inland ship": "M_TWATR_ALL",
+        "airplane": "C_TAIR",
+        "delivery van": "M_TLAND_ALL",
+        "NA": "M_TLAND_ALL",
     }
     transport = transports.filter(product=product).first()
     if transport is None:
@@ -192,12 +366,52 @@ def make_transport_exchange(transports, product, amount):
     else:
         mass = 1
 
-    return {  # Calculate transport distance (t-km)
-        "input": (ECOINVENT, ecoinvent_codes[transport.mode]),
-        "amount": mass / 1000 * amount * transport.distance,
-        "type": "technosphere",
-        "unit": 'ton kilometer',
-    }
+    # Calculate transport distance (t-km) or price (MEuro)
+    if ECOINVENT in bwd.databases:
+        exchange = {
+            "input": (ECOINVENT, ecoinvent_codes[transport.mode]),
+            "amount": mass / 1000 * amount * transport.distance,
+            "type": "technosphere",
+            "unit": 'ton kilometer',
+        }
+    elif BAFU_DB in bwd.databases:
+        exchange = {
+            "input": (BAFU_DB, ecoinvent_codes[transport.mode]),
+            "amount": mass / 1000 * amount * transport.distance,
+            "type": "technosphere",
+            "unit": 'ton kilometer',
+        }
+    elif BONSAI_DB in bwd.databases:
+        transp_code = bonsai_codes[transport.mode]
+        price = country_data.loc["?", transp_code + "_price"]  #FIXME: country
+        exchange = {
+            "input": (BONSAI_DB, transp_code),
+            "amount": mass * amount * transport.distance * price / 1e9,
+            # units: kg/pcs * pcs   *    km              * EUR/t-km -> MEuro
+            "type": "technosphere",
+            "unit": 'MEUR',
+        }
+    return exchange
+
+def list_background_processes() -> dict:
+    """
+    Create a dictionary of available background processes
+    Structured as: {database_name: {activity_name: activity_code}}
+    """
+    setup_project()
+    background = {}
+    for db_name in bwd.databases:
+        if db_name[:4] != "dpp_":
+            background[db_name] = {
+                act["name"]: act["code"]
+                for act in bwd.Database(db_name)
+            }
+    return background
+
+
+# ---------------------------------------------------------------------------
+# Create DPP LCA and do LCA calculations
+# ---------------------------------------------------------------------------
 
 def convert_dpp_to_brightway(processes: list, db_name: str):
     """
@@ -209,7 +423,7 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     # Import here to avoid circular imports
     from .models import ProductExchange, EnvExchange, BackgroundProcess
 
-    biosphere = bwd.Database(DEFAULT_REMOTE_PROJECT)
+    biosphere = get_biosphere_db()
     bw_activities = {}
     for dpp_process in processes:
         # Skip already known background processes
@@ -339,7 +553,7 @@ def create_supply_chain_lca(product):
     # Import here to avoid circular imports
     from .models import SustainabilityEvaluation, SustainabilityScore, ImpactIndicator
     
-    setup_project("L4M-DPP")
+    setup_project()
     lcia_family = 'EF v3.1'
     method_set = ensure_methods(lcia_family)
     evaluation, created = SustainabilityEvaluation.objects.get_or_create(
@@ -411,18 +625,3 @@ def create_supply_chain_lca(product):
             )
     
     return evaluation
-
-def list_background_processes() -> dict:
-    """
-    Create a dictionary of available background processes
-    Structured as: {database_name: {activity_name: activity_code}}
-    """
-    setup_project("L4M-DPP")
-    background = {}
-    for db_name in bwd.databases:
-        if db_name[:4] != "dpp_":
-            background[db_name] = {
-                act["name"]: act["code"]
-                for act in bwd.Database(db_name)
-            }
-    return background

@@ -1,3 +1,5 @@
+from collections import Counter
+import re
 import uuid
 from unittest.mock import patch
 
@@ -61,6 +63,12 @@ def add_properties(product, weight=1.0, unit="kg", **kwargs):
 
 def make_batch(model, number=1, gtin="0000000000001"):
     return ProductBatch.objects.create(batch_number=number, model=model, GTIN=gtin)
+
+def make_emission(process, substance, amount, compartment="air"):
+    return EnvExchange.objects.create(
+        process=process, substance=substance, compartment=compartment,
+        direction="out", amount=amount,
+    )
 
 
 class SupplyChainTestCase(TestCase):
@@ -341,8 +349,55 @@ class ProductItemTests(TestCase):
         self.item.refresh_from_db()
         self.assertEqual(self.item.circularity, "new")
 
-    # NOTE: ProductItem.disassemble() is not tested: it uses `self.components`
-    # and `GTIN_code`, neither of which exists on the model.
+    # -- disassemble --------------------------------------------------------
+    def _add_parts(self, *amounts):
+        """
+        Give the item's product model one part (a ProductBatch) per amount.
+        Returns the part batches, in order.
+        """
+        parent = self.item.product_batch.model
+        batches = []
+        for n, amount in enumerate(amounts):
+            batch = make_batch(make_product(f"Part {n}"), gtin=f"10000000000{n:02d}")
+            Component.objects.create(product=parent, component=batch, amount=amount)
+            batches.append(batch)
+        return batches
+
+    def test_disassemble_creates_one_item_per_component_unit(self):
+        screws, motor = self._add_parts(3, 1)
+
+        created = self.item.disassemble()
+
+        self.assertEqual(len(created), 4)
+        self.assertEqual(ProductItem.objects.count(), 5)   # the original + 4 parts
+        per_batch = Counter(item.product_batch_id for item in created)
+        self.assertEqual(per_batch, {screws.pk: 3, motor.pk: 1})
+
+    def test_disassemble_without_components_creates_nothing(self):
+        self.assertEqual(self.item.disassemble(), [])
+        self.assertEqual(ProductItem.objects.count(), 1)
+
+    def test_disassemble_parts_inherit_production_date(self):
+        self._add_parts(2)
+        self.item.production_date = datetime.date(2024, 1, 15)
+        self.item.save()
+
+        created = self.item.disassemble()
+
+        self.assertTrue(created)
+        for part in created:
+            self.assertEqual(part.production_date, datetime.date(2024, 1, 15))
+
+    def test_disassemble_serial_numbers_are_unique_and_derived_from_parent(self):
+        self._add_parts(3, 1)
+        created_items = self.item.disassemble()
+
+        serials = [item.serial_number for item in created_items]
+        self.assertEqual(len(set(serials)), len(serials))
+        multi = [s for s in serials if re.fullmatch(r"SN-1-C\d+-\d+", s)]
+        single = [s for s in serials if re.fullmatch(r"SN-1-C\d+", s)]
+        self.assertEqual(len(multi), 3)    # amount > 1: numbered per unit
+        self.assertEqual(len(single), 1)   # amount == 1: no unit suffix
 
 
 class ComponentTests(TestCase):
@@ -384,36 +439,6 @@ class MaterialTests(TestCase):
 # Activities, exchanges
 # --------------------------------------------------------------------------
 
-class ActivityBiosphereTests(TestCase):
-    def test_aggregate_biosphere_scales_and_sums_exchanges(self):
-        p1 = Activity.objects.create(name="p1")
-        p2 = Activity.objects.create(name="p2")
-        target = Activity.objects.create(name="aggregated")
-        co2 = Emission.objects.create(name="CO2")
-        ch4 = Emission.objects.create(name="CH4")
-
-        def env(process, substance, amount, compartment="air"):
-            return EnvExchange.objects.create(
-                process=process, substance=substance, compartment=compartment,
-                direction="out", amount=amount,
-            )
-        env(p1, co2, 1)
-        env(p1, ch4, 4)
-        env(p2, co2, 2)
-        env(target, ch4, 99, compartment="soil")   # stale, must be removed
-
-        target.aggregate_biosphere(pd.Series({p1.id: 2.0, p2.id: 3.0}))
-
-        result = {
-            (e.substance.name, e.compartment): e.amount
-            for e in EnvExchange.objects.filter(process=target)
-        }
-        self.assertEqual(set(result), {("CO2", "air"), ("CH4", "air")})
-        self.assertAlmostEqual(result[("CO2", "air")], 2 * 1 + 3 * 2)
-        self.assertAlmostEqual(result[("CH4", "air")], 2 * 4)
-        # Source exchanges are untouched
-        self.assertEqual(EnvExchange.objects.get(process=p1, substance=co2).amount, 1)
-
 
 class ManufacturingProcessTests(TestCase):
     def test_save_requires_facility(self):
@@ -451,15 +476,20 @@ class ProcessSaveTests(TestCase):
             proc.save()
 
 
-class ProductExchangeTests(TestCase):
+class ExchangeTests(TestCase):
     def setUp(self):
         self.process = Activity.objects.create(name="act")
+        self.substance = Emission.objects.create(name="CO2")
 
     def test_type_defaults_from_direction(self):
         ex_in = ProductExchange.objects.create(
-            process=self.process, product=make_product("a"), amount=1, direction="in")
+            process=self.process, product=make_product("a"),
+            amount=1, direction="in",
+        )
         ex_out = ProductExchange.objects.create(
-            process=self.process, product=make_product("b"), amount=1, direction="out")
+            process=self.process, product=make_product("b"),
+            amount=1, direction="out",
+        )
         self.assertEqual(ex_in.type, "prod")
         self.assertEqual(ex_out.type, "waste")
 
@@ -468,12 +498,6 @@ class ProductExchangeTests(TestCase):
             ProductExchange.objects.create(
                 process=self.process, product=make_product(), amount=1,
                 direction="out", type="cons")
-
-
-class EnvExchangeTests(TestCase):
-    def setUp(self):
-        self.process = Activity.objects.create(name="act")
-        self.substance = Emission.objects.create(name="CO2")
 
     def test_functional_flow_direction_is_rejected(self):
         with self.assertRaises(ValidationError):
@@ -542,10 +566,34 @@ class AggregateProductionTests(SupplyChainTestCase):
             name="Raw production", amount=1, facility=self.facility,
             functional_flow=self.raw)
         self.co2 = Emission.objects.create(name="CO2")
-        for proc, amount in [(self.p1, 1), (self.p2, 2)]:
-            EnvExchange.objects.create(
-                process=proc, substance=self.co2, compartment="air",
-                direction="out", amount=amount)
+        make_emission(self.p1, self.co2, 1)
+        make_emission(self.p2, self.co2, 2)
+
+    def test_aggregate_biosphere_exchanges(self):
+        """Test the Activity function `aggregate_biosphere`,
+        that should scale and aggregates environmental exchanges.
+        """
+        target = Activity.objects.create(name="aggregated")
+        ch4 = Emission.objects.create(name="CH4")
+        co2 = self.co2
+
+        # Add 2 environmental exchanges, additional to those in setUp
+        make_emission(self.p1, ch4, 4)
+        make_emission(target, ch4, 99, compartment="soil")   # stale, must be removed
+
+        target.aggregate_biosphere(pd.Series({self.p1.id: 2.0, self.p2.id: 3.0}))
+
+        result = {
+            (e.substance.name, e.compartment): e.amount
+            for e in EnvExchange.objects.filter(process=target)
+        }
+        self.assertEqual(set(result), {(co2.name, "air"), (ch4.name, "air")})
+        self.assertAlmostEqual(result[(co2.name, "air")], 2 * 1 + 3 * 2)
+        self.assertAlmostEqual(result[(ch4.name, "air")], 2 * 4)
+        # Source exchanges are untouched
+        self.assertEqual(
+            EnvExchange.objects.get(process=self.p1, substance=co2).amount, 1
+        )
 
     def test_aggregate_production_creates_manufacturing_process(self):
         agg = self.line.aggregate_production()
