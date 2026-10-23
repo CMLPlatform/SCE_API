@@ -12,7 +12,7 @@ from rest_framework import status
 
 from .models import DecisionMatrix, Criterion
 from .mcda import McdaConfig, WeightConstraints, mcda
-from .serializers import ExperimentSerializer, WeldStationSerializer
+from .serializers import WeldStationSerializer
 from .views import lookup, calculate_experiment_kpis, calculate_kpis
 
 logger = logging.getLogger(__name__)
@@ -117,25 +117,29 @@ class TestSerializers(TestCase):
             "maintenanceCosts": 26.40,
             "cycleTime": 21,
             "scrapRate": 0.05,
-            "recyclability": 0.93,
+            "recyclability": "high",
             "consumables": [
                 {"name": "gold", "flowRate": 5.5, "unit": "g/h"},
                 {"name": "oil", "flowRate": 1, "unit": "ml/min"},
             ],
             "qualityParameters": [
                 {"name": "cost", "value": 200, "target": "min"},
-                {"name": "depth", "value": 5, "target": "3.9"},
+                {"name": "depth", "value": 5, "target": 3.9},
             ],
             "materials": [{"name": "steel", "weight": 3}],
             "productivity": [
-                {"name": "expertise", "value": 0.5, "target": "max"},
+                {"name": "expertise", "value": "medium", "target": "max"},
             ],
         }
-        expected_output = input
+        # Create expected output based on input data
+        expected_output = input.copy()
+        for i, kpi in enumerate(expected_output["qualityParameters"]):
+            expected_output["qualityParameters"][i]["value"] = float(kpi["value"])
         
         result = WeldStationSerializer(data=input)
         result.is_valid(raise_exception=True)
-        assert result.validated_data == expected_output
+        for key in expected_output:
+            self.assertEqual(expected_output[key], result.validated_data[key], key)
 
 
 # ---------------------------------------------------------------------------

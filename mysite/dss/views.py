@@ -109,6 +109,14 @@ def lookup(info: str, country: str):
             return value
     return country_data.loc["?", info]
 
+def qual_to_val(value: str):
+    """Convert a qualitative KPI value to a number between 0-1."""
+    try:  # Try to convert to float
+        return float(value)
+    except (ValueError, TypeError):
+        mapping = {'high': 1, 'medium': 0.5, 'low': 0}
+        return mapping[value.lower()]
+
 def create_criteria(session: McdaSession, user_type: str="pd"):
     """Create default groups and criteria"""
     cost = CritGroup.objects.create(session=session, name="Economic")
@@ -223,14 +231,14 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
         kam_kpis = {
             "Maintenance costs": exp["maintenanceCosts"],
             "Scrap rate": exp["scrapRate"],
-            "Recyclability": exp["recyclability"],
+            "Recyclability": qual_to_val(exp["recyclability"]),
             "Production cycle time": cycle_time,
             "Total production costs": total_production_costs,
             "Product carbon footprint": prod_carbon_footprint,
         }
         kpi_dict.update(kam_kpis)
         for kpi in exp["productivity"]:
-            kpi_dict[kpi["name"]] = kpi["value"]
+            kpi_dict[kpi["name"]] = qual_to_val(kpi["value"])
 
     return kpi_dict
 

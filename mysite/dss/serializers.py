@@ -3,6 +3,8 @@ from rest_framework.serializers import ValidationError
 
 # Validation helpers
 
+QUAL_INDICATORS = {'high', 'medium', 'low'}
+
 def _validate_range(v, positive: bool=False) -> float | tuple:
     """
     Positive float or [lo, hi] with 0 ≤ lo ≤ hi.
@@ -39,17 +41,33 @@ class MaterialSerializer(serializers.Serializer):
 
 class KpiSerializer(serializers.Serializer):
     name = serializers.CharField()
-    value = serializers.FloatField()
+    value = serializers.CharField()
     target = serializers.CharField()  # Can be "min", "max", or a float value
 
-    def validate(self, data):
-        t = data["target"]
-        if t not in ["min", "max"]:
+    def validate_value(self, value):
+        """Value is either a number or a qualitative indicator.
+        Convert any numbers to float.
+        """
+        try:  # Try to convert to float first
+            return float(value)
+        except (ValueError, TypeError):
+            # Check if it's a valid qualitative indicator
+            if isinstance(value, str) and value.lower() in QUAL_INDICATORS:
+                return value.lower()
+
+        raise ValidationError(
+            "Value must be 'high', 'medium', 'low', or a number."
+        )
+    
+    def validate_target(self, value):
+        """Value must be min, max, or a number."""
+        target = str(value).strip()
+        if target not in ["min", "max"]:
             try:
-                float(t.strip())
-            except ValueError:
-                raise ValidationError(f"Target not recognized: {t}")
-        return data
+                return float(target)
+            except (ValueError, TypeError):
+                raise ValidationError(f"Target not recognized: {target}")
+        return target
 
 class ExperimentSerializer(serializers.Serializer):
     experimentId = serializers.IntegerField()
@@ -100,9 +118,26 @@ class WeldStationSerializer(ExperimentSerializer):
     maintenanceCosts = serializers.FloatField()
     cycleTime = serializers.FloatField(min_value=0.1)
     scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
-    recyclability = serializers.FloatField(min_value=0, max_value=1)
+    recyclability = serializers.CharField()
     materials = MaterialSerializer(many=True)
     productivity = KpiSerializer(many=True)
+
+    def validate_recyclability(self, value):
+        """Recyclability must be 0<=R<=1 or a qualitative indicator."""
+        try:  # Try to convert to float first
+            r = float(value)
+        except (ValueError, TypeError):
+            # Check if it's a valid qualitative indicator
+            if isinstance(value, str) and value.lower() in QUAL_INDICATORS:
+                return value.lower()
+        else:
+            if (r < 0) or (r > 1):
+                raise ValidationError("Recycability must be a fraction (0-1)")
+            return r
+
+        raise ValidationError(
+            "Value must be 'high', 'medium', 'low', or a number."
+        )
 
 class WeldStationComparisonSerializer(serializers.ListSerializer):
     child = WeldStationSerializer()
