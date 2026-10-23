@@ -151,7 +151,7 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
         RuntimeError: If a consumable's quantity/time unit or material
             name is not recognised.
     """
-    processing_time = exp["weldLength"] * exp["weldSpeed"]  #TODO: check units
+    processing_time = exp["weldLength"] / exp["weldSpeed"]
     consumables_use = {}
     for cons in exp["consumables"]:
         qnt_unit, time_unit = cons["unit"].split("/")
@@ -179,14 +179,14 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
     process_energy_use = (
         processing_time * exp["laserPowerkW"]
         + cycle_time * exp["weldingStationPowerkW"]
-    ) / 3600 / yield_rate
+    ) / 3600
     operating_costs = consumables_costs + labour_costs + (
         process_energy_use * lookup("electricity_price", exp["country"])
     )
     consumables_footprint = sum([
         amount * material_data.loc[cons, "CO2eq"]
         for cons, amount in consumables_use.items()
-    ]) / yield_rate
+    ])
     proc_carbon_footprint = consumables_footprint + (
         process_energy_use * lookup("electricity_CO2eq", exp["country"])
     )
@@ -202,13 +202,13 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
             for mat in exp["materials"]
         ])
         service_life = 15
-        CAPEX = 700000
+        CAPEX = 5860000 / 3
         amortized_capex = CAPEX / (service_life * annual_production)
         total_production_costs = (
             operating_costs + material_costs + amortized_capex
         ) / yield_rate
         prod_carbon_footprint = (
-            proc_carbon_footprint + material_footprint / yield_rate
+            (proc_carbon_footprint + material_footprint) / yield_rate
         )
 
     # Create dict of KPIs
