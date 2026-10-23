@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from rest_framework.serializers import ValidationError
+from .models import McdaSession  # for choices lists
 
 # Validation helpers
 
@@ -143,17 +144,16 @@ class WeldStationComparisonSerializer(serializers.ListSerializer):
     child = WeldStationSerializer()
 
 class McdaRequestSerializer(serializers.Serializer):
-    SCENARIO_CHOICES = ["deterministic", "random", "bounded", "ordered", "bounded_ordered"]
-    METHOD_CHOICES = ["promethee", "promethee_like"]
-    WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
-    VETO_CHOICES = ["no", "soft", "hard"]
-
     decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value|(min, max)},}
     directions = serializers.DictField()  # {"criterion": "min"|"max"|value}
 
-    scenario = serializers.ChoiceField(choices=SCENARIO_CHOICES)
-    method = serializers.ChoiceField(choices=METHOD_CHOICES, default=METHOD_CHOICES[1])
-    weight_mode = serializers.ChoiceField(choices=WEIGHT_CHOICES, default=WEIGHT_CHOICES[0])
+    scenario = serializers.ChoiceField(choices=McdaSession.Scenario.choices)
+    method = serializers.ChoiceField(
+        choices=McdaSession.Method.choices, default=McdaSession.Method.choices[0]
+    )
+    weight_mode = serializers.ChoiceField(
+        choices=McdaSession.WeightMode.choices, default=McdaSession.WeightMode.choices[0]
+    )
 
     groups = serializers.DictField(required=False)  # {"group": ["criterion",]}
     group_weights = serializers.DictField(required=False)  # {"group": weight|(min, max)}
@@ -161,7 +161,7 @@ class McdaRequestSerializer(serializers.Serializer):
     crit_weights = serializers.DictField(required=False)   # {"criterion": weight|(min, max)}
 
     thresholds = serializers.DictField(required=False)  # Promethee parameters: {"criterion": (q, p)} or {"criterion": q}, where q=indifference, p=preference
-    veto_type = serializers.ChoiceField(choices=VETO_CHOICES, default="no")
+    veto_type = serializers.ChoiceField(choices=McdaSession.VetoType.choices, default="no")
     veto_thresholds = serializers.DictField(required=False)  # {"criterion": value}
     penalty_factor = serializers.FloatField(min_value=0, default=0.5)  # used if veto_type=="soft"
 
@@ -356,13 +356,13 @@ class McdaRequestSerializer(serializers.Serializer):
                 )
         # Check that thresholds matches the method
         # promethee => tuples; promethee_like => float
-        if data["method"] == self.METHOD_CHOICES[0] and data["thresholds"]:
+        if data["method"] == McdaSession.Method.PROMETHEE and data["thresholds"]:
             for th in data["thresholds"].values():
                 if not isinstance(th, (tuple, list)) or len(th) != 2:
                     raise ValidationError(
                         f"Expected threshold as (q, p), received: {th}"
                     )
-        elif data["method"] == self.METHOD_CHOICES[1] and data["thresholds"]:
+        elif data["method"] == McdaSession.Method.PROMETHEE_LIKE and data["thresholds"]:
             for th in data["thresholds"].values():
                 if not isinstance(th, (float, int)):
                     raise ValidationError(

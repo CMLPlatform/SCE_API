@@ -312,12 +312,16 @@ def step1_context() -> dict:
             "hint": "Both lower and upper bounds, and an importance order apply."},
         ],
         "method_options": [
-            {"value": "promethee_like", "label": "Simple",
+            {"value": "simple", "label": "Simple",
              "hint": "Define the importance of criteria."},
+            {"value": "promethee_like", "label": "Intermediate",
+             "hint": "Also define indifference thresholds."},
             {"value": "promethee", "label": "Advanced",
              "hint": "Also define indifference and preference thresholds."},
         ],
         "weight_mode_options": [
+            {"value": "equal", "label": "Equal",
+             "hint": "All criteria have the same weight."},
             {"value": "flat", "label": "Flat",
              "hint": "One weight per criterion."},
             {"value": "group", "label": "Group",

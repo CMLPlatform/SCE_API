@@ -1,7 +1,6 @@
 from django.db import models
 from .mcda import McdaConfig, WeightConstraints, ranking_to_pairwise
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
 import pandas as pd
 
 
@@ -48,10 +47,12 @@ class McdaSession(models.Model):
         BOUNDED_ORDERED = "bounded_ordered"
 
     class Method(models.TextChoices):
-        PROMETHEE_LIKE = "promethee_like"
-        PROMETHEE      = "promethee"
+        SIMPLE         = "simple"
+        PROMETHEE_LIKE = "promethee_like", "PROMETHEE-like"
+        PROMETHEE      = "promethee", "PROMETHEE"
 
     class WeightMode(models.TextChoices):
+        EQUAL        = "equal"
         FLAT         = "flat"
         GROUP        = "group"
         HIERARCHICAL = "hierarchical"

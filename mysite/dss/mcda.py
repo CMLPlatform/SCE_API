@@ -136,7 +136,7 @@ def promethee_like_preference(d: float, q: float = 0.0) -> float:
     With q = 0, this corresponds to a usual criterion (type 1).
     With q > 0, this introduces an indifference threshold (type 2).
     """
-    return 1.0 if d > q else 0.0
+    return 1 if d > q else 0
 
 
 def promethee_linear_preference(d: float, q: float, p: float) -> float:
@@ -188,12 +188,23 @@ def veto_is_triggered(
     return False
 
 
+def mean(value: float|int|tuple|list):
+    """If value is an iterable, return the average of all values."""
+    try:
+        return sum(value) / len(value)
+    except (ValueError, TypeError):
+        return value
+
+
 def set_fixed_weights(config: McdaConfig):
     """
     The dictionary `weights` contains the final weight assigned to
     each criterion.
     Equal weighting:
         each final criterion receives weight 1 / number_of_criteria.
+    Flat weighting:
+        each final criterion has a weight
+        Weights normalized to ensure a total of 1.
     Group-based weighting:
         each group has a fixed weight W_g.
         The weight of the group is distributed uniformly among
@@ -210,35 +221,33 @@ def set_fixed_weights(config: McdaConfig):
     if config.scenario == "random":
         return
 
-    if config.weight_mode == "flat":
+    weights = {}
+
+    if config.weight_mode == "equal":
         weights = {c: 1 / len(config.criteria) for c in config.criteria}
 
+    elif config.weight_mode == "flat":
+        total = sum([mean(wt) for wt in config.constraints.criterion.values()])
+        for c, wt in config.constraints.criterion.items():
+            weights[c] = mean(wt) / total
+
     elif config.weight_mode == "group":
-        weights = {}
         for g, crits in config.groups.items():
-            wg = config.constraints.group[g]
-            if isinstance(wg, (list, tuple)):
-                wg = sum(wg)
+            wg = mean(config.constraints.group[g])
             for c in crits:
                 weights[c] = wg / len(crits)
 
     elif config.weight_mode == "hierarchical":
-        weights = {}
         for g, crits in config.groups.items():
             Wg = config.constraints.group[g]
-            if isinstance(Wg, (list, tuple)):
-                Wg = sum(Wg)
-            total_local = sum([
-                sum(v)/len(v) if isinstance(v, (list, tuple)) else v
-                for v in config.constraints.local[g].values()
-            ])
+            total_local = sum(
+                [ mean(v) for v in config.constraints.local[g].values() ]
+            )
             for c in crits:
                 if c not in config.criteria:
                     continue
                 w_local = config.constraints.local[g][c]
-                if isinstance(w_local, (list, tuple)):
-                    w_local = sum(w_local)
-                weights[c] = Wg * w_local / total_local
+                weights[c] = mean(Wg) * mean(w_local) / total_local
 
     config._weights = weights
 
@@ -675,7 +684,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
 
     active_constr = get_active_constraints(config)
 
-    if config.weight_mode == "flat":
+    if config.weight_mode in ["equal", "flat"]:
         config._weights = sample_weights_dirichlet_constrained(
             bounds_dict=active_constr.criterion,
             alpha=config.alpha,
@@ -713,7 +722,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     else:
         raise ValueError(
             "weight_mode must be either "
-            "'flat', 'group', or 'hierarchical'"
+            "'equal', 'flat', 'group', or 'hierarchical'"
         )
 
 # ============================================================
@@ -784,7 +793,9 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
                     config.directions[c]
                 )
 
-                if method == "promethee_like":
+                if method == "simple":
+                    pref = int(d > 0)
+                elif method == "promethee_like":
                     q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
                 elif method == "promethee":
@@ -841,7 +852,9 @@ def deterministic_promethee(config: McdaConfig):
                     config.df.loc[a, c], config.df.loc[b, c], config.directions[c]
                 )
 
-                if config.method == "promethee_like":
+                if config.method == "simple":
+                    pref = int(d > 0)
+                elif config.method == "promethee_like":
                     q = config.thresholds[c]
                     pref = promethee_like_preference(d, q)
                 elif config.method == "promethee":
