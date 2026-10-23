@@ -122,7 +122,6 @@ def create_criteria(session: McdaSession, user_type: str="pd"):
     cost = CritGroup.objects.create(session=session, name="Economic")
     sust = CritGroup.objects.create(session=session, name="Sustainability")
     qual = CritGroup.objects.create(session=session, name="Technical quality")
-    Criterion.objects.create(session=session, name="Operating costs", group=cost, direction="min")
     Criterion.objects.create(session=session, name="Process energy use", group=sust, direction="min")
     Criterion.objects.create(session=session, name="Process carbon footprint", group=sust, direction="min")
     if user_type == "kam":
@@ -135,6 +134,8 @@ def create_criteria(session: McdaSession, user_type: str="pd"):
         Criterion.objects.create(session=session, name="Scrap rate", group=circ, direction="min")
         Criterion.objects.create(session=session, name="Recyclability", group=circ, direction="max")
         return qual, oper
+    else:
+        Criterion.objects.create(session=session, name="Operating costs", group=cost, direction="min")
     return qual, None
 
 def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
@@ -280,9 +281,10 @@ def calculate_kpis(valid_data: list, user: str="pd") -> McdaSession:
             )
     
     # Extract data from all experiments, compute and store KPIs
+    alternative_prefix = "Experiment #" if user=="pd" else "Welding station #"
     for experiment in valid_data:
         kpi_dict = calculate_experiment_kpis(experiment, user)
-        name = "Experiment #" + str(experiment["experimentId"])
+        name = alternative_prefix + str(experiment["experimentId"])
         DecisionMatrix.objects.create(
             session=session, name=name, values=kpi_dict
         )
