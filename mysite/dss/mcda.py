@@ -837,6 +837,7 @@ def deterministic_promethee(config: McdaConfig):
     - one PROMETHEE evaluation is performed;
     - the final output is a deterministic ranking.
     """
+    set_fixed_weights(config)
     alts = config.df.index.tolist()
     S = pd.DataFrame(0.0, index=alts, columns=alts)
 
@@ -898,7 +899,7 @@ def deterministic_promethee(config: McdaConfig):
     }).sort_values("rank")
     return {"net_flow_scores": nfs_df, "pairwise_prefs": S}
 
-def run_performance_uncertainty(config: McdaConfig, rng=None):
+def run_performance_uncertainty(config: McdaConfig):
     """
     Run a Monte Carlo analysis with uncertainty only on alternative
     performances.
@@ -910,9 +911,8 @@ def run_performance_uncertainty(config: McdaConfig, rng=None):
         - PROMETHEE is applied to each sampled decision matrix;
         - rank acceptability indices are computed from the simulated rankings.
     """
-
-    if rng is None:
-        rng = np.random.default_rng()
+    set_fixed_weights(config)
+    rng = np.random.default_rng(42)
 
     n_samples = config.n_samples
     alts = config.df.index.tolist()
@@ -994,7 +994,7 @@ def run_performance_uncertainty(config: McdaConfig, rng=None):
 # SMAA MONTE CARLO SIMULATION
 # ============================================================
 
-def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
+def run_smaa(config: McdaConfig, analysis_type="full_smaa"):
     """
     Run the SMAA Monte Carlo simulation.
 
@@ -1041,9 +1041,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
         Dictionary containing SMAA outputs and diagnostic information.
     """
 
-    if rng is None:
-        rng = np.random.default_rng()
-
+    rng = np.random.default_rng(42)
     alts = config.df.index.tolist()
     n_alts = len(alts)
 
@@ -1077,8 +1075,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
 
         # Sample one feasible weight vector
         sample_smaa_weights(config, sampler_stats, rng)
-
-        for c in config.criteria:
+        for c in config.criteria:  # Save for statistics
             weight_samples[c].append(config._weights[c])
 
         # Evaluate alternatives using PROMETHEE
@@ -1121,7 +1118,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
     ).sort_values(ascending=False)
 
     w_mean = pd.Series(
-        {c: float(np.mean(weight_samples[c])) for c in config.criteria}
+        {c: mean(weight_samples[c]) for c in weight_samples}
     ).sort_values(ascending=False)
 
     sim_rows = []
@@ -1137,17 +1134,12 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa", rng=None):
 
     sim_df = pd.DataFrame(sim_rows)
 
-    sampler_stats_df = pd.DataFrame.from_dict(
-        sampler_stats, orient="index"
-    )
+    sampler_stats_df = pd.DataFrame.from_dict(sampler_stats, orient="index")
 
     if not sampler_stats_df.empty:
-        sampler_stats_df["acceptance_rate"] = (
-            sampler_stats_df["accepted"] / sampler_stats_df["draws"]
-        )
-
-        sampler_stats_df["rejection_rate"] = (
-            sampler_stats_df["rejected"] / sampler_stats_df["draws"]
+        sampler_stats_df[["acceptance_rate", "rejection_rate"]] = (
+            sampler_stats_df[["accepted", "rejected"]]
+            .div(sampler_stats_df["draws"], axis=0)
         )
 
     return {
@@ -1178,7 +1170,6 @@ def mcda(config: McdaConfig):
     performance_uncertainty = has_uncertain_performances(config.df)
     config._use_veto = (config.veto_type!="no")
     config.criteria = list(config.directions.keys())
-    set_fixed_weights(config)
 
     if config.method == "promethee_like":  # Try to fix if thresholds has tuples
         for c, val in config.thresholds.items():
@@ -1223,8 +1214,7 @@ def mcda(config: McdaConfig):
         """
 
     elif analysis_type == "performance_uncertainty":
-        rng = np.random.default_rng(42)
-        results = run_performance_uncertainty(config, rng)
+        results = run_performance_uncertainty(config)
         plot.performance_uncertainty_figures(results)
     
     # ============================================================
@@ -1252,8 +1242,7 @@ def mcda(config: McdaConfig):
     """
 
     if config.scenario != "deterministic":
-        rng = np.random.default_rng(42)
-        results = run_smaa(config, analysis_type=analysis_type, rng=rng)
+        results = run_smaa(config, analysis_type=analysis_type)
         plots = plot.smaa_figures(results)
 
     results["decision_matrix"] = config.df

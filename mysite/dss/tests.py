@@ -595,7 +595,7 @@ class McdaTest(TestCase):
         # COMPOSING ALMOST ALL COMBINATIONS OF PARAMETERS
         # ============================================================
 
-        # "scenario", "method", "weight", "veto", "sampling"
+        # "scenario", "method", "weight", "veto"
         test_cases = [
             ["deterministic", "promethee", "flat", "no"],
             ["deterministic", "promethee", "flat", "soft"],
