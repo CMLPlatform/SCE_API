@@ -87,63 +87,65 @@
       {% endif %}
 
       {% comment %}
-         SECTION 3 — Thresholds (always)
+         SECTION 3 — Thresholds (for PROMETHEE & PROMETHEE-like)
          Shape differs between promethee (range) and others (float)
       {% endcomment %}
-      {% include "partials/section_header.html" with title="Thresholds" hint=threshold_hint %}
+      {% if session.method != "simple" %}
+        {% include "partials/section_header.html" with title="Thresholds" hint=threshold_hint %}
 
-      <div class="rounded-xl border border-slate-700 bg-slate-900 divide-y divide-slate-800 mb-10">
-        <div class="grid grid-cols-12 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          <span class="col-span-5">Criterion</span>
-          <span class="col-span-5">
-            {% if session.method == "promethee" %}Indifference, Preference{% else %}Threshold{% endif %}
-          </span>
-          <span class="col-span-2 text-right">Target</span>
-        </div>
-
-        {% for criterion, target in criteria.items %}
-          {% with fname="threshold_"|add:criterion %}
-          <div class="grid grid-cols-12 items-center gap-2 px-4 py-3
-                      {% if forloop.counter|divisibleby:2 %}bg-slate-900{% else %}bg-slate-900/50{% endif %}">
-
-            <div class="col-span-5">
-              <span class="text-sm font-medium text-slate-100">{{ criterion }}</span>
-            </div>
-
-            <div class="col-span-5">
-              {% with field=form|get_field:fname %}
-                <input type="text"
-                       id="{{ field.id_for_label }}"
-                       name="{{ field.html_name }}"
-                       value="{{ field.value|default:'' }}"
-                       placeholder="{% if session.method == 'promethee' %}e.g. 0.1, 0.3{% else %}e.g. 0.5{% endif %}"
-                       class="w-full rounded-md border
-                              {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}
-                              px-3 py-2 text-sm text-slate-100 placeholder-slate-500
-                              focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
-                {% if field.errors %}
-                  <p class="mt-1 text-xs text-red-400">{{ field.errors|join:", " }}</p>
-                {% endif %}
-              {% endwith %}
-            </div>
-
-            <div class="col-span-2 text-right">
-              {% if target == "max" %}
-              <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-900/50 text-emerald-400">max
-              </span>
-              {% elif target == "min" %}
-              <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-900/50 text-amber-400">min
-              </span>
-              {% else %}
-              <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-indigo-900/50 text-indigo-400">{{target}}
-              </span>
-              {% endif %}
-            </div>
-
+        <div class="rounded-xl border border-slate-700 bg-slate-900 divide-y divide-slate-800 mb-10">
+          <div class="grid grid-cols-12 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <span class="col-span-5">Criterion</span>
+            <span class="col-span-5">
+              {% if session.method == "promethee" %}Indifference, Preference{% else %}Threshold{% endif %}
+            </span>
+            <span class="col-span-2 text-right">Target</span>
           </div>
-          {% endwith %}
-        {% endfor %}
-      </div>
+
+          {% for criterion, target in criteria.items %}
+            {% with fname="threshold_"|add:criterion %}
+            <div class="grid grid-cols-12 items-center gap-2 px-4 py-3
+                        {% if forloop.counter|divisibleby:2 %}bg-slate-900{% else %}bg-slate-900/50{% endif %}">
+
+              <div class="col-span-5">
+                <span class="text-sm font-medium text-slate-100">{{ criterion }}</span>
+              </div>
+
+              <div class="col-span-5">
+                {% with field=form|get_field:fname %}
+                  <input type="text"
+                        id="{{ field.id_for_label }}"
+                        name="{{ field.html_name }}"
+                        value="{{ field.value|default:'' }}"
+                        placeholder="{% if session.method == 'promethee' %}e.g. 0.1, 0.3{% else %}e.g. 0.5{% endif %}"
+                        class="w-full rounded-md border
+                                {% if field.errors %}border-red-600 bg-red-900/20{% else %}border-slate-700 bg-slate-800{% endif %}
+                                px-3 py-2 text-sm text-slate-100 placeholder-slate-500
+                                focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                  {% if field.errors %}
+                    <p class="mt-1 text-xs text-red-400">{{ field.errors|join:", " }}</p>
+                  {% endif %}
+                {% endwith %}
+              </div>
+
+              <div class="col-span-2 text-right">
+                {% if target == "max" %}
+                <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-900/50 text-emerald-400">max
+                </span>
+                {% elif target == "min" %}
+                <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-900/50 text-amber-400">min
+                </span>
+                {% else %}
+                <span class="inline-block rounded-full px-2 py-0.5 text-xs font-semibold bg-indigo-900/50 text-indigo-400">{{target}}
+                </span>
+                {% endif %}
+              </div>
+
+            </div>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      {% endif %} {# End of Thresholds section #}
 
       {% comment %}
          SECTION 4 — Veto thresholds

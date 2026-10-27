@@ -12,7 +12,7 @@ from rest_framework import status
 
 from .models import DecisionMatrix, Criterion
 from .mcda import McdaConfig, WeightConstraints, mcda
-from .serializers import ExperimentSerializer, WeldStationSerializer
+from .serializers import WeldStationSerializer
 from .views import lookup, calculate_experiment_kpis, calculate_kpis
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def pd_experiment():
     return {
         "experimentId": 1,
         "country": "NL",
-        "weldLength": 2.0,
+        "weldLength": 600,
         "weldSpeed": 3.0,
         "laserPowerkW": 5.0,
         "weldingStationPowerkW": 1.0,
@@ -75,7 +75,7 @@ def pd_experiment():
 def kam_experiment(pd_experiment):
     exp = pd_experiment
     exp.update({
-        "cycleTime": 8.0,
+        "cycleTime": 250.0,
         "scrapRate": 0.1,
         "maintenanceCosts": 1000.0,
         "recyclability": 0.8,
@@ -117,25 +117,29 @@ class TestSerializers(TestCase):
             "maintenanceCosts": 26.40,
             "cycleTime": 21,
             "scrapRate": 0.05,
-            "recyclability": 0.93,
+            "recyclability": "high",
             "consumables": [
                 {"name": "gold", "flowRate": 5.5, "unit": "g/h"},
                 {"name": "oil", "flowRate": 1, "unit": "ml/min"},
             ],
             "qualityParameters": [
                 {"name": "cost", "value": 200, "target": "min"},
-                {"name": "depth", "value": 5, "target": "3.9"},
+                {"name": "depth", "value": 5, "target": 3.9},
             ],
             "materials": [{"name": "steel", "weight": 3}],
             "productivity": [
-                {"name": "expertise", "value": 0.5, "target": "max"},
+                {"name": "expertise", "value": "medium", "target": "max"},
             ],
         }
-        expected_output = input
+        # Create expected output based on input data
+        expected_output = input.copy()
+        for i, kpi in enumerate(expected_output["qualityParameters"]):
+            expected_output["qualityParameters"][i]["value"] = float(kpi["value"])
         
         result = WeldStationSerializer(data=input)
         result.is_valid(raise_exception=True)
-        assert result.validated_data == expected_output
+        for key in expected_output:
+            self.assertEqual(expected_output[key], result.validated_data[key], key)
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +165,7 @@ class TestCalculateExperimentKpisPd:
 
         # PD yield_rate == 1, cycle_time == processing_time, so process energy
         # use should equal (processing_time * (laser + welding station kW)) / 3600.
-        processing_time = pd_experiment["weldLength"] * pd_experiment["weldSpeed"]
+        processing_time = pd_experiment["weldLength"] / pd_experiment["weldSpeed"]
         expected_energy = (
             pd_experiment["laserPowerkW"] + pd_experiment["weldingStationPowerkW"]
         ) * processing_time / 3600
@@ -201,21 +205,19 @@ class TestCalculateExperimentKpisKam:
         assert result["Machine saturation"] == 0.7
 
     def test_calculation_result(self, pd_experiment, kam_experiment):
-        # With scrapRate > 0, yield_rate < 1, so KAM's process energy use
-        # (divided by yield_rate) should exceed the PD figure computed from
-        # the same underlying weld parameters.
+        # KAM's process energy use (using cycleTime) should exceed the PD figure
+        # computed from the same underlying weld parameters.
         pd_result = calculate_experiment_kpis(pd_experiment, "pd")
         result = calculate_experiment_kpis(kam_experiment, "kam")
 
         assert result["Process energy use"] > pd_result["Process energy use"]
-
         assert result["Total production costs"] > result["Operating costs"]
 
     def test_scrap_rate_of_one_raises_zero_division(self, kam_experiment):
         # yield_rate = 1 - scrapRate; a scrapRate of 1 means yield_rate = 0,
         # which should surface as a ZeroDivisionError rather than silently
         # producing inf/NaN KPIs.
-        kam_experiment["scrapRate"] = 1.0
+        kam_experiment["scrapRate"] = 1
 
         with pytest.raises(ZeroDivisionError):
             calculate_experiment_kpis(kam_experiment, "kam")
@@ -235,7 +237,6 @@ def test_calculate_kpis_propagates_unrecognised_unit_error(pd_experiment):
 
 @pytest.mark.django_db
 class TestCalculateKpis:
-
     def test_creates_session_and_matrix(self, pd_experiment):
         exp2 = dict(pd_experiment, experimentId=2)
         valid_data = [pd_experiment, exp2]
@@ -252,10 +253,11 @@ class TestCalculateKpis:
         assert "Tensile strength" in names
 
         row = DecisionMatrix.objects.get(session=session, name="Experiment #1")
+        nrg = 600/3 * (5+1) / 3600
         expected = {
-            'Process energy use': 0.01,
-            'Operating costs': 0.16250000000000003,
-            'Process carbon footprint': 0.006,
+            'Process energy use': nrg,
+            'Operating costs': 600/3/60*10*10/1000 + 600/3/3600*30*3 + nrg*0.25,
+            'Process carbon footprint': 0.2,
             'Tensile strength': 450
         }
         assert row.values == expected
@@ -267,27 +269,27 @@ class TestCalculateKpis:
         names = set(Criterion.objects.filter(session=session).values_list("name", flat=True))
         assert "Machine saturation" in names
 
-        row = DecisionMatrix.objects.get(session=session, name="Experiment #1")
+        row = DecisionMatrix.objects.get(session=session, name="Welding station #1")
         expected = {
-            'Process energy use': 0.011728395061728396,
-            'Operating costs': 0.2135108024691358,
-            'Process carbon footprint': 0.006913580246913581,
+            'Process energy use': 0.3472222222222222,
+            'Operating costs': 6.688223379629629,
+            'Process carbon footprint': 0.20555555555555555,
             'Tensile strength': 450,
             'Maintenance costs': 1000.0,
             'Scrap rate': 0.1,
             'Recyclability': 0.8,
-            'Production cycle time': 8.0,
-            'Total production costs': 22.48946330589849,
-            'Product carbon footprint': 4.451358024691358,
+            'Production cycle time': 250.0,
+            'Total production costs': 32.27025105738454,
+            'Product carbon footprint': 4.672839506172839,
             'Machine saturation': 0.7,
-            'Process automation level': 'medium'
+            'Process automation level': 0.5,
         }
         assert row.values == expected
 
         matrix = DecisionMatrix.objects.filter(session=session)
         rows = {row.name: row.values for row in matrix}
-        assert rows["Experiment #1"]["Scrap rate"] == 0.1
-        assert rows["Experiment #2"]["Scrap rate"] == 0.2
+        assert rows["Welding station #1"]["Scrap rate"] == 0.1
+        assert rows["Welding station #2"]["Scrap rate"] == 0.2
 
 
 class McdaTest(TestCase):
@@ -593,7 +595,7 @@ class McdaTest(TestCase):
         # COMPOSING ALMOST ALL COMBINATIONS OF PARAMETERS
         # ============================================================
 
-        # "scenario", "method", "weight", "veto", "sampling"
+        # "scenario", "method", "weight", "veto"
         test_cases = [
             ["deterministic", "promethee", "flat", "no"],
             ["deterministic", "promethee", "flat", "soft"],

@@ -109,12 +109,19 @@ def lookup(info: str, country: str):
             return value
     return country_data.loc["?", info]
 
+def qual_to_val(value: str):
+    """Convert a qualitative KPI value to a number between 0-1."""
+    try:  # Try to convert to float
+        return float(value)
+    except (ValueError, TypeError):
+        mapping = {'high': 1, 'medium': 0.5, 'low': 0}
+        return mapping[value.lower()]
+
 def create_criteria(session: McdaSession, user_type: str="pd"):
     """Create default groups and criteria"""
     cost = CritGroup.objects.create(session=session, name="Economic")
     sust = CritGroup.objects.create(session=session, name="Sustainability")
     qual = CritGroup.objects.create(session=session, name="Technical quality")
-    Criterion.objects.create(session=session, name="Operating costs", group=cost, direction="min")
     Criterion.objects.create(session=session, name="Process energy use", group=sust, direction="min")
     Criterion.objects.create(session=session, name="Process carbon footprint", group=sust, direction="min")
     if user_type == "kam":
@@ -127,6 +134,8 @@ def create_criteria(session: McdaSession, user_type: str="pd"):
         Criterion.objects.create(session=session, name="Scrap rate", group=circ, direction="min")
         Criterion.objects.create(session=session, name="Recyclability", group=circ, direction="max")
         return qual, oper
+    else:
+        Criterion.objects.create(session=session, name="Operating costs", group=cost, direction="min")
     return qual, None
 
 def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
@@ -151,7 +160,7 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
         RuntimeError: If a consumable's quantity/time unit or material
             name is not recognised.
     """
-    processing_time = exp["weldLength"] * exp["weldSpeed"]  #TODO: check units
+    processing_time = exp["weldLength"] / exp["weldSpeed"]
     consumables_use = {}
     for cons in exp["consumables"]:
         qnt_unit, time_unit = cons["unit"].split("/")
@@ -168,6 +177,8 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
     if user_type == "kam":
         cycle_time = exp["cycleTime"]
         yield_rate = 1 - exp["scrapRate"]
+        if yield_rate == 0:
+            raise ZeroDivisionError
     else:  # Simplifications for the PD user
         cycle_time = processing_time
         yield_rate = 1
@@ -179,14 +190,14 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
     process_energy_use = (
         processing_time * exp["laserPowerkW"]
         + cycle_time * exp["weldingStationPowerkW"]
-    ) / 3600 / yield_rate
+    ) / 3600
     operating_costs = consumables_costs + labour_costs + (
         process_energy_use * lookup("electricity_price", exp["country"])
     )
     consumables_footprint = sum([
         amount * material_data.loc[cons, "CO2eq"]
         for cons, amount in consumables_use.items()
-    ]) / yield_rate
+    ])
     proc_carbon_footprint = consumables_footprint + (
         process_energy_use * lookup("electricity_CO2eq", exp["country"])
     )
@@ -202,13 +213,13 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
             for mat in exp["materials"]
         ])
         service_life = 15
-        CAPEX = 700000
+        CAPEX = 5860000 / 3
         amortized_capex = CAPEX / (service_life * annual_production)
         total_production_costs = (
             operating_costs + material_costs + amortized_capex
         ) / yield_rate
         prod_carbon_footprint = (
-            proc_carbon_footprint + material_footprint / yield_rate
+            (proc_carbon_footprint + material_footprint) / yield_rate
         )
 
     # Create dict of KPIs
@@ -223,14 +234,14 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
         kam_kpis = {
             "Maintenance costs": exp["maintenanceCosts"],
             "Scrap rate": exp["scrapRate"],
-            "Recyclability": exp["recyclability"],
+            "Recyclability": qual_to_val(exp["recyclability"]),
             "Production cycle time": cycle_time,
             "Total production costs": total_production_costs,
             "Product carbon footprint": prod_carbon_footprint,
         }
         kpi_dict.update(kam_kpis)
         for kpi in exp["productivity"]:
-            kpi_dict[kpi["name"]] = kpi["value"]
+            kpi_dict[kpi["name"]] = qual_to_val(kpi["value"])
 
     return kpi_dict
 
@@ -272,9 +283,10 @@ def calculate_kpis(valid_data: list, user: str="pd") -> McdaSession:
             )
     
     # Extract data from all experiments, compute and store KPIs
+    alternative_prefix = "Experiment #" if user=="pd" else "Welding station #"
     for experiment in valid_data:
         kpi_dict = calculate_experiment_kpis(experiment, user)
-        name = "Experiment #" + str(experiment["experimentId"])
+        name = alternative_prefix + str(experiment["experimentId"])
         DecisionMatrix.objects.create(
             session=session, name=name, values=kpi_dict
         )
@@ -304,12 +316,16 @@ def step1_context() -> dict:
             "hint": "Both lower and upper bounds, and an importance order apply."},
         ],
         "method_options": [
-            {"value": "promethee_like", "label": "Simple",
+            {"value": "simple", "label": "Simple",
              "hint": "Define the importance of criteria."},
+            {"value": "promethee_like", "label": "Intermediate",
+             "hint": "Also define indifference thresholds."},
             {"value": "promethee", "label": "Advanced",
              "hint": "Also define indifference and preference thresholds."},
         ],
         "weight_mode_options": [
+            {"value": "equal", "label": "Equal",
+             "hint": "All criteria have the same weight."},
             {"value": "flat", "label": "Flat",
              "hint": "One weight per criterion."},
             {"value": "group", "label": "Group",

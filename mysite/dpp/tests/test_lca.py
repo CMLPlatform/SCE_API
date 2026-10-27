@@ -1,20 +1,23 @@
 """
 Tests for lca.py functions:
-  setup_project, ensure_methods, select_supply_chain,
+  setup_project, ensure_methods, make_transport_exchange, select_supply_chain,
   convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca
 
 All Brightway and Django ORM calls are mocked so the suite runs without
-a live database or ecoinvent licence.
-
-Run with:
-    pytest test_lca.py -v
+a live database or Ecoinvent licence.
 """
-from django.test import TestCase
+import uuid
+import bw2data as bwd
+import pandas as pd
+
+from django.test import SimpleTestCase, TestCase
 import datetime
-from unittest.mock import MagicMock, patch
-from ..models import IndicatorSet
+from types import SimpleNamespace
+from unittest.mock import Mock, MagicMock, patch
+from ..models import CONVERSIONS, IndicatorSet, ProductModel, Transport
 from dpp.lca import (
-    EXCLUDED_METHODS, setup_project, ensure_methods, select_supply_chain,
+    EXCLUDED_METHODS, BIOSPHERE, ECOINVENT, BAFU_DB, BONSAI_DB,
+    setup_project, ensure_methods, make_transport_exchange, select_supply_chain,
     convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca,
 )
 
@@ -32,7 +35,6 @@ def make_flow(pk=1, name="product", unit="kg", produced_by=None):
     if produced_by is not None:
         flow.manufacturing_info = produced_by
     return flow
-
 
 def make_process(pk=1, name="proc", unit="kg", facility=None,
                  description="desc", amount=1.0, database="mydb"):
@@ -52,31 +54,98 @@ def make_process(pk=1, name="proc", unit="kg", facility=None,
 # Test classes for key LCA functions
 # ---------------------------------------------------------------------------
 
-class TestSetupProject(TestCase):
+class TestSetupProject(SimpleTestCase):
+    def setUp(self):
+        self.project = "LCA-test-project"
+        self.addCleanup(self._delete_project)
 
-    @patch("dpp.lca.bwi")
-    @patch("dpp.lca.bwd")
-    def test_create_new_project(self, mock_bwd, mock_bwi):
-        """When the project doesn't exist it should be created and configured."""
-        mock_bwd.projects.__contains__ = MagicMock(return_value=False)
-        mock_bwd.projects.current = "L4M-test"
-        setup_project("L4M-test")
+        # autospec=True enforces the real signatures, so a wrong call raises TypeError
+        self.install = self._patch("dpp.lca.bwi.remote.install_project")
+        self.import_db = self._patch("dpp.lca.import_db")
+        self.import_bonsai = self._patch("dpp.lca.import_bonsai")
+        self.status = self._patch("dpp.lca.project_status")
+        self.set_status(biosphere=True, bonsai=True)
 
-        mock_bwd.projects.set_current.assert_called_once_with("L4M-test")
-        mock_bwi.remote.install_project.assert_called_once_with(
-            "ecoinvent-3.12-biosphere", "L4M-test"
+    def _patch(self, target):
+        patcher = patch(target, autospec=True)
+        mocked = patcher.start()
+        self.addCleanup(patcher.stop)
+        return mocked
+
+    def _delete_project(self):
+        if self.project in bwd.projects:
+            bwd.projects.set_current("default")
+            bwd.projects.delete_project(self.project, delete_dir=True)
+
+    def set_status(self, **status):
+        for key, name in [
+            ("biosphere", BIOSPHERE), ("bafu", BAFU_DB), ("bonsai", BONSAI_DB)
+        ]:
+            if key in status:
+                status[name] = status[key]
+                del status[key]
+        self.status.return_value = status
+
+    def test_missing_biosphere_installs_it(self):
+        self.set_status(biosphere=False, bonsai=True)
+        setup_project(self.project, background="BONSAI")
+        self.install.assert_called_once_with(
+            project_key=BIOSPHERE, project_name=self.project, overwrite_existing=True
+        )
+        self.import_bonsai.assert_not_called()
+
+    def test_missing_bonsai_imports_it(self):
+        self.set_status(biosphere=True, bonsai=False)
+        setup_project(self.project, background="BONSAI")
+        self.import_bonsai.assert_called_once_with()
+        self.install.assert_not_called()
+
+    def test_missing_bafu_imports_it(self):
+        self.set_status(biosphere=True, bonsai=False)
+        setup_project(self.project, background="BAFU")
+        self.import_db.assert_called_once_with(project=self.project, overwrite=False)
+        self.install.assert_not_called()
+
+    def test_empty_status_imports_both(self):
+        # e.g. the project does not exist yet: no keys at all
+        self.set_status()
+        setup_project(self.project, background="BAFU")
+        self.import_db.assert_called_once_with(project=self.project, overwrite=False)
+        setup_project(self.project, background="BONSAI")
+        self.install.assert_called_once_with(
+            project_key=BIOSPHERE, project_name=self.project, overwrite_existing=True
+        )
+        self.import_bonsai.assert_called_once_with()
+        self.assertEqual(bwd.projects.current, self.project)
+
+    def test_biosphere_is_installed_before_background_import(self):
+        self.set_status(biosphere=False, bonsai=False)
+        manager = Mock()
+        manager.attach_mock(self.install, "install")
+        manager.attach_mock(self.import_bonsai, "import_bonsai")
+        setup_project(self.project, background="BONSAI")
+        self.assertEqual(
+            [c[0] for c in manager.mock_calls], ["install", "import_bonsai"]
         )
 
-    @patch("dpp.lca.bwi")
-    @patch("dpp.lca.bwd")
-    def test_reuse_existing_project(self, mock_bwd, mock_bwi):
-        """When the project already exists only set_current should be called."""
-        mock_bwd.projects.__contains__ = MagicMock(return_value=True)
-        mock_bwd.projects.current = "L4M-test"
-        setup_project("L4M-test")
+    def test_incomplete_bonsai_is_removed_before_import(self):
+        self.set_status(biosphere=True, bonsai=False)
+        bwd.projects.set_current(self.project)
+        bwd.Database(BONSAI_DB).write({})  # registered, but not processed
+        present_at_import = []
+        self.import_bonsai.side_effect = lambda: present_at_import.append(
+            BONSAI_DB in bwd.databases
+        )
 
-        mock_bwd.projects.set_current.assert_called_once_with("L4M-test")
-        mock_bwi.remote.install_project.assert_not_called()
+        setup_project(self.project, background="BONSAI")
+        self.assertEqual(present_at_import, [False])
+
+    def test_complete_project_installs_nothing(self):
+        self.set_status(biosphere=True, bafu=True)
+        setup_project(self.project)
+        self.install.assert_not_called()
+        self.import_db.assert_not_called()
+        self.assertEqual(bwd.projects.current, self.project)
 
 
 class TestEnsureMethods(TestCase):
@@ -209,8 +278,18 @@ class TestSelectSupplyChain(TestCase):
 
 class TestConvertDppToBrightway(TestCase):
 
-    @patch("dpp.lca.bwd")
-    def test_output_contains_activity_key(self, mock_bwd):
+    def setUp(self):
+        bwd_patcher = patch("dpp.lca.bwd")
+        biosphere_patcher = patch("dpp.lca.get_biosphere_db")
+
+        self.mock_bwd = bwd_patcher.start()
+        self.mock_get_biosphere_db = biosphere_patcher.start()
+        self.addCleanup(bwd_patcher.stop)
+        self.addCleanup(biosphere_patcher.stop)
+
+        self.mock_bwd.databases = {}  # no pre-existing databases
+
+    def test_output_contains_activity_key(self):
         """Each process must produce a key of the form (db_name, pk)."""
 
         proc = make_process(pk=42, name="my proc", unit="kg")
@@ -225,8 +304,7 @@ class TestConvertDppToBrightway(TestCase):
 
         assert ("testdb", 42) in result
 
-    @patch("dpp.lca.bwd")
-    def test_production_exchange_is_present(self, mock_bwd):
+    def test_production_exchange_is_present(self):
         """The activity must always have a production exchange."""
         proc = make_process(pk=1, unit="kg", amount=2.0)
 
@@ -243,8 +321,7 @@ class TestConvertDppToBrightway(TestCase):
         assert len(prod_excs) == 1
         assert prod_excs[0]["amount"] == 2.0
 
-    @patch("dpp.lca.bwd")
-    def test_stage_raw_material_for_mass_unit(self, mock_bwd):
+    def test_stage_raw_material_for_mass_unit(self):
         """Processes with a mass-unit functional flow should be 'Raw material acquisition'."""
         proc = make_process(pk=1, unit="kg")
 
@@ -256,8 +333,7 @@ class TestConvertDppToBrightway(TestCase):
 
         assert result[("db", 1)]["stage"] == "Raw material acquisition"
 
-    @patch("dpp.lca.bwd")
-    def test_stage_manufacturing_for_non_resource_unit(self, mock_bwd):
+    def test_stage_manufacturing_for_non_resource_unit(self):
         """Processes with unit 'pcs' (not a resource unit) should be 'Manufacturing'."""
         proc = make_process(pk=1, unit="pcs")
 
@@ -269,8 +345,7 @@ class TestConvertDppToBrightway(TestCase):
 
         assert result[("db", 1)]["stage"] == "Manufacturing"
 
-    @patch("dpp.lca.bwd")
-    def test_cutoff_excludes_external_products(self, mock_bwd):
+    def test_cutoff_excludes_external_products(self):
         """ProductExchanges whose upstream process is not in `processes` are cut off."""
         proc = make_process(pk=1, unit="pcs")
         external_proc = make_process(pk=99)
@@ -290,6 +365,76 @@ class TestConvertDppToBrightway(TestCase):
         tech_excs = [e for e in result[("db", 1)]["exchanges"] if e["type"] == "technosphere"]
         assert len(tech_excs) == 0
 
+class MockTransports:
+    """
+    Minimal stand-in for the Transport QuerySet.
+    supports .filter(product=...).first().
+    """
+    def __init__(self, *items):
+        self._items = list(items)
+
+    def filter(self, product):
+        return MockTransports(*[t for t in self._items if t.product == product])
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+class TestMakeTransportExchange(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Brightway state lives outside the Django DB, so TestCase's
+        # transaction rollback doesn't cover it: manage it explicitly.
+        cls.bw_project = f"test-{uuid.uuid4().hex}"
+        bwd.projects.set_current(cls.bw_project)
+        cls.addClassCleanup(bwd.projects.delete_project, cls.bw_project, delete_dir=True)
+        bwd.Database(BONSAI_DB).write({
+            (BONSAI_DB, "M_TLAND_ALL"): {
+                "name": "Land transport",
+                "unit": "MEUR",
+                "location": "GLO",
+                "exchanges": [],
+            },
+        })
+
+    def setUp(self):
+        bwd.projects.set_current(self.bw_project)
+        self.assertNotIn(ECOINVENT, bwd.databases)  # forces the BONSAI branch
+
+        self.mock_prices = pd.DataFrame({"M_TLAND_ALL_price": [0.1]}, index=["?"])
+
+        self.distance_km = 500
+        self.product = SimpleNamespace(name="widget", unit="kg")  # no `properties` -> uses unit
+        self.transports = MockTransports(
+            SimpleNamespace(product=self.product, mode="truck", distance=self.distance_km)
+        )
+
+    def test_exchange_values(self):
+        amount = 200  # units of product
+        with patch("dpp.lca.country_data", self.mock_prices):
+            exchange = make_transport_exchange(
+                self.transports, self.product, amount
+            )
+
+        mass_kg = CONVERSIONS["kg"]
+        price = self.mock_prices.loc["?", "M_TLAND_ALL_price"]   # EUR/tkm
+        expected = mass_kg  / 1000 * amount * self.distance_km * price / 1e6   # tkm * EUR/tkm -> MEUR
+
+        self.assertEqual(exchange["input"], (BONSAI_DB, "M_TLAND_ALL"))
+        self.assertEqual(exchange["type"], "technosphere")
+        self.assertEqual(exchange["unit"], "MEUR")
+        self.assertAlmostEqual(exchange["amount"], expected)
+
+    def test_exchange_points_to_existing_activity(self):
+        with patch("dpp.lca.country_data", self.mock_prices):
+            exchange = make_transport_exchange(self.transports, self.product, 1)
+        self.assertEqual(bwd.get_activity(exchange["input"])["unit"], "MEUR")
+
+    def test_missing_transport_raises(self):
+        other = ProductModel.objects.create(name="gadget", unit="kg")
+        with patch("dpp.lca.country_data", self.mock_prices):
+            with self.assertRaises(LookupError):
+                make_transport_exchange(self.transports, other, 1)
 
 class TestLcaCalculations(TestCase):
 

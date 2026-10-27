@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from rest_framework.serializers import ValidationError
+from .models import McdaSession  # for choices lists
 
 # Validation helpers
+
+QUAL_INDICATORS = {'high', 'medium', 'low'}
 
 def _validate_range(v, positive: bool=False) -> float | tuple:
     """
@@ -39,17 +42,33 @@ class MaterialSerializer(serializers.Serializer):
 
 class KpiSerializer(serializers.Serializer):
     name = serializers.CharField()
-    value = serializers.FloatField()
+    value = serializers.CharField()
     target = serializers.CharField()  # Can be "min", "max", or a float value
 
-    def validate(self, data):
-        t = data["target"]
-        if t not in ["min", "max"]:
+    def validate_value(self, value):
+        """Value is either a number or a qualitative indicator.
+        Convert any numbers to float.
+        """
+        try:  # Try to convert to float first
+            return float(value)
+        except (ValueError, TypeError):
+            # Check if it's a valid qualitative indicator
+            if isinstance(value, str) and value.lower() in QUAL_INDICATORS:
+                return value.lower()
+
+        raise ValidationError(
+            "Value must be 'high', 'medium', 'low', or a number."
+        )
+    
+    def validate_target(self, value):
+        """Value must be min, max, or a number."""
+        target = str(value).strip()
+        if target not in ["min", "max"]:
             try:
-                float(t.strip())
-            except ValueError:
-                raise ValidationError(f"Target not recognized: {t}")
-        return data
+                return float(target)
+            except (ValueError, TypeError):
+                raise ValidationError(f"Target not recognized: {target}")
+        return target
 
 class ExperimentSerializer(serializers.Serializer):
     experimentId = serializers.IntegerField()
@@ -100,25 +119,41 @@ class WeldStationSerializer(ExperimentSerializer):
     maintenanceCosts = serializers.FloatField()
     cycleTime = serializers.FloatField(min_value=0.1)
     scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
-    recyclability = serializers.FloatField(min_value=0, max_value=1)
+    recyclability = serializers.CharField()
     materials = MaterialSerializer(many=True)
     productivity = KpiSerializer(many=True)
+
+    def validate_recyclability(self, value):
+        """Recyclability must be 0<=R<=1 or a qualitative indicator."""
+        try:  # Try to convert to float first
+            r = float(value)
+        except (ValueError, TypeError):
+            # Check if it's a valid qualitative indicator
+            if isinstance(value, str) and value.lower() in QUAL_INDICATORS:
+                return value.lower()
+        else:
+            if (r < 0) or (r > 1):
+                raise ValidationError("Recycability must be a fraction (0-1)")
+            return r
+
+        raise ValidationError(
+            "Value must be 'high', 'medium', 'low', or a number."
+        )
 
 class WeldStationComparisonSerializer(serializers.ListSerializer):
     child = WeldStationSerializer()
 
 class McdaRequestSerializer(serializers.Serializer):
-    SCENARIO_CHOICES = ["deterministic", "random", "bounded", "ordered", "bounded_ordered"]
-    METHOD_CHOICES = ["promethee", "promethee_like"]
-    WEIGHT_CHOICES = ["flat", "group", "hierarchical"]
-    VETO_CHOICES = ["no", "soft", "hard"]
-
     decision_matrix = serializers.DictField()  # {"alternative": {"criterion": value|(min, max)},}
     directions = serializers.DictField()  # {"criterion": "min"|"max"|value}
 
-    scenario = serializers.ChoiceField(choices=SCENARIO_CHOICES)
-    method = serializers.ChoiceField(choices=METHOD_CHOICES, default=METHOD_CHOICES[1])
-    weight_mode = serializers.ChoiceField(choices=WEIGHT_CHOICES, default=WEIGHT_CHOICES[0])
+    scenario = serializers.ChoiceField(choices=McdaSession.Scenario.choices)
+    method = serializers.ChoiceField(
+        choices=McdaSession.Method.choices, default=McdaSession.Method.choices[0]
+    )
+    weight_mode = serializers.ChoiceField(
+        choices=McdaSession.WeightMode.choices, default=McdaSession.WeightMode.choices[0]
+    )
 
     groups = serializers.DictField(required=False)  # {"group": ["criterion",]}
     group_weights = serializers.DictField(required=False)  # {"group": weight|(min, max)}
@@ -126,7 +161,7 @@ class McdaRequestSerializer(serializers.Serializer):
     crit_weights = serializers.DictField(required=False)   # {"criterion": weight|(min, max)}
 
     thresholds = serializers.DictField(required=False)  # Promethee parameters: {"criterion": (q, p)} or {"criterion": q}, where q=indifference, p=preference
-    veto_type = serializers.ChoiceField(choices=VETO_CHOICES, default="no")
+    veto_type = serializers.ChoiceField(choices=McdaSession.VetoType.choices, default="no")
     veto_thresholds = serializers.DictField(required=False)  # {"criterion": value}
     penalty_factor = serializers.FloatField(min_value=0, default=0.5)  # used if veto_type=="soft"
 
@@ -321,13 +356,13 @@ class McdaRequestSerializer(serializers.Serializer):
                 )
         # Check that thresholds matches the method
         # promethee => tuples; promethee_like => float
-        if data["method"] == self.METHOD_CHOICES[0] and data["thresholds"]:
+        if data["method"] == McdaSession.Method.PROMETHEE and data["thresholds"]:
             for th in data["thresholds"].values():
                 if not isinstance(th, (tuple, list)) or len(th) != 2:
                     raise ValidationError(
                         f"Expected threshold as (q, p), received: {th}"
                     )
-        elif data["method"] == self.METHOD_CHOICES[1] and data["thresholds"]:
+        elif data["method"] == McdaSession.Method.PROMETHEE_LIKE and data["thresholds"]:
             for th in data["thresholds"].values():
                 if not isinstance(th, (float, int)):
                     raise ValidationError(

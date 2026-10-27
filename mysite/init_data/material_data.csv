@@ -1,6 +1,16 @@
 material,price,CO2eq,unit
-Argon,13,9.47,m3
-Nitrogen,7.05,7.11,m3
-Aluminium (filler wire),100,88,kg
-Steel,56,42,kg
-Stainless steel,56,42,kg
+"Aluminium alloy, cast",2.74,6.165,kg
+"Aluminium, virgin",2.74,16.546,kg
+"Aluminium alloy, wrought",2.74,12.843,kg
+Aluminium filler wire,26.17,12.843,kg
+Aluminium sheet,3.10,13.463,kg
+Chromium steel pipe,3.50,5.424,kg
+AISI 316 steel plate,3.50,5.424,kg
+"Steel, low-alloyed",0.41,2.024,kg
+"Steel, low-alloyed, hot rolled",1.17,2.279,kg
+Argon,10.47,1.279,m3
+Nitrogen,6.69,0.201,m3
+Helium,97.16,7.847,m3
+Chromium steel sheets,0.576345982,5.815,kg
+Steel wire,20.76,2.633,kg
+Steel sheets,0.55900772,2.584,kg
