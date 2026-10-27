@@ -177,6 +177,8 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
     if user_type == "kam":
         cycle_time = exp["cycleTime"]
         yield_rate = 1 - exp["scrapRate"]
+        if yield_rate == 0:
+            raise ZeroDivisionError
     else:  # Simplifications for the PD user
         cycle_time = processing_time
         yield_rate = 1
