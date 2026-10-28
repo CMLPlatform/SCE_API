@@ -6,11 +6,12 @@ from django.conf import settings
 # from django.contrib.auth.models import User
 from dpp.models import CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory
 from dpp.lca import biosphere_to_dpp_flows
+import logging
+
+logger = logging.getLogger(__name__)
 
 def csv_to_django(file_path: Path | str, Model, relations={}):
-    """
-    Read data from a CSV file into a Django model.
-    """
+    """Read data from a CSV `file_path` into a Django `Model`."""
     # Convert DataFrame to list of model instances
     file_path = Path(file_path)
     df = pd.read_csv(file_path)
@@ -22,12 +23,12 @@ def csv_to_django(file_path: Path | str, Model, relations={}):
     for col, val in relations.items():
         df[col + '_id'] = val
 
-    for _, row in df.iterrows():
-        # new_object = Model(**row.to_dict())
-        # new_object.save()
-        Model(**row.to_dict()).save()
+    # Bulk insert the CSV data, skipping duplicates
+    objs = [Model(**row.to_dict()) for _, row in df.iterrows()]
+    created = Model.objects.bulk_create(objs, ignore_conflicts=True)
 
-    print(f"{file_path.name} has been loaded as {Model.__name__} into the Django database.")
+    logger.info(f"{file_path.name} has been loaded as {Model.__name__} into the Django database.")
+    logger.info(f"Inserted: {len(created)}, Skipped: {len(df) - len(created)}")
 
 def run():
     circularity_csv = settings.DATA_DIR / "circularity_indicators.csv"
