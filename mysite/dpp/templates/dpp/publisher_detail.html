@@ -42,7 +42,10 @@
                         {% csrf_token %}
                         <input type="hidden" name="action" value="rerun_step">
                         <input type="hidden" name="step" value="{{ step.number }}">
-                        <button type="submit" class="btn btn-sm btn-warning">
+                        <button type="submit" class="btn-run">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+                                <polygon points="8,6.5 17,12 8,17.5"/>
+                            </svg>
                             Rerun from here
                         </button>
                     </form>
@@ -55,7 +58,12 @@
         <form method="post">
             {% csrf_token %}
             <input type="hidden" name="action" value="run_all">
-            <button type="submit" class="btn btn-primary">Run All Steps</button>
+            <button type="submit" class="btn-run">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <polygon points="8,6.5 17,12 8,17.5"/>
+                </svg>
+                Run All Steps
+            </button>
         </form>
         
         {% if object.status >= 3 %}
@@ -70,7 +78,7 @@
             <form method="post">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="publish">
-                <button type="submit" class="btn btn-success">Publish DPP</button>
+                <button type="submit" class="btn-run">Publish DPP</button>
             </form>
         {% endif %}
     </div>
@@ -99,7 +107,7 @@
 </div>
 
 <div class="bg-white shadow overflow-hidden">
-    <h3 class="font-semibold font-large">LCA results</h3>
+    <h3>LCA results</h3>
     <table class="table table-striped">
         <thead>
             <tr class="px-4 py-2">
