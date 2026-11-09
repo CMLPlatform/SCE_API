@@ -77,6 +77,7 @@ class ExperimentSerializer(serializers.Serializer):
     country = serializers.CharField()
     laserPowerkW = serializers.FloatField()
     weldingStationPowerkW = serializers.FloatField()
+    nOperators = serializers.IntegerField(default=3)
     consumables = ConsumableSerializer(many=True)
     qualityParameters = KpiSerializer(many=True)
 
@@ -122,6 +123,7 @@ class WeldStationSerializer(ExperimentSerializer):
     recyclability = serializers.CharField()
     materials = MaterialSerializer(many=True)
     productivity = KpiSerializer(many=True)
+    capex = serializers.IntegerField(min_value=1, required=False)
 
     def validate_recyclability(self, value):
         """Recyclability must be 0<=R<=1 or a qualitative indicator."""

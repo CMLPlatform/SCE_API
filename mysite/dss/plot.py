@@ -3,7 +3,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 plt.switch_backend('agg')
-
+plt.rcParams.update({
+    "pdf.use14corefonts": True,  # embed editable fonts in PDF
+    "svg.fonttype": "none",
+})
 
 # Common figure settings
 FIG_W = 12

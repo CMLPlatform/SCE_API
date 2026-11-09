@@ -186,7 +186,9 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
         amount * material_data.loc[cons, "price"]
         for cons, amount in consumables_use.items()
     ])
-    labour_costs = cycle_time/3600 * lookup("wages", exp["country"]) * 3
+    labour_costs = (
+        cycle_time/3600 * lookup("wages", exp["country"]) * exp["nOperators"]
+    )
     process_energy_use = (
         processing_time * exp["laserPowerkW"]
         + cycle_time * exp["weldingStationPowerkW"]
@@ -213,8 +215,8 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
             for mat in exp["materials"]
         ])
         service_life = 15
-        CAPEX = 5860000 / 3
-        amortized_capex = CAPEX / (service_life * annual_production)
+        capex = exp["capex"] or 1036000
+        amortized_capex = capex / (service_life * annual_production)
         total_production_costs = (
             operating_costs + material_costs + amortized_capex
         ) / yield_rate
