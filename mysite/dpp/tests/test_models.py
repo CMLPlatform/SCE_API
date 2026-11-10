@@ -552,7 +552,7 @@ class ProductionLineTest(SupplyChainTestCase):
     def test_production_line_list(self):
         response = self.client.get(reverse("dpp:productionline_list"))
         response = self.client.get(
-            reverse("dpp:production_line_detail", args=(self.line.id,))
+            reverse("dpp:productionline_detail", args=(self.line.id,))
         )
 
 class AggregateProductionTests(SupplyChainTestCase):

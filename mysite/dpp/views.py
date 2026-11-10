@@ -331,7 +331,7 @@ class ProcessDetailView(AdminTemplateMixin, DetailView):
         context['flow_icons'] = self.FLOW_ICONS
         return context
 
-class ProductDetailView(AdminTemplateMixin, DetailView):
+class ProductModelDetailView(AdminTemplateMixin, DetailView):
     model = ProductModel
     template_name = 'dpp/product_detail.html'
 
@@ -350,7 +350,7 @@ class ProductDetailView(AdminTemplateMixin, DetailView):
         self.object = self.get_object()
         if 'recalculate' in request.POST:
             self.object.get_composition(recalculate=True)
-        return redirect('dpp:product_detail', pk=self.object.pk)
+        return redirect('dpp:productmodel_detail', pk=self.object.pk)
 
 class TransportSubsetView(AdminTemplateMixin, ListView):
     template_name = "dpp/generic_list.html"

@@ -57,7 +57,7 @@
         <td class="px-3 py-1">{{process.amount}}</td>
         <td class="px-3 py-1">{{process.functional_flow.model.unit}}</td>
         <td class="px-3 py-1">{{process.functional_flow.model.name}}</td>
-        <td class="px-3 py-1 text-blue-600"><a href="{% url 'dpp:product_detail' process.functional_flow.pk %}">View</a></td>
+        <td class="px-3 py-1 text-blue-600"><a href="{% url 'dpp:productmodel_detail' process.functional_flow.pk %}">View</a></td>
       </tr>
       {% for output in outputs %}
       <tr>

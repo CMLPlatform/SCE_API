@@ -9,11 +9,11 @@
     <h2 class="text-2xl font-semibold text-gray-900">Publish DPP: {{ object.production_line.name }}</h2>
 
     <div>
-        <a href="{% url opts.app_label|add:':publisher_update' object.pk %}" 
+        <a href="{% url opts.app_label|add:':publisher_update' object.pk %}"
             class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
             Edit
         </a>
-        <a href="{% url opts.app_label|add:':production_line_detail' object.production_line.pk%}" 
+        <a href="{% url opts.app_label|add:':productionline_detail' object.production_line.pk%}"
             class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
             View production line
         </a>

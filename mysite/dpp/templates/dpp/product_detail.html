@@ -143,7 +143,7 @@
       {% for flow in missing_bom %}
       <tr>
         <td class="px-3 py-1">Type: {{flow.type}}</td>
-        <td class="px-3 py-1"><a href="{% url app_label|add:':product_detail' flow.product.pk %}">{{flow.product.model.name}}</a></td>
+        <td class="px-3 py-1"><a href="{% url app_label|add:':productmodel_detail' flow.product.pk %}">{{flow.product.model.name}}</a></td>
       </tr>
       {% empty%}
       <tr class="px-3 py-1">None</tr>
