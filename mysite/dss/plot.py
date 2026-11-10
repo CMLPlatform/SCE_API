@@ -393,7 +393,7 @@ def smaa_figures(smaa_out: dict):
     # - mean-net-flow column.
 
     cmap = plt.get_cmap("Greens").copy()
-    cmap.set_bad(color="#f2f2f2")
+    cmap.with_extremes(bad="#f2f2f2")
 
     fig, ax = plt.subplots(figsize=(FIG_W + 2, FIG_H))
     im = ax.imshow(

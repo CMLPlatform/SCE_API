@@ -63,6 +63,7 @@ def pd_experiment():
         "weldSpeed": 3.0,
         "laserPowerkW": 5.0,
         "weldingStationPowerkW": 1.0,
+        "nOperators": 3,
         "consumables": [
             {"name": "Argon", "unit": "L/min", "flowRate": 10.0},
         ],
@@ -79,6 +80,7 @@ def kam_experiment(pd_experiment):
         "scrapRate": 0.1,
         "maintenanceCosts": 1000.0,
         "recyclability": 0.8,
+        "capex": 1000000,
         "materials": [
             {"name": "Steel", "weight": 4.0},
         ],
@@ -279,7 +281,7 @@ class TestCalculateKpis:
             'Scrap rate': 0.1,
             'Recyclability': 0.8,
             'Production cycle time': 250.0,
-            'Total production costs': 32.27025105738454,
+            'Total production costs': 30.993173439643346,
             'Product carbon footprint': 4.672839506172839,
             'Machine saturation': 0.7,
             'Process automation level': 0.5,
