@@ -50,12 +50,3 @@ router.register(r'circularityenabler', views.CircularityTrackerViewSet, basename
 urlpatterns = [
     path(r'', include(router.urls)),
 ]
-
-"""
-urlpatterns = [
-    path('productionlines/', views.ProductionLinesListCreate.as_view(), name="production-view-create"),
-    path('productionlines/<int:pk>', views.ProductionLineHandle.as_view(), name="handle-productionline"),
-    path('processes/', views.ProcessCreate.as_view(), name="process-view-create"),
-    path('processes/search/', views.ProcessSearch.as_view(), name='process-search'),
-]
-"""

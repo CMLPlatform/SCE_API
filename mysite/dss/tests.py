@@ -836,3 +836,21 @@ class Explanations():
     """
 
     weight_mode = "flat"
+
+
+class SessionTokenTests(APITestCase):
+    """MCDA sessions are reached through a random token, not a counter."""
+
+    def test_links_use_token(self):
+        from .models import McdaSession
+        session = McdaSession.objects.create()
+        url = reverse("wizard", kwargs={"token": session.token, "step": 0})
+        self.assertIn(str(session.token), url)
+        self.assertNotIn(f"/dss/{session.pk}/", url)
+
+    def test_unknown_token_is_not_found(self):
+        import uuid
+        url = reverse("wizard", kwargs={"token": uuid.uuid4(), "step": 0})
+        self.assertEqual(self.client.get(url).status_code, 404)
+        response = self.client.get(f"/dss/results/{uuid.uuid4()}/")
+        self.assertEqual(response.status_code, 404)

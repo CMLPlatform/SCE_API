@@ -9,6 +9,8 @@ from django.views.generic import DetailView
 from rest_framework.views import APIView, View
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle
 
 from .serializers import (
     ExperimentSerializer, ExperimentComparisonSerializer,
@@ -388,7 +390,13 @@ def step3_context(session) -> dict:
 # The actual views
 # -----------------------------------
 
-class ExperimentKpiView(APIView):
+class OpenApiView(APIView):
+    """DSS API endpoints stay usable without login, so partner tools can
+    call them. Anonymous callers are rate-limited (see settings)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+class ExperimentKpiView(OpenApiView):
     """Receives an experiment, returns a KPI set."""
     def post(self, request):
         serializer = ExperimentSerializer(data=request.data)
@@ -397,7 +405,7 @@ class ExperimentKpiView(APIView):
         kpi_dict = calculate_experiment_kpis(serializer.validated_data, "pd")
         return Response(kpi_dict, status=status.HTTP_200_OK)
 
-class WeldStationKpiView(APIView):
+class WeldStationKpiView(OpenApiView):
     """Receives a weld station, returns a KPI set."""
     def post(self, request):
         serializer = WeldStationSerializer(data=request.data)
@@ -406,7 +414,7 @@ class WeldStationKpiView(APIView):
         kpi_dict = calculate_experiment_kpis(serializer.validated_data, "kam")
         return Response(kpi_dict, status=status.HTTP_200_OK)
 
-class ExperimentComparisonInitView(APIView):
+class ExperimentComparisonInitView(OpenApiView):
     """Receives an experiment list, redirects to MCDA wizard."""
     def post(self, request):
         serializer = ExperimentComparisonSerializer(data=request.data)
@@ -415,11 +423,11 @@ class ExperimentComparisonInitView(APIView):
         session = calculate_kpis(serializer.validated_data)
 
         return redirect(
-            reverse("wizard", kwargs={"session_id": session.id, "step": 0})
+            reverse("wizard", kwargs={"token": session.token, "step": 0})
         )
-        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
+        return Response({"session_id": str(session.token)}, status=status.HTTP_201_CREATED)
 
-class KamComparisonInitView(APIView):
+class KamComparisonInitView(OpenApiView):
     """Receives a weld station list, returns an MCDA session ID."""
     def post(self, request):
         serializer = WeldStationComparisonSerializer(data=request.data)
@@ -427,9 +435,9 @@ class KamComparisonInitView(APIView):
 
         session = calculate_kpis(serializer.validated_data, user="kam")
 
-        return Response({"session_id": session.id}, status=status.HTTP_201_CREATED)
+        return Response({"session_id": str(session.token)}, status=status.HTTP_201_CREATED)
         return redirect(
-            reverse("wizard", kwargs={"session_id": session.id, "step": 0})
+            reverse("wizard", kwargs={"token": session.token, "step": 0})
         )
 
 class McdaWizardView(View):
@@ -468,14 +476,14 @@ class McdaWizardView(View):
         context["session"] = session
         return context
 
-    def get(self, request, session_id: int, step: int):
-        session = get_object_or_404(McdaSession, pk=session_id)
+    def get(self, request, token, step: int):
+        session = get_object_or_404(McdaSession, token=token)
         form = self.get_form(step, session)
         context = self.get_context(step, session=session, form=form)
         return render(request, f"dss/step_{step}.html", context)
 
-    def post(self, request, session_id: int, step: int):
-        session = get_object_or_404(McdaSession, pk=session_id)
+    def post(self, request, token, step: int):
+        session = get_object_or_404(McdaSession, token=token)
         form = self.get_form(step, session, data=request.POST)
 
         if not form.is_valid():
@@ -486,7 +494,7 @@ class McdaWizardView(View):
 
         next_step = self._next_step(step, session)
         if next_step:
-            return redirect("wizard", session_id=session_id, step=next_step)
+            return redirect("wizard", token=token, step=next_step)
 
         # All steps done. Run the MCDA calculations
         config = session.build_config()
@@ -498,7 +506,7 @@ class McdaWizardView(View):
         # Cache the created figures
         for name, fig in plots.items():
             cache.set(
-                f"mcda_plot_{session_id}_{name}",
+                f"mcda_plot_{token}_{name}",
                 fig_to_bytes(fig),
                 timeout=PLOT_TIMEOUT,
             )
@@ -511,7 +519,7 @@ class McdaWizardView(View):
                 'sections': _build_sections(results),
             }
         )
-        return redirect('results', pk=result.pk)
+        return redirect('results', token=token)
         return Response(response_data, status=status.HTTP_200_OK)
 
 
@@ -520,6 +528,9 @@ class McdaResultsView(DetailView):
     model = Results
     template_name = "dss/results.html"
     context_object_name = 'result'
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(Results, session__token=self.kwargs["token"])
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -533,9 +544,9 @@ class McdaResultsView(DetailView):
         return context
 
 
-def plot_view(request, session_id: int, plot_name: str) -> HttpResponse:
+def plot_view(request, token, plot_name: str) -> HttpResponse:
     """Plots a single figure (embedded in another page)"""
-    fig_bytes = cache.get(f"mcda_plot_{session_id}_{plot_name}")
+    fig_bytes = cache.get(f"mcda_plot_{token}_{plot_name}")
     if fig_bytes is None:
         return HttpResponse(
             "Plot not found or session expired.",
@@ -545,7 +556,7 @@ def plot_view(request, session_id: int, plot_name: str) -> HttpResponse:
     return HttpResponse(fig_bytes, content_type="image/svg+xml")
 
 
-class McdaCalculationView(APIView):
+class McdaCalculationView(OpenApiView):
     """
     Receives: decision matrix & MCDA setttings.
     Returns: ranking and score of alternatives.
