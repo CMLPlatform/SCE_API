@@ -222,6 +222,13 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "DPP CRUD endpoints (/api/, login required) and DSS endpoints (/dss/, open).",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # One enum name for each shared choice set (see api/schema_enums.py).
+    "ENUM_NAME_OVERRIDES": {
+        "CountryEnum": "api.schema_enums.country_choices",
+        "MassUnitEnum": "api.schema_enums.mass_unit_choices",
+        "VolumeUnitEnum": "api.schema_enums.volume_unit_choices",
+        "LifeCycleEventTypeEnum": "api.schema_enums.life_cycle_event_type_choices",
+    },
     # Tag order and descriptions in the docs. Tags are set in api/urls.py
     # (ROUTE_GROUPS) and on the views in dss/views.py.
     "TAGS": [

@@ -36,7 +36,7 @@ class ConsumableSerializer(serializers.Serializer):
     flowRate = serializers.FloatField()
     unit = serializers.CharField()
 
-class MaterialSerializer(serializers.Serializer):
+class WeldMaterialSerializer(serializers.Serializer):
     name = serializers.CharField()
     weight = serializers.FloatField()
 
@@ -120,7 +120,7 @@ class WeldStationSerializer(ExperimentSerializer):
     cycleTime = serializers.FloatField(min_value=0.1)
     scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
     recyclability = serializers.CharField()
-    materials = MaterialSerializer(many=True)
+    materials = WeldMaterialSerializer(many=True)
     productivity = KpiSerializer(many=True)
 
     def validate_recyclability(self, value):
