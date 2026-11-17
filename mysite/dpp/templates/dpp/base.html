@@ -66,10 +66,10 @@
     <div class="flex flex-col lg:flex-row min-h-screen">
     <!--
     <div class="sidenav">
-        <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}">Production lines</a>
-        <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}">Products</a>
-        <a href="{% url opts.app_label|add:':'|add:'importer_list' %}">Importers</a>
-        <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}">Sustainability evaluations</a>
+        <a href="{% url 'dpp:productionline_list' %}">Production lines</a>
+        <a href="{% url 'dpp:productmodel_list' %}">Products</a>
+        <a href="{% url 'dpp:importer_list' %}">Importers</a>
+        <a href="{% url 'dpp:sustainabilityevaluation_list' %}">Sustainability evaluations</a>
     </div>
     -->
     <!-- sidebar -->
@@ -80,23 +80,23 @@
         </div>
         <div class="flex flex-col flex-1 overflow-y-auto">
             <nav class="flex-1 px-2 py-2">
-                <a href="{% url opts.app_label|add:':'|add:'productionline_list' %}" class="flex items-center px-4 py-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url 'dpp:productionline_list' %}" class="flex items-center px-4 py-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/project-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Production lines
                 </a>
-                <a href="{% url opts.app_label|add:':'|add:'productmodel_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url 'dpp:productmodel_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/package-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Products
                 </a>
-                <a href="{% url opts.app_label|add:':'|add:'importer_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url 'dpp:importer_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/truck-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Importers
                 </a>
-                <a href="{% url opts.app_label|add:':'|add:'sustainabilityevaluation_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url 'dpp:sustainabilityevaluation_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/leaf-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Sustainability evaluations
                 </a>
-                <a href="{% url opts.app_label|add:':'|add:'metadata_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
+                <a href="{% url 'dpp:metadata_list' %}" class="flex items-center px-4 py-2 mt-2 text-gray-100 hover:bg-gray-700">
                     <object data="/static/img/passport-svgrepo-com.svg" type="image/svg+xml" width="24" height="24"></object>
                     Published DPPs
                 </a>

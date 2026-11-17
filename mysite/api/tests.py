@@ -10,7 +10,7 @@ from dpp.models import (
     ManufacturingProcess, Facility, ProductExchange,
     SustainabilityEvaluation, SustainabilityScore, ImpactCategory, ImpactIndicator,
 )
-from api.serializers import MetadataSerializer, ProductItemSerializer, ProductModelSerializer, SustainabilityEvaluationSerializer
+from api.serializers import DocumentSerializer, MetadataSerializer, ProductItemSerializer, ProductModelSerializer, SustainabilityEvaluationSerializer
 
 
 class MetadataSerializerTests(TestCase):
@@ -172,6 +172,17 @@ class MetadataSerializerTests(TestCase):
             first_doc = issuer_data["legal_documents"][0]
             self.assertTrue(first_doc["file_url"].startswith("http"))
             self.assertIn(doc.file, first_doc["file_url"])
+
+class DocumentSerializerTests(TestCase):
+    """DocumentSerializer must return an absolute URL in file_url."""
+
+    def test_file_url_is_absolute(self):
+        doc = Document.objects.create(file="documents/LICENSE", type="manual")
+        doc.refresh_from_db()  # Load as an API request does (issue_date as datetime).
+        request = APIRequestFactory().get("/api/document/")
+        data = DocumentSerializer(doc, context={"request": request}).data
+        self.assertEqual(data["file_url"], request.build_absolute_uri(doc.file.url))
+
 
 class LifeCycleEventSerializerTests(TestCase):
     """

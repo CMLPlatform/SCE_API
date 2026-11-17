@@ -43,7 +43,7 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = env.list(
     "DJANGO_ALLOWED_HOSTS",
-    default=["127.0.0.1", "localhost", ".eu.pythonanywhere.com"],
+    default=["127.0.0.1", "localhost", ".eu.pythonanywhere.com", "www.l4m-dss.eu"],
 )
 
 (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     'dpp.apps.DppConfig',
     'dss',
     'rest_framework',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -205,10 +206,33 @@ LOGOUT_REDIRECT_URL = "/dpp/welcome"
 
 # REST API: login required unless a view explicitly allows otherwise.
 REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": env.str("DJANGO_ANON_THROTTLE", default="30/minute"),
     },
+}
+
+# OpenAPI schema (drf-spectacular). The schema and docs pages are public.
+# They show the API structure only, not data.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SCE API",
+    "DESCRIPTION": "DPP CRUD endpoints (/api/, login required) and DSS endpoints (/dss/, open).",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Tag order and descriptions in the docs. Tags are set in api/urls.py
+    # (ROUTE_GROUPS) and on the views in dss/views.py.
+    "TAGS": [
+        {"name": "Organizations", "description": "Companies, institutions, importers and service operators."},
+        {"name": "Documents", "description": "Uploaded documents and instructions."},
+        {"name": "Products", "description": "Product models, batches, items and DPP details."},
+        {"name": "Materials", "description": "Materials, hazardous materials and compositions."},
+        {"name": "Processes and inventory", "description": "Production lines, processes, exchanges and transport (LCA inventory)."},
+        {"name": "Life cycle events", "description": "Inspection, maintenance and disassembly events of product items."},
+        {"name": "Sustainability assessment", "description": "Impact indicators, evaluations and scores."},
+        {"name": "Circularity assessment", "description": "Circularity indicators, evaluations and scores."},
+        {"name": "Decision support", "description": "KPI calculation and MCDA (multi-criteria decision analysis). No login required."},
+    ],
 }

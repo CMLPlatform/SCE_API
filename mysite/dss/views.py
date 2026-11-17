@@ -11,6 +11,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.throttling import AnonRateThrottle
+from rest_framework import serializers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 
 from .serializers import (
     ExperimentSerializer, ExperimentComparisonSerializer,
@@ -396,6 +399,7 @@ class OpenApiView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
+@extend_schema(tags=["Decision support"], request=ExperimentSerializer, responses={200: OpenApiTypes.OBJECT})
 class ExperimentKpiView(OpenApiView):
     """Receives an experiment, returns a KPI set."""
     def post(self, request):
@@ -405,6 +409,7 @@ class ExperimentKpiView(OpenApiView):
         kpi_dict = calculate_experiment_kpis(serializer.validated_data, "pd")
         return Response(kpi_dict, status=status.HTTP_200_OK)
 
+@extend_schema(tags=["Decision support"], request=WeldStationSerializer, responses={200: OpenApiTypes.OBJECT})
 class WeldStationKpiView(OpenApiView):
     """Receives a weld station, returns a KPI set."""
     def post(self, request):
@@ -414,6 +419,8 @@ class WeldStationKpiView(OpenApiView):
         kpi_dict = calculate_experiment_kpis(serializer.validated_data, "kam")
         return Response(kpi_dict, status=status.HTTP_200_OK)
 
+@extend_schema(tags=["Decision support"], request=ExperimentSerializer(many=True),
+               responses={302: OpenApiResponse(description="Redirect to the MCDA wizard.")})
 class ExperimentComparisonInitView(OpenApiView):
     """Receives an experiment list, redirects to MCDA wizard."""
     def post(self, request):
@@ -427,6 +434,7 @@ class ExperimentComparisonInitView(OpenApiView):
         )
         return Response({"session_id": str(session.token)}, status=status.HTTP_201_CREATED)
 
+@extend_schema(tags=["Decision support"], request=WeldStationSerializer(many=True), responses={201: inline_serializer("McdaSessionId", {"session_id": serializers.UUIDField()})})
 class KamComparisonInitView(OpenApiView):
     """Receives a weld station list, returns an MCDA session ID."""
     def post(self, request):
@@ -556,6 +564,7 @@ def plot_view(request, token, plot_name: str) -> HttpResponse:
     return HttpResponse(fig_bytes, content_type="image/svg+xml")
 
 
+@extend_schema(tags=["Decision support"], request=McdaRequestSerializer, responses={200: OpenApiTypes.OBJECT})
 class McdaCalculationView(OpenApiView):
     """
     Receives: decision matrix & MCDA setttings.
