@@ -16,9 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import TemplateView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
+    path('', TemplateView.as_view(template_name="landing.html"), name='landing'),  # Public landing page
     path('admin/', admin.site.urls),
     path('api/', include("api.urls")),  # API endpoints for DPP models
     path('dpp/', include("dpp.urls")),  # Frontend for DPP creation

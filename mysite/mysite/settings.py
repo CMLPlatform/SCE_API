@@ -202,7 +202,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Redirect users to the homepage
 LOGIN_REDIRECT_URL = "/dpp/welcome"
-LOGOUT_REDIRECT_URL = "/dpp/welcome"
+LOGOUT_REDIRECT_URL = "/"
 
 # REST API: login required unless a view explicitly allows otherwise.
 REST_FRAMEWORK = {
