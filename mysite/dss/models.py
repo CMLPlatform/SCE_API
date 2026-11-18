@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from .mcda import McdaConfig, WeightConstraints, ranking_to_pairwise
 from django.core.exceptions import ValidationError
@@ -62,6 +64,8 @@ class McdaSession(models.Model):
         HARD = "hard"
         SOFT = "soft"
 
+    # Random ID used in links, so sessions cannot be found by counting
+    token       = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     status      = models.CharField(max_length=11, choices=Status, default=Status.PENDING)
     created_at  = models.DateTimeField(auto_now_add=True)
     user_type   = models.CharField(max_length=3, choices={"pd": "Process developer", "kam": "Key account manager"}, null=True)

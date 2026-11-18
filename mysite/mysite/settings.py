@@ -12,19 +12,39 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+from environs import Env
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "init_data"
 
+# Read settings from environment variables, or from a .env file
+# in the repository root (see .env.example). Never commit .env.
+env = Env()
+env.read_env(BASE_DIR.parent / ".env", recurse=False)
 
-# Quick-start development settings - unsuitable for production
+
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4(nj$n*iw98^--gz@^1p-)!&4xi12y_wy5!=d86w9i=njb(aih'
+# Debug mode is off unless explicitly enabled (DJANGO_DEBUG=True).
+DEBUG = env.bool("DJANGO_DEBUG", default=False)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# The secret key must come from the environment. Only in debug mode
+# a fixed development key is used when none is set.
+SECRET_KEY = env.str("DJANGO_SECRET_KEY", default="")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-development-key-do-not-use-in-production"
+    else:
+        raise ImproperlyConfigured(
+            "Set DJANGO_SECRET_KEY (or DJANGO_DEBUG=True for local development)."
+        )
+
+ALLOWED_HOSTS = env.list(
+    "DJANGO_ALLOWED_HOSTS",
+    default=["127.0.0.1", "localhost", ".eu.pythonanywhere.com", "www.l4m-dss.eu"],
+)
 
 (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
 LOGGING = {
@@ -40,13 +60,19 @@ LOGGING = {
     "loggers": {
         "django": {
             "handlers": ["file"],
-            "level": "DEBUG",
+            # DEBUG level logs every SQL query; keep it opt-in
+            "level": env.str("DJANGO_LOG_LEVEL", default="INFO"),
             "propagate": True,
         },
     },
 }
 
-ALLOWED_HOSTS = ['127.0.0.1', '.eu.pythonanywhere.com']
+# HTTPS-related protections, on by default outside debug mode.
+SESSION_COOKIE_SECURE = env.bool("DJANGO_SECURE_COOKIES", default=not DEBUG)
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
+SECURE_HSTS_SECONDS = env.int("DJANGO_SECURE_HSTS_SECONDS", default=0)
+CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
 
 # Application definition
@@ -67,6 +93,7 @@ INSTALLED_APPS = [
     'dpp.apps.DppConfig',
     'dss',
     'rest_framework',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -104,20 +131,24 @@ CRISPY_TEMPLATE_PACK = 'tailwind'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    },
-    'deployment': {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "mydatabase",
-        "USER": "mydatabaseuser",
-        "PASSWORD": "mypassword",
-        "HOST": "127.0.0.1",
-        "PORT": "5432",
-    },
-}
+if env.str("POSTGRES_DB", default=""):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": env.str("POSTGRES_DB"),
+            "USER": env.str("POSTGRES_USER", default=""),
+            "PASSWORD": env.str("POSTGRES_PASSWORD", default=""),
+            "HOST": env.str("POSTGRES_HOST", default="127.0.0.1"),
+            "PORT": env.str("POSTGRES_PORT", default="5432"),
+        },
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        },
+    }
 
 
 # Password validation
@@ -157,6 +188,13 @@ USE_TZ = True
 STATIC_ROOT = BASE_DIR / "mysite/static"
 STATIC_URL = 'static/'
 
+# Uploaded files (documents). The default keeps the previous location
+# (mysite/documents/) so existing uploads stay valid. Do not serve this
+# folder as public static files.
+MEDIA_ROOT = env.path("DJANGO_MEDIA_ROOT", default=BASE_DIR)
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2_621_440  # 2.5 MB in memory, larger to disk
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10_485_760  # 10 MB request body (non-file)
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -165,3 +203,43 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Redirect users to the homepage
 LOGIN_REDIRECT_URL = "/dpp/welcome"
 LOGOUT_REDIRECT_URL = "/dpp/welcome"
+
+# REST API: login required unless a view explicitly allows otherwise.
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": env.str("DJANGO_ANON_THROTTLE", default="30/minute"),
+    },
+}
+
+# OpenAPI schema (drf-spectacular). The schema and docs pages are public.
+# They show the API structure only, not data.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SCE API",
+    "DESCRIPTION": "DPP CRUD endpoints (/api/, login required) and DSS endpoints (/dss/, open).",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # One enum name for each shared choice set (see api/schema_enums.py).
+    "ENUM_NAME_OVERRIDES": {
+        "CountryEnum": "api.schema_enums.country_choices",
+        "MassUnitEnum": "api.schema_enums.mass_unit_choices",
+        "VolumeUnitEnum": "api.schema_enums.volume_unit_choices",
+        "LifeCycleEventTypeEnum": "api.schema_enums.life_cycle_event_type_choices",
+    },
+    # Tag order and descriptions in the docs. Tags are set in api/urls.py
+    # (ROUTE_GROUPS) and on the views in dss/views.py.
+    "TAGS": [
+        {"name": "Organizations", "description": "Companies, institutions, importers and service operators."},
+        {"name": "Documents", "description": "Uploaded documents and instructions."},
+        {"name": "Products", "description": "Product models, batches, items and DPP details."},
+        {"name": "Materials", "description": "Materials, hazardous materials and compositions."},
+        {"name": "Processes and inventory", "description": "Production lines, processes, exchanges and transport (LCA inventory)."},
+        {"name": "Life cycle events", "description": "Inspection, maintenance and disassembly events of product items."},
+        {"name": "Sustainability assessment", "description": "Impact indicators, evaluations and scores."},
+        {"name": "Circularity assessment", "description": "Circularity indicators, evaluations and scores."},
+        {"name": "Decision support", "description": "KPI calculation and MCDA (multi-criteria decision analysis). No login required."},
+    ],
+}

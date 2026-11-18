@@ -13,7 +13,7 @@ urlpatterns = [
     path("experiments/", ExperimentComparisonInitView.as_view(), name="pd-init"),
     path("welding-stations/", KamComparisonInitView.as_view(), name="kam-init"),
     path("calculate/", McdaCalculationView.as_view(), name="mcda"),
-    path("<int:session_id>/step/<int:step>/", McdaWizardView.as_view(), name="wizard"),
-    path("results/<int:pk>/", McdaResultsView.as_view(), name="results"),
-    path("mcda/<int:session_id>/plot/<str:plot_name>/", plot_view, name="mcda-plot"),
+    path("<uuid:token>/step/<int:step>/", McdaWizardView.as_view(), name="wizard"),
+    path("results/<uuid:token>/", McdaResultsView.as_view(), name="results"),
+    path("mcda/<uuid:token>/plot/<str:plot_name>/", plot_view, name="mcda-plot"),
 ]

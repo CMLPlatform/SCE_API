@@ -214,7 +214,7 @@
 
       {# ── Navigation ── #}
       <div class="mt-10 flex items-center justify-between">
-        <a href="{% url 'wizard' session_id=session.id step=1 %}"
+        <a href="{% url 'wizard' token=session.token step=1 %}"
            class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-100 transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
                viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

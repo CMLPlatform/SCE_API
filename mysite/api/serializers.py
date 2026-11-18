@@ -57,9 +57,9 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         fields = ['file', 'type', 'issuer', 'instructions', 'language', 'issue_date', 'expiry_date', 'file_url']
     
-    def get_document_url(self):
+    def get_file_url(self, document: Document) -> str:
         request = self.context.get('request')
-        file_url = self.file.url
+        file_url = document.file.url
         return request.build_absolute_uri(file_url)
 
 class ProductPropertiesSerializer(serializers.ModelSerializer):

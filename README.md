@@ -4,6 +4,15 @@ To install the application on your computer, open a command line and run:
 pip install sce@git+https://github.com/CMLPlatform/SCE_API.git
 ```
 
+# Configuration
+Settings that differ per computer or server (secret key, debug mode, host names, database) are read from environment variables or from a `.env` file in the repository root. Copy `.env.example` to `.env` and fill it in. For local development, setting `DJANGO_DEBUG=True` is enough; on a server, always set `DJANGO_SECRET_KEY` and keep `DJANGO_DEBUG=False`.
+
+## Access rules
+- The web interface requires login, except the welcome page and published DPPs (`/dpp/final/<uuid>/`).
+- Production lines, and their processes, exchanges, transport entries and publishing steps, are only visible to the user who created the production line (and to staff). Companies, materials, products and background processes are shared between all logged-in users.
+- The REST API (`/api/`) requires login. Published DPPs (`/api/metadata/`) can be read by anyone; only staff can change them.
+- The Decision Support System API (`/dss/`) does not require login, so other tools can call it, but anonymous calls are rate-limited. Sessions are identified by a random ID (UUID), returned as `session_id`.
+
 # User Manual
 ## Key features
 This software helps you to create Digital Product Passports in a streamlined way, to comply with the EU ESPR regulations. It is designed for manufacturers of consumer goods such as clothes, electronics, and batteries.

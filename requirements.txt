@@ -1,11 +1,12 @@
 django
 djangorestframework
+drf-spectacular
 django-countries
 django-extensions
 django-crispy-forms
 crispy-tailwind
 environs
 pandas
-psycopg2
+psycopg2-binary
 brightway25
 sentier_brightway @ git+https://github.com/sentier-dev/sentier-brightway

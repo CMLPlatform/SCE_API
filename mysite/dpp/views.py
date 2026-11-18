@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
@@ -18,6 +20,7 @@ from .models import (
     CircularityScore, CircularityTracker, Publisher
 )
 from .forms import get_model_form_plus
+from .permissions import filter_owned, limit_form_choices
 from . import utils
 
 
@@ -25,10 +28,23 @@ def home(request):
     """Welcome page """
     if request.user.is_authenticated:
         latest_lines = ProductionLine.objects.filter(created_by=request.user).order_by("-modified_at")[:5]
-    else:
-        latest_lines = ProductionLine.objects.order_by("-modified_at")[:5]
+    else:  # Don't show other users' production lines
+        latest_lines = ProductionLine.objects.none()
     context = {'latest_lines': latest_lines}
     return render(request, "dpp/welcome.html", context)
+
+class OwnedQuerysetMixin(LoginRequiredMixin):
+    """Require login, and only show objects the user may access
+    (see dpp.permissions). Others get a 404."""
+    def get_queryset(self):
+        return filter_owned(super().get_queryset(), self.request.user)
+
+class OwnedFormMixin:
+    """Hide other users' production lines and processes in dropdowns,
+    so they cannot be selected (form validation rejects them)."""
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        return limit_form_choices(form, self.request.user)
 
 class AdminTemplateMixin:
     """Base class that prepares admin-like context."""
@@ -85,10 +101,14 @@ class PreFillFormMixin:
         
         # Check if this is a popup request
         if self.is_popup:
+            # json.dumps + escaping of "<" prevents user-entered names
+            # from breaking out of the script (cross-site scripting)
+            pk = json.dumps(str(self.object.pk)).replace("<", "\\u003c")
+            name = json.dumps(str(self.object)).replace("<", "\\u003c")
             return HttpResponse(
                 f'''
                 <script type="text/javascript">
-                    opener.dismissAddRelatedObjectPopup(window, "{self.object.pk}", "{self.object}");
+                    opener.dismissAddRelatedObjectPopup(window, {pk}, {name});
                 </script>
                 '''
             )
@@ -98,16 +118,16 @@ class PreFillFormMixin:
 def make_crud_views(model):
     app_label = model._meta.app_label
 
-    class List(AdminTemplateMixin, ListView):
+    class List(OwnedQuerysetMixin, AdminTemplateMixin, ListView):
         model = model
         paginate_by = 40
         template_name = "dpp/generic_list.html"
 
-    class Detail(AdminTemplateMixin, DetailView):
+    class Detail(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
         model = model
         template_name = "dpp/generic_detail.html"
 
-    class Create(LoginRequiredMixin, AdminTemplateMixin, PreFillFormMixin, CreateView):
+    class Create(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin, PreFillFormMixin, CreateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
@@ -122,7 +142,7 @@ def make_crud_views(model):
                     form.instance.created_by = self.request.user
             return super().form_valid(form)
 
-    class Update(AdminTemplateMixin, PreFillFormMixin, UpdateView):
+    class Update(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin, PreFillFormMixin, UpdateView):
         model = model
         fields = "__all__"
         template_name = "dpp/generic_form.html"
@@ -137,7 +157,7 @@ def make_crud_views(model):
                 return HttpResponse('<script>window.close();</script>')
             return result
 
-    class Delete(AdminTemplateMixin, DeleteView):
+    class Delete(OwnedQuerysetMixin, AdminTemplateMixin, DeleteView):
         model = model
         success_url = reverse_lazy(f"{app_label}:{model.__name__.lower()}_list")
         template_name = "dpp/confirm_delete.html"
@@ -258,7 +278,7 @@ def create_flowchart(processes):
 
     return "\n".join(lines)
 
-class ProductionLineDetailView(DetailView):
+class ProductionLineDetailView(OwnedQuerysetMixin, DetailView):
     model = ProductionLine
     template_name = 'dpp/productionline_detail.html' #'dpp/graph_test.html' #
     # context_object_name = 'production_line'
@@ -300,7 +320,7 @@ class ProductionLineDetailView(DetailView):
         
         return super().post(request, *args, **kwargs)
 
-class ProcessDetailView(AdminTemplateMixin, DetailView):
+class ProcessDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
     model = Process
     template_name = 'dpp/process_detail.html'
     FLOW_ICONS = {
@@ -331,7 +351,7 @@ class ProcessDetailView(AdminTemplateMixin, DetailView):
         context['flow_icons'] = self.FLOW_ICONS
         return context
 
-class ProductDetailView(AdminTemplateMixin, DetailView):
+class ProductDetailView(LoginRequiredMixin, AdminTemplateMixin, DetailView):
     model = ProductModel
     template_name = 'dpp/product_detail.html'
 
@@ -352,29 +372,32 @@ class ProductDetailView(AdminTemplateMixin, DetailView):
             self.object.get_composition(recalculate=True)
         return redirect('dpp:product_detail', pk=self.object.pk)
 
-class TransportSubsetView(AdminTemplateMixin, ListView):
+class TransportSubsetView(LoginRequiredMixin, AdminTemplateMixin, ListView):
     template_name = "dpp/generic_list.html"
     model = Transport
 
     def get_queryset(self):
-        pl = get_object_or_404(ProductionLine, pk=self.kwargs['productionline'])
+        pl = get_object_or_404(
+            filter_owned(ProductionLine.objects.all(), self.request.user),
+            pk=self.kwargs['productionline'],
+        )
         queryset = Transport.objects.filter(production_line=pl)
         if not queryset:
             pl.create_transport()
             queryset = Transport.objects.filter(production_line=pl)
         return queryset
 
-class FlowCreateView(CreateView):
+class FlowCreateView(LoginRequiredMixin, CreateView):
     model = Flow
     template_name = "dpp/create_flow.html"
     fields = []  # No user-editable fields
 
-class PublisherUpdateView(AdminTemplateMixin, PreFillFormMixin, UpdateView):
+class PublisherUpdateView(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin, PreFillFormMixin, UpdateView):
         model = Publisher
         fields = "__all__"
         template_name = "dpp/generic_form.html"
 
-class PublisherDetailView(AdminTemplateMixin, DetailView):
+class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
     model = Publisher
     template_name = "dpp/publisher_detail.html"
     
@@ -426,6 +449,7 @@ class PublisherDetailView(AdminTemplateMixin, DetailView):
         return context
 
 class DppFullView(DetailView):
+    """Published DPP: public by design, no login required."""
     model = Metadata
     template_name = 'dpp/dpp_full.html'
 

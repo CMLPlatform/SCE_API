@@ -28,6 +28,8 @@ jobs:
         pip install pytest-django
     - name: Run tests
       working-directory: ./mysite
+      env:
+        DJANGO_SECRET_KEY: ci-only-not-secret
       run: |
         DJANGO_SETTINGS_MODULE=mysite.settings pytest dss/tests.py
         python manage.py test api dpp

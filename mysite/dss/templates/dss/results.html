@@ -52,7 +52,7 @@
               Loading {{ plot_name }}...
             </div>
 
-            <img src="{% url 'mcda-plot' session_id=session.id plot_name=plot_name %}"
+            <img src="{% url 'mcda-plot' token=session.token plot_name=plot_name %}"
                  alt="{{ plot_name|capfirst }} plot"
                  class="w-full hidden"
                  onload="this.classList.remove('hidden');
@@ -153,7 +153,7 @@
         New analysis
       </a>
 
-      {# href="{% url 'mcda-results-pdf' session_id=session.id %}" #}
+      {# href="{% url 'mcda-results-pdf' token=session.token %}" #}
       <a href=""
          class="inline-flex items-center gap-2 rounded-lg border border-slate-700
                 bg-slate-800 hover:bg-slate-700 px-5 py-2.5 text-sm font-semibold

@@ -133,7 +133,22 @@ class Instruction(models.Model):
     def __str__(self):
         return self.label
 
-class Document(models.Model):  #TODO: security check on files
+# Uploads: common document and image types only. No SVG or HTML,
+# which browsers can run scripts from.
+ALLOWED_UPLOAD_EXTENSIONS = [
+    "pdf", "txt", "csv", "doc", "docx", "xls", "xlsx", "odt", "ods",
+    "png", "jpg", "jpeg",
+]
+MAX_UPLOAD_MB = 20
+
+def validate_upload_size(file):
+    """Reject new uploads larger than MAX_UPLOAD_MB."""
+    if getattr(file, "_committed", True):
+        return  # File already stored; don't re-check (it may not be on this disk)
+    if file.size > MAX_UPLOAD_MB * 1024 * 1024:
+        raise ValidationError(f"File is larger than {MAX_UPLOAD_MB} MB.")
+
+class Document(models.Model):
     DOCUMENT_TYPES = {
         'other': 'Other',
         "Technical document":
@@ -152,7 +167,13 @@ class Document(models.Model):  #TODO: security check on files
         {'label': 'Voluntary label', 'energy_label': 'Energy label', 'ecolabel': 'Ecolabel', 'circularity_label': 'Circularity label', 'legal': 'Legal markings'},
     }
 
-    file = models.FileField(upload_to='documents/')
+    file = models.FileField(
+        upload_to='documents/',
+        validators=[
+            FileExtensionValidator(ALLOWED_UPLOAD_EXTENSIONS),
+            validate_upload_size,
+        ],
+    )
     type = models.CharField(
         "Document type", max_length=25, choices=DOCUMENT_TYPES, default='other'
     )
