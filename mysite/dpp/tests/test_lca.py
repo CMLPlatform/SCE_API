@@ -1,7 +1,8 @@
 """
 Tests for lca.py functions:
   setup_project, ensure_methods, make_transport_exchange, select_supply_chain,
-  convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca
+  convert_dpp_to_brightway, convert_brightway_to_background, lca_calculations,
+  create_supply_chain_lca
 
 All Brightway and Django ORM calls are mocked so the suite runs without
 a live database or Ecoinvent licence.
@@ -14,11 +15,15 @@ from django.test import SimpleTestCase, TestCase
 import datetime
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
-from ..models import CONVERSIONS, IndicatorSet, ProductModel, Transport
+from ..models import (
+    BackgroundProcess, CONVERSIONS, EnvExchange, IndicatorSet, ProductExchange,
+    ProductModel, Transport,
+)
 from dpp.lca import (
     EXCLUDED_METHODS, BIOSPHERE, ECOINVENT, BAFU_DB, BONSAI_DB,
     setup_project, ensure_methods, make_transport_exchange, select_supply_chain,
-    convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca,
+    convert_dpp_to_brightway, convert_brightway_to_background, lca_calculations,
+    create_supply_chain_lca,
 )
 
 # ---------------------------------------------------------------------------
@@ -364,6 +369,135 @@ class TestConvertDppToBrightway(TestCase):
 
         tech_excs = [e for e in result[("db", 1)]["exchanges"] if e["type"] == "technosphere"]
         assert len(tech_excs) == 0
+
+class TestConvertBrightwayToBackground(TestCase):
+    def make_activity(self, code, exchanges, name="activity", comment=""):
+        activity = MagicMock()
+        fields = {
+            "code": code,
+            "name": name,
+            "comment": comment,
+        }
+        activity.get.side_effect = lambda key, default=None: fields.get(key, default)
+        activity.exchanges.return_value = exchanges
+        activity.key = ("source_db", code)
+        return activity
+
+    def make_database(self, *activities):
+        database = MagicMock()
+        database.name = "source_db"
+        database.__iter__.return_value = iter(activities)
+        return database
+
+    def test_creates_individual_service_flows_from_production_exchanges(self):
+        production = {
+            "type": "production",
+            "name": "reference product",
+            "unit": "kg",
+            "amount": 2.5,
+        }
+        activity = self.make_activity(
+            "activity-1",
+            [
+                production,
+                {"type": "technosphere", "name": "input", "unit": "kg", "amount": 3},
+                {"type": "biosphere", "name": "emission", "unit": "kg", "amount": 4},
+            ],
+            name="market activity",
+            comment="Imported comment",
+        )
+        second_activity = self.make_activity(
+            "activity-2",
+            [{
+                "type": "production",
+                "name": "second product",
+                "unit": "MJ",
+                "amount": 1,
+            }],
+            name="second activity",
+        )
+        database = self.make_database(activity, second_activity)
+
+        with patch("dpp.lca.bwd.Database", return_value=database) as get_database:
+            processes = convert_brightway_to_background("source_db")
+
+        get_database.assert_called_once_with("source_db")
+        self.assertEqual(len(processes), 2)
+        process = processes[0]
+        self.assertEqual(process.name, "market activity")
+        self.assertEqual(process.description, "Imported comment")
+        self.assertEqual(process.amount, 2.5)
+        self.assertEqual(process.database, "source_db")
+        self.assertEqual(process.db_code, "activity-1")
+        self.assertIsNone(process.facility)
+
+        functional_flow = process.functional_flow.productmodel
+        self.assertEqual(functional_flow.name, "reference product")
+        self.assertEqual(functional_flow.unit, "kg")
+        second_flow = processes[1].functional_flow.productmodel
+        self.assertEqual(second_flow.name, "second product")
+        self.assertEqual(second_flow.unit, "MJ")
+        self.assertNotEqual(functional_flow.pk, second_flow.pk)
+        self.assertEqual(ProductModel.objects.count(), 2)
+        self.assertEqual(ProductExchange.objects.count(), 0)
+        self.assertEqual(EnvExchange.objects.count(), 0)
+        self.assertEqual(Transport.objects.count(), 0)
+
+    def test_refreshes_matching_process_and_functional_flow(self):
+        functional_flow = ProductModel.objects.create(
+            name="old product", unit="pcs"
+        )
+        process = BackgroundProcess.objects.create(
+            name="old activity",
+            description="old comment",
+            amount=1,
+            functional_flow=functional_flow,
+            database="source_db",
+            db_code="activity-1",
+        )
+        activity = self.make_activity(
+            "activity-1",
+            [{
+                "type": "production",
+                "product": "new product",
+                "unit": "MJ",
+                "amount": 4,
+            }],
+            name="new activity",
+            comment="new comment",
+        )
+
+        result = convert_brightway_to_background(self.make_database(activity))
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].pk, process.pk)
+        process.refresh_from_db()
+        functional_flow.refresh_from_db()
+        self.assertEqual(process.name, "new activity")
+        self.assertEqual(process.description, "new comment")
+        self.assertEqual(process.amount, 4)
+        self.assertEqual(functional_flow.name, "new product")
+        self.assertEqual(functional_flow.unit, "MJ")
+        self.assertEqual(BackgroundProcess.objects.count(), 1)
+        self.assertEqual(ProductModel.objects.count(), 1)
+
+    def test_requires_exactly_one_production_exchange(self):
+        for exchanges in (
+            [],
+            [
+                {"type": "production", "name": "first", "unit": "kg", "amount": 1},
+                {"type": "production", "name": "second", "unit": "kg", "amount": 1},
+            ],
+        ):
+            with self.subTest(exchange_count=len(exchanges)):
+                activity = self.make_activity("activity-1", exchanges)
+                with self.assertRaisesRegex(
+                    ValueError, "must have exactly one production exchange"
+                ):
+                    convert_brightway_to_background(self.make_database(activity))
+
+        self.assertEqual(BackgroundProcess.objects.count(), 0)
+        self.assertEqual(ProductModel.objects.count(), 0)
 
 class MockTransports:
     """

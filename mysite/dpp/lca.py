@@ -10,7 +10,7 @@ import requests
 from pathlib import Path
 import pandas as pd
 from django.conf import settings
-
+from django.db import transaction
 import bw2data as bwd
 import bw2io as bwi
 from sentier_brightway import import_db
@@ -409,10 +409,199 @@ def list_background_processes() -> dict:
             }
     return background
 
+# -----------------------------------------------------------------------
+# Background processes
+# -----------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
+def find_bg_activity(db, label, search_terms, exclusion_terms=None, locations=None):
+    """Return one background activity or issue a warning if selection is ambiguous."""
+    
+    matches = [
+        act for act in db
+        if label.lower() in act.get('name').lower()
+    ]
+
+    if not matches:
+        matches = list(db.search(" ".join(search_terms)))
+        matches = [activity for activity in matches if all(term in activity.get("name") for term in search_terms)]
+        if exclusion_terms is not None:
+            matches = [activity for activity in matches if all(term not in activity.get("name") for term in exclusion_terms)]
+
+    if locations is not None:
+        matches = [
+            activity for activity in matches
+            if all(region in activity.get("location") for region in locations)
+        ]
+        
+    if not matches:
+            
+        if locations is not None:
+            for location in locations:
+                location_matches = [
+                    activity for activity in matches
+                    if activity.get("location") == location
+                ]
+                
+                if len(location_matches) == 1:
+                    return location_matches[0]
+                if len(location_matches) > 1:
+                    # warnings.warn(
+                    #     f"Multiple activities match {label!r} in {location!r}: "
+                    #     f"{location_matches}"
+                    # )
+                    return location_matches
+
+    # If exactly one match remains, return it
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return matches
+    return None
+
+#TODO: store result in cached (@lru) or use precalculated impacts table
+def init_background_data(db_name: str):
+    """Find useful background activities in database db_name."""
+    db = bwd.Database(db_name)
+    input_flows = {
+        # Utilities
+        "electricity": find_bg_activity(
+            db, "market for electricity", ("market for electricity", "medium voltage"), locations=["RER"]
+        ),
+        "water": find_bg_activity(
+            db, "tap water", ("market for tap water"), ("treatment"), locations=["RER"]
+        ),
+        # CHEMICALS
+        "chemical_alkaline": find_bg_activity(
+            db, "sodium hydroxide, without water, in 50% solution state", ("sodium hydroxide", "50% solution state"), locations=["RER"]
+        ),
+        "acid_pickling": find_bg_activity(
+            db, "hydrochloric acid, without water, in 30% solution state", ("hydrochloric acid", "30% solution state", "production"), locations=["RER"]
+        ),
+        "nitric_acid": find_bg_activity(
+            db, "nitric acid, without water, in 50% solution state", ("nitric acid", "50% solution state", "production"), locations=["RER"]
+        ),
+        "hydrochloric_acid": find_bg_activity(
+            db, "hydrochloric acid, without water, in 30% solution state", ("hydrochloric acid", "30% solution state", "production"), locations=["RER"]
+        ),
+        # abrasive proxy: alumina grit (corundum), non-metallurgical grade
+        "abrasive": find_bg_activity(
+            db, "market for abrasive blasting, alumina, carbon steel substrate", ("aluminium oxide", "production"), locations=["RoW"]
+        ),
+        # grinding wheel proxy: silicon carbide (abrasive grain of wheel)
+        "grinding_wheel": find_bg_activity(
+            db, "grinding wheel", ("market for silicon carbide"), locations=["RER"]
+        ),
+        # polishing compound proxy: alumina polishing powder
+        "polishing_compound": find_bg_activity(
+            db, "aluminium oxide production", ("aluminium oxide", "production"), locations=["RER"]
+        ),
+        # coolant: metalworking fluid or lubricating oil (proxy)
+        "coolant": find_bg_activity(
+            db, "metal working fluid", ("market for lubricating oil"), locations=["RER"]
+        ),
+        # cutting tool material (kg): tungsten carbide powder proxy
+        "tool_material": find_bg_activity(db, "market for tungsten carbide powder", ("market", "tungsten carbide powder"), locations="GLO"),
+        # Waste treatment
+        "waste_treatment": find_bg_activity(
+            db, "waste steel landfill", ("treatment", "waste steel", "inert material landfill"), locations=["RER"]
+        ),
+        "waste_paint_treatment": find_bg_activity(
+            db, "waste paint incineration", ("treatment", "waste paint", "hazardous waste incineration", "with energy recovery"), locations=["RER"]
+        ),
+        "waste_spent_solvent_treatment": find_bg_activity(
+            db, "spent solvent incineration", ("treatment", "spent solvent mixture", "hazardous waste incineration"), locations=["RER"]
+        ),
+        "waste_spent_solvent_energy_recovery": find_bg_activity(
+            db, "spent solvent energy recovery", ("treatment", "spent solvent mixture", "hazardous waste incineration", "with energy recovery"), locations=["RER"]
+        ),
+    }
+    return input_flows
+
+def convert_brightway_to_background(database):
+    """Create/update one DPP background process for each Brightway activity."""
+    if isinstance(database, str):
+        database = bwd.Database(database)
+
+    database_name = database.name
+    processes = []
+    with transaction.atomic():
+        for activity in database:
+            activity_code = activity.key[1]
+            activity_name = activity.get("name")
+
+            products = [
+                exchange for exchange in activity.exchanges()
+                if exchange.get("type") == "production"
+            ]
+            if len(products) != 1:
+                raise ValueError(
+                    f"Activity {activity_name} must have exactly "
+                    f"one production exchange; found {len(products)}."
+                )
+
+            production = products[0]
+            product_name = activity_name + " service"
+            unit = production.get("unit")
+            amount = production.get("amount")
+            if not product_name or not unit or amount is None or not activity_name:
+                raise ValueError(
+                    f"Activity {activity.key} is missing required "
+                    "activity or production exchange data."
+                )
+
+            process = BackgroundProcess.objects.filter(
+                database=database_name, db_code=activity_code
+            ).first()
+            if process is None:
+                functional_flow = ProductModel.objects.create(
+                    name=product_name, unit=unit
+                )
+                process = BackgroundProcess(
+                    name=activity_name,
+                    functional_flow=functional_flow,
+                    database=database_name,
+                    db_code=activity_code,
+                )
+            else:
+                flow = process.functional_flow
+                functional_flow = getattr(flow, "productmodel", None)
+                if functional_flow is None:  # Create new
+                    functional_flow = ProductModel.objects.create(
+                        name=product_name, unit=unit
+                    )
+                    process.functional_flow = functional_flow
+                else:  # Update existing functional flow
+                    functional_flow.name = product_name
+                    functional_flow.unit = unit
+                    functional_flow.save(update_fields=["name", "unit"])
+
+            process.name = activity_name
+            process.description = activity.get("comment", "")
+            process.amount = amount
+            process.database = database_name
+            process.db_code = activity_code
+            process.save()
+            processes.append(process)
+    return processes
+
+def create_background_processes(act_data: dict):
+    """Write activities from dict to Brightway database
+    and to BackgroundProcess.
+    """
+    setup_project()
+    for db_name in {key[0] for key in act_data}:
+        db_data = {
+            key: value
+            for key, value in act_data.items()
+            if key[0] == db_name
+        }
+        bwd.Database(db_name).write(db_data)
+        convert_brightway_to_background(db_name)
+
+
+# -----------------------------------------------------------------------
 # Create DPP LCA and do LCA calculations
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 def convert_dpp_to_brightway(processes: list, db_name: str):
     """
@@ -541,7 +730,7 @@ def lca_calculations(activity, family: str = 'EF v3.1'):
         results.append((m[-2], lca.score, bwd.methods[m].get("unit")))
     return results
 
-def create_supply_chain_lca(product):
+def create_supply_chain_lca(product, lcia_family='EF v3.1'):
     """
     Create a SustainabilityEvaluation by doing LCA
     for 1 unit of `product`.
@@ -550,14 +739,13 @@ def create_supply_chain_lca(product):
     :type product: Flow
     """
     setup_project()
-    lcia_family = 'EF v3.1'
     method_set = ensure_methods(lcia_family)
     evaluation, created = SustainabilityEvaluation.objects.get_or_create(
         product=product,
         functional_amount=1,
         system_boundaries='Cradle to gate LCA',
         geographical_scope='c',
-        impact_assessment_method=lcia_family, # method_set,
+        impact_assessment_method=lcia_family,
         software_used='Brightway + Lasers4MaaS tool',
         allocation_method='',
     )

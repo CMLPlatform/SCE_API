@@ -1,11 +1,14 @@
 """To run this script, use `python manage.py runscript data_imports`
 """
+import pickle
 from pathlib import Path
 import pandas as pd
 from django.conf import settings
 # from django.contrib.auth.models import User
-from dpp.models import CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory
-from dpp.lca import biosphere_to_dpp_flows
+from dpp.models import (
+    CircularityIndicator, Instruction, ImpactIndicator, ImpactCategory, Material
+)
+import dpp.lca as lca
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,4 +41,20 @@ def run():
     socioecon, _ = ImpactCategory.objects.get_or_create(name="Socio-economic impact")
     socioecon_csv = settings.DATA_DIR / "socioecon_indicators.csv"
     csv_to_django(socioecon_csv, ImpactIndicator, relations={"impact_category": socioecon.pk})
-    biosphere_to_dpp_flows()
+    lca.biosphere_to_dpp_flows()
+
+    # Setup background database and relevant processes
+    lca.setup_project(background="BAFU")
+    lca.init_background_data(lca.BAFU_DB)
+    
+    #TODO: Create metals_data.csv and the two pickle files
+    metals_csv = settings.DATA_DIR / "metals_data.csv"
+    csv_to_django(metals_csv, Material)
+
+    # Create background for materials, consumables, electricity, pre-, post-processes
+    with open(settings.DATA_DIR / "consumables_data.pkl", "rb") as f:
+        background_data = pickle.load(f)
+        lca.create_background_processes(background_data)
+    with open(settings.DATA_DIR / "prepostprocess_data.pkl", "rb") as f:
+        prepost_data = pickle.load(f)
+        lca.create_background_processes(prepost_data)
