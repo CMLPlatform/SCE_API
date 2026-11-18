@@ -1,6 +1,34 @@
+import csv
+import json
+from functools import lru_cache
+
+from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ValidationError
 from .models import McdaSession  # for choices lists
+from dpp.models import Transport
+from api.serializers import CompanySerializer
+
+from mysite.utils import UncertainValue
+
+PROCESS_PATH = settings.DATA_DIR / "process_defaults.json"
+MATERIAL_PATH = settings.DATA_DIR / "material_data.csv"
+
+@lru_cache(maxsize=1)
+def load_process_defaults() -> dict:
+    with open(PROCESS_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+@lru_cache(maxsize=1)
+def load_material_choices() -> tuple[str, ...]:
+    with open(MATERIAL_PATH, encoding="utf-8", newline="") as f:
+        return tuple(row["material"] for row in csv.DictReader(f))
+
+PROCESS_NAMES = set(
+    process
+    for material in load_process_defaults().values()
+    for process in material
+)
 
 # Validation helpers
 
@@ -37,15 +65,35 @@ class RangeField(serializers.Field):
 
 
 # Serializers for input data (API requests)
+class FlowSerializer(serializers.Serializer):
+    name = serializers.ChoiceField(choices=load_material_choices())
+    transport_mode = serializers.ChoiceField(choices=Transport.VEHICLES, default='NA')
+    transport_km = serializers.IntegerField(min_value=1, max_value=40000)
 
-class ConsumableSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    flowRate = serializers.FloatField()
+class ConsumableSerializer(FlowSerializer):
+    flowRate = serializers.FloatField(min_value=0)
     unit = serializers.CharField()
 
-class MaterialSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    weight = serializers.FloatField()
+class MaterialSerializer(FlowSerializer):
+    weight = serializers.FloatField(min_value=0)
+
+class ProcessSerializer(serializers.Serializer):
+    name = serializers.ChoiceField(choices=PROCESS_NAMES)
+    time = RangeField()
+
+class ProcessListSerializer(serializers.ListSerializer):
+    child = ProcessSerializer()
+
+class SupplyChainRequestSerializer(serializers.Serializer):
+    weldLength = serializers.FloatField(min_value=0)
+    weldSpeed = serializers.FloatField(min_value=0)
+    country = serializers.CharField()
+    laserPowerkW = serializers.FloatField(min_value=0)
+    weldingStationPowerkW = serializers.FloatField(min_value=0)
+    materials = MaterialSerializer(many=True)
+    consumables = ConsumableSerializer(many=True)
+    preprocesses = ProcessListSerializer(required=False, default=list)
+    postprocesses = ProcessListSerializer(required=False, default=list)
 
 class KpiSerializer(serializers.Serializer):
     name = serializers.CharField()
@@ -131,6 +179,9 @@ class WeldStationSerializer(ExperimentSerializer):
     materials = MaterialSerializer(many=True)
     productivity = KpiSerializer(many=True)
     capex = serializers.IntegerField(min_value=1, required=False)
+    manufacturer = CompanySerializer()
+    preprocesses = ProcessListSerializer(required=False, default=list)
+    postprocesses = ProcessListSerializer(required=False, default=list)
 
     def validate_recyclability(self, value):
         """Recyclability must be 0<=R<=1 or a qualitative indicator."""
@@ -352,7 +403,7 @@ class McdaRequestSerializer(serializers.Serializer):
                     "Hierarchical weighting requires both 'groups' and 'group_weights'"
                 )
         # Each group must have a weight; they must sum to 1
-        if data["group_weights"]:
+        if data.get("group_weights"):
             missing = set(data["groups"].keys()) - set(data["group_weights"].keys())
             if missing:
                 raise ValidationError(
@@ -363,15 +414,20 @@ class McdaRequestSerializer(serializers.Serializer):
                 raise ValidationError(
                     f"Sum of group weights should be 1, it is {total}"
                 )
-        # Check that thresholds matches the method
-        # promethee => tuples; promethee_like => float
-        if data["method"] == McdaSession.Method.PROMETHEE and data["thresholds"]:
-            for th in data["thresholds"].values():
-                if not isinstance(th, (tuple, list)) or len(th) != 2:
+        # Check the input threshold shape before field validation normalizes it.
+        if (
+            data["method"] == McdaSession.Method.PROMETHEE
+            and data.get("thresholds")
+        ):
+            for threshold in self.initial_data.get("thresholds", {}).values():
+                if not isinstance(threshold, (tuple, list)) or len(threshold) != 2:
                     raise ValidationError(
-                        f"Expected threshold as (q, p), received: {th}"
+                        f"Expected threshold as (q, p), received: {threshold}"
                     )
-        elif data["method"] == McdaSession.Method.PROMETHEE_LIKE and data["thresholds"]:
+        elif (
+            data["method"] == McdaSession.Method.PROMETHEE_LIKE
+            and data.get("thresholds")
+        ):
             for th in data["thresholds"].values():
                 if th.is_uncertain:
                     raise ValidationError(

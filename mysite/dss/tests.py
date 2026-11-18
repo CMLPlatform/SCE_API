@@ -2,22 +2,56 @@ import logging
 import pytest
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 
-from .models import DecisionMatrix, Criterion
-from .mcda import McdaConfig, WeightConstraints, mcda
-from .serializers import WeldStationSerializer
+from dpp.models import (
+    Company,
+    Facility,
+    Process,
+    ProductExchange,
+    ProductModel,
+    ProductionLine,
+    Transport,
+)
+from .models import CritGroup, DecisionMatrix, Criterion, McdaSession
+from .lca import build_supply_chain
+from .mcda import (
+    McdaConfig,
+    WeightConstraints,
+    has_uncertain_performances,
+    mcda,
+    sample_performance_matrix,
+    set_fixed_weights,
+)
+from .serializers import (
+    McdaRequestSerializer,
+    SupplyChainRequestSerializer,
+    WeldStationSerializer,
+)
 from .views import lookup, calculate_experiment_kpis, calculate_kpis
+from mysite.utils import UncertainValue
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 logging.getLogger('django.db.backends').setLevel(logging.WARNING)
+
+
+def uncertain_mapping(values):
+    return {
+        key: value if isinstance(value, UncertainValue)
+        else UncertainValue(*value) if isinstance(value, (tuple, list))
+        else UncertainValue(value)
+        for key, value in values.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +142,87 @@ class TestLookup:
 # ---------------------------------------------------------------------------
 class TestSerializers(TestCase):
 
+    def test_supply_chain_process_lists(self):
+        serializer = SupplyChainRequestSerializer(data={
+            "material": "steel",
+            "preprocesses": [{"name": "alkaline_degreasing", "time": 12.5}],
+            "postprocesses": [{"name": "pickling", "time": 8}],
+        })
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["preprocesses"],
+            [{"name": "alkaline_degreasing", "time": UncertainValue(12.5)}],
+        )
+        self.assertEqual(
+            serializer.validated_data["postprocesses"],
+            [{"name": "pickling", "time": UncertainValue(8)}],
+        )
+
+    def test_supply_chain_process_fields_are_validated(self):
+        for process in ({"name": "unknown_process", "time": 12},
+                        {"name": "pickling", "time": [30, 10]},
+                        {"name": "pickling", "time": -1}):
+            with self.subTest(process=process):
+                serializer = SupplyChainRequestSerializer(data={
+                    "material": "steel",
+                    "preprocesses": [process],
+                })
+                self.assertFalse(serializer.is_valid())
+
+    def test_supply_chain_process_time_accepts_ranges(self):
+        serializer = SupplyChainRequestSerializer(data={
+            "material": "steel",
+            "preprocesses": [{"name": "pickling", "time": [10, 30]}],
+        })
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["preprocesses"][0]["time"],
+            UncertainValue(10, 30),
+        )
+
+    def test_supply_chain_process_lists_default_to_empty(self):
+        serializer = SupplyChainRequestSerializer(data={"material": "steel"})
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data["preprocesses"], [])
+        self.assertEqual(serializer.validated_data["postprocesses"], [])
+
+    def test_decision_matrix_scalars_are_normalized_to_uncertain_values(self):
+        serializer = McdaRequestSerializer(data={
+            "decision_matrix": {"a": {"criterion": 1}, "b": {"criterion": [2, 4]}},
+            "directions": {"criterion": "max"},
+            "scenario": "deterministic",
+            "method": "promethee_like",
+            "weight_mode": "equal",
+            "groups": {"group": ["criterion"]},
+            "group_weights": {"group": 1},
+        })
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(
+            serializer.validated_data["decision_matrix"]["a"]["criterion"],
+            UncertainValue(1),
+        )
+        self.assertEqual(
+            serializer.validated_data["decision_matrix"]["b"]["criterion"],
+            UncertainValue(2, 4),
+        )
+
+    def test_promethee_requires_pair_thresholds(self):
+        serializer = McdaRequestSerializer(data={
+            "decision_matrix": {"a": {"criterion": 1}, "b": {"criterion": 2}},
+            "directions": {"criterion": "max"},
+            "scenario": "deterministic",
+            "method": "promethee",
+            "weight_mode": "equal",
+            "groups": {"group": ["criterion"]},
+            "thresholds": {"criterion": 1},
+        })
+
+        self.assertFalse(serializer.is_valid())
+
     def test_weld_station_serializer(self):
         input = {
             "experimentId": 402,
@@ -121,27 +236,255 @@ class TestSerializers(TestCase):
             "scrapRate": 0.05,
             "recyclability": "high",
             "consumables": [
-                {"name": "gold", "flowRate": 5.5, "unit": "g/h"},
-                {"name": "oil", "flowRate": 1, "unit": "ml/min"},
+                {"name": "Steel wire", "flowRate": 5.5, "unit": "g/h", "transport_km": 250},
+                {"name": "Argon", "flowRate": 1, "unit": "l/min", "transport_km": 100},
             ],
             "qualityParameters": [
                 {"name": "cost", "value": 200, "target": "min"},
                 {"name": "depth", "value": 5, "target": 3.9},
             ],
-            "materials": [{"name": "steel", "weight": 3}],
+            "materials": [{"name": "Steel sheets", "weight": 3, "transport_km": 200}],
             "productivity": [
                 {"name": "expertise", "value": "medium", "target": "max"},
             ],
+            "manufacturer": {
+                "name": "Example Manufacturer GmbH", "country": "DE",
+                "website": "https://www.example.com", "vat_number": "DE812345678",
+                "legal_documents": {},
+            },
         }
         # Create expected output based on input data
         expected_output = input.copy()
         for i, kpi in enumerate(expected_output["qualityParameters"]):
             expected_output["qualityParameters"][i]["value"] = float(kpi["value"])
+        for key in ["consumables", "materials"]:
+            for i in range(len(expected_output[key])):
+                expected_output[key][i]["transport_mode"] = "NA"
         
         result = WeldStationSerializer(data=input)
         result.is_valid(raise_exception=True)
         for key in expected_output:
             self.assertEqual(expected_output[key], result.validated_data[key], key)
+
+
+class TestMcdaUncertainValues(TestCase):
+
+    def test_performance_sampling_uses_uncertain_value_bounds(self):
+        df = pd.DataFrame(
+            {"criterion": [UncertainValue(2), UncertainValue(4, 8)]},
+            index=["certain", "uncertain"],
+        )
+
+        self.assertTrue(has_uncertain_performances(df))
+        sampled = sample_performance_matrix(df, np.random.default_rng(42))
+        self.assertEqual(sampled.loc["certain", "criterion"], 2)
+        self.assertGreaterEqual(sampled.loc["uncertain", "criterion"], 4)
+        self.assertLessEqual(sampled.loc["uncertain", "criterion"], 8)
+
+    def test_fixed_weights_use_uncertain_value_means(self):
+        config = McdaConfig(
+            df=pd.DataFrame({"first": [1], "second": [2]}),
+            directions={"first": "max", "second": "max"},
+            scenario="deterministic",
+            method="simple",
+            weight_mode="flat",
+            criteria=["first", "second"],
+            constraints=WeightConstraints(
+                criterion={
+                    "first": UncertainValue(1, 3),
+                    "second": UncertainValue(1),
+                }
+            ),
+        )
+
+        set_fixed_weights(config)
+
+        self.assertAlmostEqual(config._weights["first"], 2 / 3)
+        self.assertAlmostEqual(config._weights["second"], 1 / 3)
+
+    def test_certain_performances_do_not_activate_uncertainty(self):
+        df = pd.DataFrame(
+            {"criterion": [UncertainValue(4), UncertainValue(8)]},
+            index=["first", "second"],
+        )
+
+        self.assertFalse(has_uncertain_performances(df))
+
+    def test_session_config_converts_json_values_to_uncertain_values(self):
+        session = McdaSession.objects.create(
+            scenario="bounded",
+            method="promethee",
+            weight_mode="hierarchical",
+            veto_type="no",
+            group_weights={"group": [0.2, 0.8]},
+            local_weights={"group": {"criterion": 1.0}},
+            thresholds={"criterion": [0.0, 1.0]},
+            n_samples=10,
+        )
+        group = CritGroup.objects.create(session=session, name="group")
+        Criterion.objects.create(
+            session=session,
+            name="criterion",
+            group=group,
+            direction="max",
+        )
+        DecisionMatrix.objects.create(
+            session=session,
+            name="first",
+            values={"criterion": 2.0},
+        )
+        DecisionMatrix.objects.create(
+            session=session,
+            name="second",
+            values={"criterion": [3.0, 5.0]},
+        )
+
+        config = session.build_config()
+
+        self.assertEqual(config.df.loc["first", "criterion"], UncertainValue(2.0))
+        self.assertEqual(config.df.loc["second", "criterion"], UncertainValue(3.0, 5.0))
+        assert(config.constraints.group["group"] == UncertainValue(0.2, 0.8))
+        self.assertEqual(
+            config.constraints.local["group"]["criterion"], UncertainValue(1.0)
+        )
+        self.assertEqual(config.thresholds["criterion"], UncertainValue(0.0, 1.0))
+
+
+class TestBuildSupplyChain(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="supply-chain-test")
+        self.input = {
+            "experimentId": 402,
+            "weldLength": 600,
+            "weldSpeed": 3,
+            "country": "NL",
+            "laserPowerkW": 5,
+            "weldingStationPowerkW": 1,
+            "maintenanceCosts": 100,
+            "cycleTime": 250,
+            "scrapRate": 0.1,
+            "recyclability": "high",
+            "consumables": [
+                {
+                    "name": "Argon",
+                    "flowRate": 10,
+                    "unit": "L/min",
+                    "transport_km": 100,
+                },
+            ],
+            "qualityParameters": [
+                {"name": "strength", "value": 10, "target": "max"},
+            ],
+            "materials": [
+                {
+                    "name": "Steel sheets",
+                    "weight": 4,
+                    "transport_km": 200,
+                },
+            ],
+            "productivity": [
+                {"name": "efficiency", "value": "high", "target": "max"},
+            ],
+            "manufacturer": {
+                "name": "Example Manufacturer GmbH",
+                "country": "DE",
+                "address": "Industrieweg 1",
+                "website": "https://example.com",
+                "vat_number": "DE812345678",
+                "legal_documents": {},
+            },
+        }
+
+    def validated_data(self, **overrides):
+        payload = {**self.input, **overrides}
+        serializer = WeldStationSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        return serializer.validated_data
+
+    def test_builds_weld_station_line_and_input_exchanges(self):
+        chain_id = build_supply_chain(self.validated_data(), self.user)
+
+        line = ProductionLine.objects.get(pk=chain_id)
+        self.assertEqual(line.created_by, self.user)
+        self.assertEqual(line.facility.operator.name, "Example Manufacturer GmbH")
+        self.assertEqual(line.facility.country, "NL")
+        self.assertEqual(line.final_product.model.unit, "pcs")
+
+        process = Process.objects.get(production_line=line)
+        self.assertEqual(process.functional_flow, line.final_product)
+        self.assertAlmostEqual(process.amount, 0.9)
+        exchanges = {
+            (exchange.product.model.name, exchange.type): exchange
+            for exchange in ProductExchange.objects.filter(process=process)
+        }
+        self.assertEqual(exchanges[("Steel sheets", "prod")].amount, 4)
+        self.assertEqual(exchanges[("Argon", "cons")].product.model.unit, "m3")
+        self.assertAlmostEqual(exchanges[("Argon", "cons")].amount, 1 / 30)
+        self.assertAlmostEqual(
+            exchanges[("Electricity, low voltage, grid mix NL", "ener")].amount,
+            (200 * 5 + 250) / 3600,
+        )
+
+        transports = {
+            transport.product.model.name: transport
+            for transport in Transport.objects.filter(production_line=line)
+        }
+        self.assertEqual(transports["Steel sheets"].distance, 200)
+        self.assertEqual(transports["Argon"].distance, 100)
+
+    def test_process_service_exchanges_preserve_time_ranges(self):
+        validated = self.validated_data(
+            preprocesses=[
+                {"name": "alkaline_degreasing", "time": [10, 20]},
+            ],
+            postprocesses=[
+                {"name": "pickling", "time": 5},
+            ],
+        )
+
+        line_id = build_supply_chain(validated, self.user)
+        process = Process.objects.get(production_line_id=line_id)
+        exchanges = {
+            exchange.product.model.name: exchange
+            for exchange in ProductExchange.objects.filter(
+                process=process, type="serv"
+            )
+        }
+
+        ranged = exchanges["alkaline_degreasing service"]
+        self.assertEqual(ranged.amount, 15)
+        self.assertEqual(ranged.uncertainty_type, "interval")
+        self.assertEqual(ranged.minimum, 10)
+        self.assertEqual(ranged.maximum, 20)
+        certain = exchanges["pickling service"]
+        self.assertEqual(certain.amount, 5)
+        self.assertEqual(certain.uncertainty_type, "none")
+        self.assertIsNone(certain.minimum)
+        self.assertIsNone(certain.maximum)
+
+    def test_creation_rolls_back_when_an_exchange_fails(self):
+        with patch(
+            "dss.lca.ProductExchange.save",
+            side_effect=RuntimeError("exchange failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "exchange failed"):
+                build_supply_chain(self.validated_data(), self.user)
+
+        self.assertEqual(Company.objects.count(), 0)
+        self.assertEqual(Facility.objects.count(), 0)
+        self.assertEqual(ProductModel.objects.count(), 0)
+        self.assertEqual(ProductionLine.objects.count(), 0)
+
+    def test_supply_chain_requires_an_authenticated_owner(self):
+        with self.assertRaises(PermissionDenied):
+            build_supply_chain(self.validated_data())
+
+    def test_weld_station_endpoint_rejects_anonymous_requests(self):
+        response = APIClient().post(
+            "/dss/welding-station/", {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +673,7 @@ class McdaTest(TestCase):
                 "Ionising radiation (kBq U-235 eq)",
             ],
         )
+        df = df.map(UncertainValue)
 
         # ============================================================
         # CRITERION ORIENTATION
@@ -588,6 +932,14 @@ class McdaTest(TestCase):
             "Operator": (0.05,0.25),
         }
 
+        group_bounds = uncertain_mapping(group_bounds)
+        local_bounds = {
+            group: uncertain_mapping(bounds)
+            for group, bounds in local_bounds.items()
+        }
+        criterion_bounds = uncertain_mapping(criterion_bounds)
+        thresholds = uncertain_mapping(thresholds)
+
         constraints = WeightConstraints(
             group_bounds, local_bounds, criterion_bounds,
             group_order_constraints, local_order_constraints,
@@ -736,8 +1088,8 @@ class Explanations():
 
     The uncertainty on the performances is not selected manually.
     It is detected automatically by checking whether the decision
-    matrix contains interval values, represented as tuples or lists:
-        (lower_bound, upper_bound)
+    matrix contains interval values, represented as UncertainValue
+    instances with lower and upper bounds.
 
     Therefore, the final analysis type is determined by combining:
     - scenario

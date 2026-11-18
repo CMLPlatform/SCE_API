@@ -9,11 +9,12 @@ from django.views.generic import DetailView
 from rest_framework.views import APIView, View
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 from .serializers import (
     ExperimentSerializer, ExperimentComparisonSerializer,
     WeldStationSerializer, WeldStationComparisonSerializer,
-    McdaRequestSerializer,
+    McdaRequestSerializer, SupplyChainRequestSerializer,
 )
 from .mcda import McdaConfig, WeightConstraints, mcda, ranking_to_pairwise
 from .models import McdaSession, DecisionMatrix, Criterion, CritGroup, Results
@@ -170,7 +171,7 @@ def calculate_experiment_kpis(exp: dict, user_type: str) -> dict:
             raise RuntimeError(f"Cannot process unit '{time_unit}'")
         elif cons["name"] not in material_data.index:
             raise RuntimeError(f"Material '{cons["name"]}' not recognised.")
-        amount = MULTIPLIERS[qnt_unit] * cons["flowRate"] * \
+        amount = cons["flowRate"] * MULTIPLIERS[qnt_unit] * \
                 processing_time * MULTIPLIERS[time_unit]
         consumables_use[cons["name"]] = amount
 
@@ -401,12 +402,21 @@ class ExperimentKpiView(APIView):
 
 class WeldStationKpiView(APIView):
     """Receives a weld station, returns a KPI set."""
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
+        # Import here to avoid circular imports
+        from .lca import build_supply_chain
+
         serializer = WeldStationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        kpi_dict = calculate_experiment_kpis(serializer.validated_data, "kam")
-        return Response(kpi_dict, status=status.HTTP_200_OK)
+        results = {
+            "kpis": calculate_experiment_kpis(data, "kam"),
+            "chain_id": build_supply_chain(data, request.user),
+        }
+        return Response(results, status=status.HTTP_201_CREATED)
 
 class ExperimentComparisonInitView(APIView):
     """Receives an experiment list, redirects to MCDA wizard."""
@@ -640,3 +650,16 @@ class McdaCalculationView(APIView):
             return Response({"Error": e}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(self.serialize_results(result), status=status.HTTP_200_OK)
+
+
+class SupplyChainCreateView(APIView):
+    """Receives process names and parameters, returns a supply chain ID"""
+    def post(self, request):
+        from .lca import build_supply_chain
+
+        serializer = SupplyChainRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data  # contains UncertainValue objects
+
+        chain_id = build_supply_chain(data, request.user)
+        return Response({"chain_id": chain_id}, status=status.HTTP_201_CREATED)
