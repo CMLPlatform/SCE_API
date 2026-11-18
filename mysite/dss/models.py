@@ -1,8 +1,15 @@
 from django.db import models
 from .mcda import McdaConfig, WeightConstraints, ranking_to_pairwise
 from django.core.exceptions import ValidationError
+from mysite.utils import UncertainValue
 import pandas as pd
 
+def _as_uncertain_values(values: dict):
+    return {
+        key: UncertainValue(*value) if isinstance(value, (list, tuple))
+        else UncertainValue(value)
+        for key, value in values.items()
+    } if values is not None else None
 
 def validate_direction(value):
     try:
@@ -114,7 +121,12 @@ class McdaSession(models.Model):
         criterion_names.sort()
 
         matrix = {
-            alt.name: [alt.values[c] for c in criterion_names]
+            alt.name: [
+                UncertainValue(*alt.values[c])
+                if isinstance(alt.values[c], list)
+                else UncertainValue(alt.values[c])
+                for c in criterion_names
+            ]
             for alt in self.alternatives.all()
         }
         groups = {
@@ -123,9 +135,12 @@ class McdaSession(models.Model):
         }
 
         constraints = WeightConstraints(
-            group       = self.group_weights,
-            local       = self.local_weights,
-            criterion   = self.criterion_weights,
+            group       = _as_uncertain_values(self.group_weights),
+            local       = {
+                group: _as_uncertain_values(values)
+                for group, values in self.local_weights.items()
+            } if self.local_weights is not None else None,
+            criterion   = _as_uncertain_values(self.criterion_weights),
             group_order = ranking_to_pairwise(self.group_ranks),
             criterion_order  = ranking_to_pairwise(self.crit_ranks),
         )
@@ -144,7 +159,7 @@ class McdaSession(models.Model):
             criteria        = criterion_names,
             weight_mode     = self.weight_mode,
             groups          = groups,
-            thresholds      = self.thresholds,
+            thresholds      = _as_uncertain_values(self.thresholds),
             veto_type       = self.veto_type,
             veto_thresholds = self.veto_thresholds,
             penalty_factor  = self.penalty_factor,

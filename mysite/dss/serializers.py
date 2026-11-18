@@ -6,28 +6,35 @@ from .models import McdaSession  # for choices lists
 
 QUAL_INDICATORS = {'high', 'medium', 'low'}
 
-def _validate_range(v, positive: bool=False) -> float | tuple:
+def _validate_uncertain(v, positive: bool=False) -> UncertainValue:
     """
     Positive float or [lo, hi] with 0 ≤ lo ≤ hi.
     Used for measurements, weights, thresholds.
     """
     if isinstance(v, (int, float)) and not isinstance(v, bool):
-        result = float(v)
+        result = UncertainValue(v)
     elif isinstance(v, (list, tuple)) and len(v) == 2:
-        result = (float(v[0]), float(v[1]))
+        result = UncertainValue(float(v[0]), float(v[1]))
     else:
         raise ValueError("Must be a number or a (min, max) pair.")
 
-    if isinstance(result, float):
-        if positive and result < 0:
-            raise ValueError("Value must be positive.")
-    else:
-        lo, hi = result
-        if positive and lo < 0:
-            raise ValueError(f"First value {lo} must be positive.")
-        if lo > hi:
-            raise ValueError(f"First {lo} must be ≤ second value {hi}.")
+    if positive and result.min < 0:
+        raise ValueError("Value(s) must be positive.")
+    if result.is_uncertain and result.min > result.max:
+            raise ValueError(f"First must be ≤ second value: {result}.")
     return result
+
+class RangeField(serializers.Field):
+    """Field accepting both a single number and a range (min, max)"""
+    def to_internal_value(self, value):
+        try:
+            return _validate_uncertain(value, positive=True)
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+    def to_representation(self, value: UncertainValue):
+        return value
+
 
 # Serializers for input data (API requests)
 
@@ -72,11 +79,11 @@ class KpiSerializer(serializers.Serializer):
 
 class ExperimentSerializer(serializers.Serializer):
     experimentId = serializers.IntegerField()
-    weldLength = serializers.FloatField()
-    weldSpeed = serializers.FloatField()
+    weldLength = serializers.FloatField(min_value=0)
+    weldSpeed = serializers.FloatField(min_value=0)
     country = serializers.CharField()
-    laserPowerkW = serializers.FloatField()
-    weldingStationPowerkW = serializers.FloatField()
+    laserPowerkW = serializers.FloatField(min_value=0)
+    weldingStationPowerkW = serializers.FloatField(min_value=0)
     nOperators = serializers.IntegerField(default=3)
     consumables = ConsumableSerializer(many=True)
     qualityParameters = KpiSerializer(many=True)
@@ -117,7 +124,7 @@ class ExperimentComparisonSerializer(serializers.ListSerializer):
         return data
 
 class WeldStationSerializer(ExperimentSerializer):
-    maintenanceCosts = serializers.FloatField()
+    maintenanceCosts = serializers.FloatField(min_value=0)
     cycleTime = serializers.FloatField(min_value=0.1)
     scrapRate = serializers.FloatField(min_value=0, max_value=0.99)
     recyclability = serializers.CharField()
@@ -185,7 +192,7 @@ class McdaRequestSerializer(serializers.Serializer):
                 )
             for crit, v in criteria.items():
                 try:
-                    value[alt][crit] = _validate_range(v)
+                    value[alt][crit] = _validate_uncertain(v)
                 except (ValueError, TypeError) as e:
                     raise ValidationError(f"['{alt}']['{crit}']: {e}")
         return value
@@ -218,7 +225,7 @@ class McdaRequestSerializer(serializers.Serializer):
     def validate_group_weights(self, value):
         for group, v in value.items():
             try:
-                value[group] = _validate_range(v, True)
+                value[group] = _validate_uncertain(v, True)
             except (ValueError, TypeError) as e:
                 raise ValidationError(f"['{group}']: {e}")
         return value
@@ -231,7 +238,7 @@ class McdaRequestSerializer(serializers.Serializer):
                 )
             for crit, v in criteria.items():
                 try:
-                    value[group][crit] = _validate_range(v, True)
+                    value[group][crit] = _validate_uncertain(v, True)
                 except (ValueError, TypeError) as e:
                     raise ValidationError(f"['{group}']['{crit}']: {e}")
         return value
@@ -239,7 +246,7 @@ class McdaRequestSerializer(serializers.Serializer):
     def validate_crit_weights(self, value):
         for crit, v in value.items():
             try:
-                value[crit] = _validate_range(v, True)
+                value[crit] = _validate_uncertain(v, True)
             except (ValueError, TypeError) as e:
                 raise ValidationError(f"['{crit}']: {e}")
         return value
@@ -247,7 +254,7 @@ class McdaRequestSerializer(serializers.Serializer):
     def validate_thresholds(self, value):
         for crit, v in value.items():
             try:
-                value[crit] = _validate_range(v, True)
+                value[crit] = _validate_uncertain(v, True)
             except (ValueError, TypeError) as e:
                 raise ValidationError(f"['{crit}']: {e}")
         return value
@@ -351,7 +358,7 @@ class McdaRequestSerializer(serializers.Serializer):
                 raise ValidationError(
                     f"Criteria missing from grouped_weights: {missing}"
                 )
-            total = sum(data["group_weights"].values())
+            total = sum(weight.mean for weight in data["group_weights"].values())
             if abs(1 - total) > 1e-6:
                 raise ValidationError(
                     f"Sum of group weights should be 1, it is {total}"
@@ -366,7 +373,7 @@ class McdaRequestSerializer(serializers.Serializer):
                     )
         elif data["method"] == McdaSession.Method.PROMETHEE_LIKE and data["thresholds"]:
             for th in data["thresholds"].values():
-                if not isinstance(th, (float, int)):
+                if th.is_uncertain:
                     raise ValidationError(
                         f"Expected threshold as number, received: {th}"
                     )

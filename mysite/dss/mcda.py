@@ -7,9 +7,10 @@ import pandas as pd
 from typing import Literal, Optional
 
 from . import plot
+from mysite.utils import UncertainValue
 
 # Aliases for reused data structures
-RangeDict = dict[str, float | tuple[float, float]]
+RangeDict = dict[str, UncertainValue]
 Bounds = dict[str, float]
 OrderConstraint = list[tuple[str, str, float]]
 
@@ -18,7 +19,7 @@ class WeightConstraints:
     """
     Class for storing weights and constraints.
     Each criterion and group can have a weight.
-    Weight can be a single value or a range.
+    Weights and their bounds are stored as UncertainValue instances.
     The ordering of groups or criteria can also be specified.
     """
     group: Optional[RangeDict] = None
@@ -65,31 +66,21 @@ class McdaConfig:
 # ============================================================
 
 def has_uncertain_performances(df):
-    """
-    Returns True if at least one cell contains
-    an interval instead of a deterministic value.
-    """
-    for col in df.columns:
-        for value in df[col]:
-            if isinstance(value, (tuple, list)):
-                return True
-    return False
+    """Returns True if at least one cell contains an uncertain value."""
+    return any(value.is_uncertain for value in df.to_numpy().flat)
 
 def sample_performance_matrix(df, rng):
     """
-    This function generates one sampled decision matrix.
-    If a performance value is deterministic, it is left unchanged.
-    If a performance value is an interval (lower, upper)
-    then one value is sampled uniformly inside that interval:
-        x ~ Uniform(lower, upper)
+    Generate one decision matrix sample from uncertain performance values.
     """
     sampled_df = df.copy()
     for col in sampled_df.columns:
-        for alt in sampled_df.index:
-            value = sampled_df.loc[alt, col]
-            if isinstance(value, (tuple, list)):
-                lower, upper = value
-                sampled_df.loc[alt, col] = rng.uniform(lower, upper)
+        sampled_df[col] = [
+            rng.uniform(value.min, value.max)
+            if value.is_uncertain
+            else value.min
+            for value in sampled_df[col]
+        ]
     return sampled_df
 
 # ============================================================
@@ -111,6 +102,8 @@ def preference_difference(x_a: float, x_b: float, direction: str) -> float:
     For target criteria:
         closer to target is better, so difference = |x_b - t| - |x_a - t|
     """
+    x_a = float(x_a)
+    x_b = float(x_b)
     try:
         target = float(direction)
         return abs(x_b - target) - abs(x_a - target)
@@ -188,14 +181,6 @@ def veto_is_triggered(
     return False
 
 
-def mean(value: float|int|tuple|list):
-    """If value is an iterable, return the average of all values."""
-    try:
-        return sum(value) / len(value)
-    except (ValueError, TypeError):
-        return value
-
-
 def set_fixed_weights(config: McdaConfig):
     """
     The dictionary `weights` contains the final weight assigned to
@@ -227,13 +212,13 @@ def set_fixed_weights(config: McdaConfig):
         weights = {c: 1 / len(config.criteria) for c in config.criteria}
 
     elif config.weight_mode == "flat":
-        total = sum([mean(wt) for wt in config.constraints.criterion.values()])
+        total = sum(wt.mean for wt in config.constraints.criterion.values())
         for c, wt in config.constraints.criterion.items():
-            weights[c] = mean(wt) / total
+            weights[c] = wt.mean / total
 
     elif config.weight_mode == "group":
         for g, crits in config.groups.items():
-            wg = mean(config.constraints.group[g])
+            wg = config.constraints.group[g].mean
             for c in crits:
                 weights[c] = wg / len(crits)
 
@@ -241,13 +226,13 @@ def set_fixed_weights(config: McdaConfig):
         for g, crits in config.groups.items():
             Wg = config.constraints.group[g]
             total_local = sum(
-                [ mean(v) for v in config.constraints.local[g].values() ]
+                v.mean for v in config.constraints.local[g].values()
             )
             for c in crits:
                 if c not in config.criteria:
                     continue
                 w_local = config.constraints.local[g][c]
-                weights[c] = mean(Wg) * mean(w_local) / total_local
+                weights[c] = Wg.mean * w_local.mean / total_local
 
     config._weights = weights
 
@@ -416,15 +401,17 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     active = WeightConstraints()
 
     if config.scenario == "random":
-        active.group = {g: (0.0, 1.0) for g in groups}
+        active.group = {g: UncertainValue(0.0, 1.0) for g in groups}
         active.group_order = []
 
         active.local = {
-            g: {c: (0.0, 1.0) for c in crits}
+            g: {c: UncertainValue(0.0, 1.0) for c in crits}
             for g, crits in groups.items()
         }
         active.local_order = {g: [] for g in groups}
-        active.criterion = {c: (0.0, 1.0) for c in config.criteria}
+        active.criterion = {
+            c: UncertainValue(0.0, 1.0) for c in config.criteria
+        }
 
     elif config.scenario == "bounded":
         active = config.constraints
@@ -432,11 +419,11 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
         active.local_order = {g: [] for g in groups}
 
     elif config.scenario == "ordered":
-        active.group = {g: (0.0, 1.0) for g in groups}
+        active.group = {g: UncertainValue(0.0, 1.0) for g in groups}
         active.group_order = config.constraints.group_order
 
         active.local = {
-            g: {c: (0.0, 1.0) for c in crits}
+            g: {c: UncertainValue(0.0, 1.0) for c in crits}
             for g, crits in groups.items()
         }
         active.local_order = config.constraints.local_order
@@ -502,7 +489,7 @@ def sample_weights_dirichlet_constrained(
 
     idx = {x: i for i, x in enumerate(bounds_dict.keys())}
     bounds_arr = np.array(
-        [v if isinstance(v, (tuple, list)) else (v, v) for v in bounds_dict.values()],
+        [(value.min, value.max) for value in bounds_dict.values()],
         dtype=float
     )
     alpha_vec = np.full(len(idx), alpha, dtype=float)
@@ -788,18 +775,16 @@ def promethee_nfs(config: McdaConfig, decision_matrix: pd.DataFrame=None):
 
             for c in df.columns:
                 d = preference_difference(
-                    df.loc[a, c],
-                    df.loc[b, c],
-                    config.directions[c]
+                    df.loc[a, c], df.loc[b, c], config.directions[c]
                 )
 
                 if method == "simple":
                     pref = int(d > 0)
                 elif method == "promethee_like":
-                    q = config.thresholds[c]
+                    q = config.thresholds[c].mean
                     pref = promethee_like_preference(d, q)
                 elif method == "promethee":
-                    q, p = config.thresholds[c]
+                    q, p = tuple(config.thresholds[c])
                     pref = promethee_linear_preference(d, q, p)
                 else:
                     raise ValueError("method must be either 'promethee_like' or 'promethee'.")
@@ -856,12 +841,10 @@ def deterministic_promethee(config: McdaConfig):
                 if config.method == "simple":
                     pref = int(d > 0)
                 elif config.method == "promethee_like":
-                    q = config.thresholds[c]
+                    q = config.thresholds[c].mean
                     pref = promethee_like_preference(d, q)
                 elif config.method == "promethee":
-                    if isinstance(config.thresholds[c], (float, int)):
-                        print(config.method, c, config.thresholds[c])
-                    q, p = config.thresholds[c]
+                    q, p = tuple(config.thresholds[c])
                     pref = promethee_linear_preference(d, q, p)
                 else:
                     raise ValueError(
@@ -1118,7 +1101,7 @@ def run_smaa(config: McdaConfig, analysis_type="full_smaa"):
     ).sort_values(ascending=False)
 
     w_mean = pd.Series(
-        {c: mean(weight_samples[c]) for c in weight_samples}
+        {c: float(np.mean(weight_samples[c])) for c in weight_samples}
     ).sort_values(ascending=False)
 
     sim_rows = []
@@ -1165,16 +1148,11 @@ def mcda(config: McdaConfig):
     # UNCERTAINTY SETTINGS
     # ============================================================
     
-    # Detect whether the decision matrix contains interval-valued performances.
-    # If at least one cell is a tuple/list, performance uncertainty is activated.
+    # Detect whether the decision matrix contains uncertain performances.
+    # If at least one value is uncertain, performance uncertainty is activated.
     performance_uncertainty = has_uncertain_performances(config.df)
     config._use_veto = (config.veto_type!="no")
     config.criteria = list(config.directions.keys())
-
-    if config.method == "promethee_like":  # Try to fix if thresholds has tuples
-        for c, val in config.thresholds.items():
-            if not isinstance(val, (float, int)):
-                config.thresholds[c] = sum(val)/len(val)
 
     # Select the actual analysis type.
     if config.scenario == "deterministic":
