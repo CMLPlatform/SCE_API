@@ -11,7 +11,6 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django_countries.fields import CountryField
-from . import lca
 
 import logging
 logger = logging.getLogger(__name__)
@@ -765,6 +764,32 @@ class BackgroundProcess(ManufacturingProcess):
     tags = models.CharField(max_length=150, blank=True)
     type = models.CharField(max_length=50, blank=True)
 
+    def clean(self):
+        if self.facility:
+            super().clean()
+
+        # Check if database and db_code combination is unique
+        if self.database and self.db_code:
+            if BackgroundProcess.objects.filter(
+                database=self.database, db_code=self.db_code,
+            ).exclude(pk=self.pk).exists():
+                raise ValidationError({
+                    "db_code": f"Already exists in database {self.database}."
+                })
+
+        # Check if (database, name) is unique when db_code is None
+        elif self.database and not self.db_code:
+            if BackgroundProcess.objects.filter(
+                database=self.database, name=self.name
+            ).exclude(pk=self.pk).exists():
+                raise ValidationError({
+                    "name": f"Already exists in database {self.database}."
+                })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # This will call clean() and validate the model
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Average market process"
         verbose_name_plural = "Average market processes"
@@ -1347,6 +1372,8 @@ class Publisher(models.Model):
         Returns:
             bool: Whether an error was encountered or not
         """
+        from . import lca  # Import here to avoid circular imports
+        
         self.error_message = ""
         if self.status + 1 < start_step:
             start_step = self.status + 1

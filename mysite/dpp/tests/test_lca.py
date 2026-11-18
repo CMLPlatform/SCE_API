@@ -192,9 +192,9 @@ class TestEnsureMethods(TestCase):
         indicator_set = MagicMock()
         created_methods = []
 
-        with patch("dpp.models.IndicatorSet") as MockIS, \
-             patch("dpp.models.ImpactIndicator") as MockII, \
-             patch("dpp.models.ImpactCategory") as MockIC:
+        with patch("dpp.lca.IndicatorSet") as MockIS, \
+             patch("dpp.lca.ImpactIndicator") as MockII, \
+             patch("dpp.lca.ImpactCategory") as MockIC:
 
             MockIS.objects.get.side_effect = MockIS.DoesNotExist
             MockIS.DoesNotExist = Exception
@@ -294,8 +294,8 @@ class TestConvertDppToBrightway(TestCase):
 
         proc = make_process(pk=42, name="my proc", unit="kg")
 
-        with patch("dpp.models.ProductExchange") as MockPE, \
-             patch("dpp.models.EnvExchange") as MockEE:
+        with patch("dpp.lca.ProductExchange") as MockPE, \
+             patch("dpp.lca.EnvExchange") as MockEE:
 
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
@@ -308,8 +308,8 @@ class TestConvertDppToBrightway(TestCase):
         """The activity must always have a production exchange."""
         proc = make_process(pk=1, unit="kg", amount=2.0)
 
-        with patch("dpp.models.ProductExchange") as MockPE, \
-             patch("dpp.models.EnvExchange") as MockEE:
+        with patch("dpp.lca.ProductExchange") as MockPE, \
+             patch("dpp.lca.EnvExchange") as MockEE:
 
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
@@ -325,8 +325,8 @@ class TestConvertDppToBrightway(TestCase):
         """Processes with a mass-unit functional flow should be 'Raw material acquisition'."""
         proc = make_process(pk=1, unit="kg")
 
-        with patch("dpp.models.ProductExchange") as MockPE, \
-             patch("dpp.models.EnvExchange") as MockEE:
+        with patch("dpp.lca.ProductExchange") as MockPE, \
+             patch("dpp.lca.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -337,8 +337,8 @@ class TestConvertDppToBrightway(TestCase):
         """Processes with unit 'pcs' (not a resource unit) should be 'Manufacturing'."""
         proc = make_process(pk=1, unit="pcs")
 
-        with patch("dpp.models.ProductExchange") as MockPE, \
-             patch("dpp.models.EnvExchange") as MockEE:
+        with patch("dpp.lca.ProductExchange") as MockPE, \
+             patch("dpp.lca.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = []
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -356,8 +356,8 @@ class TestConvertDppToBrightway(TestCase):
         pe.product.model.unit = "kg"
         pe.product.manufacturing_info = external_proc   # not in [proc]
 
-        with patch("dpp.models.ProductExchange") as MockPE, \
-             patch("dpp.models.EnvExchange") as MockEE:
+        with patch("dpp.lca.ProductExchange") as MockPE, \
+             patch("dpp.lca.EnvExchange") as MockEE:
             MockPE.objects.filter.return_value = [pe]
             MockEE.objects.filter.return_value = []
             result = convert_dpp_to_brightway([proc], "db")
@@ -516,9 +516,9 @@ class TestCreateSupplyChainLca(TestCase):
              patch("dpp.lca.lca_calculations", return_value=[
                  (("EF v3.1", "climate change", "GWP100"), 2.0, "kg CO2 eq")
              ]), \
-             patch("dpp.models.SustainabilityEvaluation") as MockEval, \
-             patch("dpp.models.SustainabilityScore") as MockScore, \
-             patch("dpp.models.ImpactIndicator") as MockII:
+             patch("dpp.lca.SustainabilityEvaluation") as MockEval, \
+             patch("dpp.lca.SustainabilityScore") as MockScore, \
+             patch("dpp.lca.ImpactIndicator") as MockII:
 
             mock_em.return_value = MagicMock(name="method_set")
             MockEval.objects.get_or_create.return_value = (MagicMock(), True)
@@ -546,9 +546,9 @@ class TestCreateSupplyChainLca(TestCase):
              patch("dpp.lca.lca_calculations", return_value=[
                  (("EF v3.1", "climate change", "GWP100"), 2.0, "kg CO2 eq")
              ]), \
-             patch("dpp.models.SustainabilityEvaluation") as MockEval, \
-             patch("dpp.models.SustainabilityScore") as MockScore, \
-             patch("dpp.models.ImpactIndicator") as MockII:
+             patch("dpp.lca.SustainabilityEvaluation") as MockEval, \
+             patch("dpp.lca.SustainabilityScore") as MockScore, \
+             patch("dpp.lca.ImpactIndicator") as MockII:
 
             mock_em.return_value = MagicMock(name="method_set")
             # created=False -> evaluation already existed

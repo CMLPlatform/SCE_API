@@ -15,6 +15,13 @@ import bw2data as bwd
 import bw2io as bwi
 from sentier_brightway import import_db
 
+from .models import (
+    UNIT_CHOICES, CONVERSIONS,
+    BackgroundProcess, ProductModel, ProductExchange, EnvExchange, Emission,
+    SustainabilityEvaluation, SustainabilityScore,
+    IndicatorSet, ImpactIndicator, ImpactCategory,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +164,6 @@ def ensure_methods(family: str):
     in the DPP database.
     Returns: IndicatorSet
     """
-    # Import here to avoid circular imports
-    from .models import IndicatorSet, ImpactIndicator, ImpactCategory
-
     try:
         method_set = IndicatorSet.objects.get(name=family)
     except IndicatorSet.DoesNotExist:
@@ -248,7 +252,6 @@ def get_biosphere_db():
 
 def biosphere_to_dpp_flows():
     """Convert all biosphere flows to Emission objects"""
-    from .models import Emission
     unit_map = {
         'cubic meter': 'm3',
         'cubic meter-year': 'm3-yr',
@@ -323,8 +326,6 @@ def make_transport_exchange(transports, product, amount):
     Returns:
         Brightway exchange, describing transport input
     """
-    # Import here to avoid circular imports
-    from .models import UNIT_CHOICES, CONVERSIONS
     ecoinvent_codes = {
         "train": '44760b3d59b51d5aaffecedeba08e3fa', # freight train, average, EU
         "ocean ship": '1d2cb4018daf428aebf419380c6a2975', # sea freight container ship, GLO
@@ -420,8 +421,6 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
     :param dpp_process: List of ManufacturingProcess
     :param db_name: Bightway database name, to add the activity to.
     """
-    # Import here to avoid circular imports
-    from .models import ProductExchange, EnvExchange, BackgroundProcess
 
     biosphere = get_biosphere_db()
     bw_activities = {}
@@ -550,9 +549,6 @@ def create_supply_chain_lca(product):
     :param product: The final product for which to do LCA
     :type product: Flow
     """
-    # Import here to avoid circular imports
-    from .models import SustainabilityEvaluation, SustainabilityScore, ImpactIndicator
-    
     setup_project()
     lcia_family = 'EF v3.1'
     method_set = ensure_methods(lcia_family)
@@ -590,9 +586,6 @@ def create_supply_chain_lca(product):
     processes = select_supply_chain(product)
     bw_activities = convert_dpp_to_brightway(processes, db.name)
     db.write(bw_activities)
-    
-    # # Link to background database (ecoinvent, etc.)
-    # link_to_background_db(bw_activities, background_db)
     
     # Perform LCA
     ref_activity = db.get(product.manufacturing_info.pk)
