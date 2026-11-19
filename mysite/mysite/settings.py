@@ -201,7 +201,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10_485_760  # 10 MB request body (non-file)
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Redirect users to the homepage
-LOGIN_REDIRECT_URL = "/dpp/welcome"
+LOGIN_REDIRECT_URL = "/dpp/welcome/"
 LOGOUT_REDIRECT_URL = "/"
 
 # REST API: login required unless a view explicitly allows otherwise.
