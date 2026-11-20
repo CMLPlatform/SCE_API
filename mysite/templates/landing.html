@@ -1,0 +1,189 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sustainability and Cost Evaluator | Lasers4MaaS</title>
+  <meta name="description" content="The Lasers4MaaS Sustainability and Cost Evaluator ranks laser welding set-ups on cost, quality, productivity, sustainability and circularity, and creates their Digital Product Passport.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Roboto:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}">
+</head>
+<body class="landing">
+{% if user.is_authenticated %}{% url 'dpp:home' as app_url %}{% else %}{% url 'login' as login_url %}{% url 'dpp:home' as home_url %}{% endif %}
+
+<header class="site-header">
+  <div class="container">
+    <a class="brand" href="{% url 'landing' %}">
+      <img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS">
+      <span>Sustainability and<br>Cost Evaluator</span>
+    </a>
+    <nav class="main-nav" aria-label="Main">
+      <a href="#objective">Objective</a>
+      <a href="#capabilities">Capabilities</a>
+      <a href="#users">Who it is for</a>
+      {% if user.is_authenticated %}
+      <a class="btn btn-primary" href="{{ app_url }}">Open the app</a>
+      {% else %}
+      <a class="btn btn-primary" href="{{ login_url }}?next={{ home_url|urlencode }}">Sign in</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero" id="top">
+  <div class="container">
+    <div class="hero-text">
+      <p class="eyebrow">Lasers4MaaS · Work package 14</p>
+      <h1>Sustainability and Cost Evaluator</h1>
+      <div class="bar" aria-hidden="true"></div>
+      <p class="hero-lead">Choose the laser welding set-up that best fits your goals for cost, quality, productivity, sustainability and circularity, then publish its Digital Product Passport.</p>
+      <div class="btn-row">
+        {% if user.is_authenticated %}
+        <a class="btn btn-primary" href="{{ app_url }}">Start a decision session</a>
+        {% else %}
+        <a class="btn btn-primary" href="{{ login_url }}?next={{ home_url|urlencode }}">Start a decision session</a>
+        {% endif %}
+        <a class="btn btn-outline-light" href="#capabilities">See what it does</a>
+      </div>
+    </div>
+    <ol class="steps" aria-label="How the SCE works">
+      <li class="step"><span class="step-num" aria-hidden="true">1</span><div><div class="step-title">Platform data in</div><div class="step-text">Welding experiments or stations, sent by the Lasers4MaaS platform</div></div></li>
+      <li class="step"><span class="step-num" aria-hidden="true">2</span><div><div class="step-title">KPIs calculated</div><div class="step-text">Costs, energy and carbon footprint from life cycle data</div></div></li>
+      <li class="step"><span class="step-num" aria-hidden="true">3</span><div><div class="step-title">Ranked by your priorities</div><div class="step-text">Set what matters most; see the ranking and how robust it is</div></div></li>
+      <li class="step step--accent"><span class="step-num" aria-hidden="true">4</span><div><div class="step-title">Passport out</div><div class="step-text">A Digital Product Passport with link and QR code for the chosen set-up</div></div></li>
+    </ol>
+  </div>
+</section>
+
+<section class="section section--white" id="objective">
+  <div class="container objective">
+    <div class="objective-head">
+      <h2 class="section-title">From product data to better decisions</h2>
+      <div class="bar" aria-hidden="true"></div>
+    </div>
+    <div class="objective-body">
+      <p>Digital Product Passports are usually seen as a compliance task: manufacturers collect product data and hand it over. The Sustainability and Cost Evaluator (SCE) also puts that data to work for the manufacturer.</p>
+      <p>It adds a new step to the passport life cycle, <strong>use the DPP for decisions</strong>. Process developers and key account managers compare laser welding options on the same evidence that ends up in the passport.</p>
+      <p>The SCE is the sustainability and cost module of the Lasers4MaaS platform. It supports the move to customised, flexible and decentralised manufacturing as a service.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section section--pale" id="capabilities">
+  <div class="container">
+    <h2 class="section-title">Three things the SCE does</h2>
+    <div class="bar bar--wide-gap" aria-hidden="true"></div>
+    <div class="grid grid--3">
+      <article class="card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2E3585" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+        <h3>KPI calculation</h3>
+        <p>Calculates 13 key performance indicators for every option, including costs, energy use and carbon footprint. The values reach the platform through a dedicated KPI API.</p>
+      </article>
+      <article class="card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2E3585" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M5 7h14"/><path d="M5 7l-3 7a3 3 0 0 0 6 0z"/><path d="M19 7l-3 7a3 3 0 0 0 6 0z"/><path d="M8 21h8"/></svg>
+        <h3>Decision support</h3>
+        <p>Combines the KPIs with your preferences to rank and score the options. It handles uncertain values and weights, groups of criteria and hard limits, and shows how robust each ranking is.</p>
+      </article>
+      <article class="card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2E3585" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M21 14v7h-7"/></svg>
+        <h3>Product passport</h3>
+        <p>Creates the Digital Product Passport for the chosen welding set-up, with a link and QR code. The supply chain's environmental impacts are calculated as part of it.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section--white" id="users">
+  <div class="container">
+    <h2 class="section-title">Built for two roles</h2>
+    <div class="bar" aria-hidden="true"></div>
+    <p class="lead">The process developer decides which process is fit for purpose. The key account manager decides where and how it runs at scale.</p>
+    <div class="grid grid--2">
+      <article class="role">
+        <p class="eyebrow">Research and development</p>
+        <h3>Process developer</h3>
+        <p class="role-question">“Which successful welding experiments should we recommend for industrial use?”</p>
+        <ul>
+          <li>Compare experiments that passed the platform's quality screening</li>
+          <li>Weigh weld quality against operating costs, energy use and process carbon footprint</li>
+          <li>Send the preferred experiments back to the platform</li>
+        </ul>
+      </article>
+      <article class="role">
+        <p class="eyebrow">Industrial operations</p>
+        <h3>Key account manager</h3>
+        <p class="role-question">“Which plant with a dynamic beam laser welding station should we prioritise?”</p>
+        <ul>
+          <li>Compare welding stations across plants, including pre- and post-processing</li>
+          <li>Include total production costs, product carbon footprint, scrap rate and productivity</li>
+          <li>Publish the passport for the chosen set-up</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section--tint" id="kpis">
+  <div class="container">
+    <h2 class="section-title">13 KPIs in five categories</h2>
+    <div class="bar" aria-hidden="true"></div>
+    <p class="lead">The indicators were agreed with the industrial partners. Each role uses the subset that matches its decision.</p>
+    <div class="grid grid--kpi">
+      <div class="kpi"><h3>Costs</h3><ul><li>Total production costs</li><li>Maintenance costs</li></ul></div>
+      <div class="kpi"><h3>Quality</h3><ul><li>Process automation level</li><li>Operator specialisation level</li><li>Process monitoring</li></ul></div>
+      <div class="kpi"><h3>Productivity</h3><ul><li>Production lead time</li><li>Production cycle time</li><li>Machine saturation</li></ul></div>
+      <div class="kpi"><h3>Sustainability</h3><ul><li>Process energy consumption</li><li>Product carbon footprint</li><li>Process carbon footprint</li></ul></div>
+      <div class="kpi"><h3>Circularity</h3><ul><li>Scrap rate</li><li>Recyclability</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--white" id="components">
+  <div class="container">
+    <h2 class="section-title">How it is built</h2>
+    <div class="bar bar--wide-gap" aria-hidden="true"></div>
+    <div class="grid grid--4">
+      <div class="part"><h3>Data collection, three ways</h3><p>A spreadsheet for the lab, a web application for passport data, and APIs that connect the SCE to the Lasers4MaaS platform.</p></div>
+      <div class="part"><h3>Interactive decision support</h3><p>Multi-criteria analysis based on PROMETHEE, extended with stochastic weights (SMAA) and veto thresholds.</p></div>
+      <div class="part"><h3>Passport creator</h3><p>Turns the production line into passport data: composition, components, transport and environmental impacts.</p></div>
+      <div class="part"><h3>Supply chain model</h3><p>A parameterised life cycle assessment model of the supply chain, reporting climate change impact with the Environmental Footprint 3.1 method.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--pale" id="get-started">
+  <div class="container cta">
+    <div class="cta-text">
+      <h2 class="section-title">Get started</h2>
+      <p>Sessions usually start from the Lasers4MaaS platform. Sign in to continue a session, review your production lines or publish a passport.</p>
+    </div>
+    <div class="btn-row">
+      {% if user.is_authenticated %}
+      <a class="btn btn-dark" href="{{ app_url }}">Open the app</a>
+      {% else %}
+      <a class="btn btn-dark" href="{{ login_url }}?next={{ home_url|urlencode }}">Sign in</a>
+      <a class="btn btn-outline-dark" href="{% url 'accounts:signup' %}">Request access</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-main">
+      <p class="footer-title">Funded by the European Union</p>
+      <p>Lasers4MaaS has received funding from the European Union's Horizon Europe programme under grant agreement No 101178719. Views and opinions expressed are those of the authors only and do not necessarily reflect those of the European Union.</p>
+    </div>
+    <div class="footer-side">
+      <p class="footer-title">Developed by</p>
+      <p>Institute of Environmental Sciences (CML), Leiden University</p>
+      <p style="margin-top: 12px"><a href="https://lasers4maas.eu/">lasers4maas.eu</a></p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
