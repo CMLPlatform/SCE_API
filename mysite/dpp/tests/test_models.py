@@ -861,6 +861,37 @@ class PublisherTests(SupplyChainTestCase):
         self.assertEqual(ProductItem.objects.count(), 0)
         self.assertEqual(Metadata.objects.count(), 0)
 
+    def publish(self, amount=2):
+        self.publisher.registration_numbers = ",".join(
+            str(uuid.uuid4()) for _ in range(amount)
+        )
+        self.publisher.status = 5
+        self.publisher.create_dpps()
+
+    def test_create_dpps_twice_gives_new_serial_numbers(self):
+        self.publish()
+        self.publish()
+
+        serials = list(ProductItem.objects.values_list("serial_number", flat=True))
+        self.assertEqual(len(serials), 4)
+        self.assertEqual(len(set(serials)), 4)
+        self.assertEqual(Metadata.objects.count(), 4)
+
+    def test_create_dpps_after_delete_does_not_reuse_serial_numbers(self):
+        # Deleting DPPs keeps their product items (metadata_bulk_delete)
+        self.publish()
+        old = set(ProductItem.objects.values_list("serial_number", flat=True))
+        Metadata.objects.all().delete()
+
+        self.publish()
+
+        new = set(
+            ProductItem.objects.filter(dpp_metadata__isnull=False)
+            .values_list("serial_number", flat=True)
+        )
+        self.assertEqual(len(new), 2)
+        self.assertFalse(new & old)
+
 
 class BackgroundProcessFormTests(TestCase):
     """The edit form only accepts a code that exists in the chosen database."""

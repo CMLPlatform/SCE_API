@@ -1535,6 +1535,22 @@ class Publisher(models.Model):
         else:
             return [str(uuid4()) for i in range(self.amount)]
     
+    @staticmethod
+    def _next_serial_index(prefix):
+        """Return the first index after all serial numbers "<prefix><index>".
+
+        Serial numbers are never used again. Product items stay when their
+        DPPs are deleted, and a serial number identifies one physical item.
+        """
+        indexes = [
+            int(serial[len(prefix):])
+            for serial in ProductItem.objects.filter(
+                serial_number__startswith=prefix
+            ).values_list("serial_number", flat=True)
+            if serial[len(prefix):].isdigit()
+        ]
+        return max(indexes, default=-1) + 1
+
     def create_dpps(self):
         """Create self.amount number of ProductItem and Metadata objects
         """
@@ -1553,12 +1569,12 @@ class Publisher(models.Model):
         
         numbers = self.get_registration_nrs()
         with transaction.atomic():
-            for i, reg_nr in enumerate(numbers):
+            prefix = f"{batch.model.id}-{batch.batch_number}-"
+            start = self._next_serial_index(prefix)
+            for i, reg_nr in enumerate(numbers, start=start):
                 item = ProductItem.objects.create(
                     product_batch=batch,
-                    serial_number='-'.join(
-                        [str(batch.model.id), str(batch.batch_number), str(i)]
-                    ),
+                    serial_number=f"{prefix}{i}",
                 )
                 metadata = Metadata.objects.create(
                     product_item=item,
