@@ -68,6 +68,10 @@ class MetadataViewSet(OwnedModelViewSet):
     serializer_class = MetadataSerializer
     permission_classes = [PublicReadStaffWrite]
 
+    def get_queryset(self):
+        # Public by design: do not limit to the user's own DPPs
+        return self.queryset.all()
+
 class InstructionViewSet(OwnedModelViewSet):
     queryset = Instruction.objects.all()
     serializer_class = InstructionSerializer

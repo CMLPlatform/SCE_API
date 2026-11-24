@@ -1,0 +1,26 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Account{% endblock %} | Lasers4MaaS SCE</title>
+  <link rel="stylesheet" href="{% static 'vendor/fonts/fonts.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/sce.css' %}">
+</head>
+<body class="auth">
+<main class="auth-wrap">
+  <div class="auth-card">
+    <a class="auth-logo" href="{% url 'landing' %}"><img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS home"></a>
+    <div class="card shadow-sm">
+      <div class="card-body p-4 p-sm-5">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+    {% block below_card %}{% endblock %}
+  </div>
+</main>
+<script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+</body>
+</html>

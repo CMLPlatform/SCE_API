@@ -1,0 +1,114 @@
+{% extends "dpp/base.html" %}
+
+{% block title %}Published DPPs{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'dpp:home' %}">Home</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Published DPPs</li>
+  </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+{% regroup object_list by product_item.product_batch as batches %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Published DPPs</h1>
+    <p class="page-subtitle">{{ object_list|length }} DPP{{ object_list|length|pluralize }} in {{ batches|length }} batch{{ batches|length|pluralize:"es" }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-secondary" href="{% url 'dpp:metadata_add' %}">
+      <i class="bi bi-plus-circle" aria-hidden="true"></i>Add DPP
+    </a>
+  </div>
+</div>
+
+{# Grouped table: see "Grouped selection table" in sce.js #}
+<div data-grouped-table>
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="bi bi-search" aria-hidden="true"></i>
+      <input type="search" class="form-control" placeholder="Search DPPs" aria-label="Search DPPs" data-table-filter="#dpp-table">
+    </div>
+    {% if object_list %}
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" class="btn btn-outline-secondary" data-expand-all aria-pressed="false">
+        <i class="bi bi-arrows-expand" aria-hidden="true"></i><span>Expand all</span>
+      </button>
+      <button type="submit" form="dpp-select-form" class="btn btn-danger" data-delete-selected disabled>
+        <i class="bi bi-trash" aria-hidden="true"></i><span>Delete selected (<span data-selected-count>0</span>)</span>
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  {# The search box stays outside the form: Enter in it must not send the form #}
+  <form method="post" action="{% url 'dpp:metadata_bulk_delete' %}" id="dpp-select-form" class="table-card">
+    {% csrf_token %}
+    <div class="table-responsive">
+      <table class="table table-sce table-hover table-grouped" id="dpp-table">
+        <thead>
+          <tr>
+            <th scope="col" class="select-cell">
+              <input class="form-check-input" type="checkbox" data-select-all aria-label="Select all DPPs"{% if not object_list %} disabled{% endif %}>
+            </th>
+            <th scope="col">Registration number</th>
+            <th scope="col">Serial number</th>
+            <th scope="col">Issuer</th>
+            <th scope="col"><abbr title="Responsible economic operator">REO</abbr></th>
+            <th scope="col">Version</th>
+            <th scope="col">Created</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        {% for batch in batches %}
+        <tbody class="group-head" data-group="batch-{{ forloop.counter }}">
+          <tr>
+            <td class="select-cell">
+              <input class="form-check-input" type="checkbox" data-select-group aria-label="Select all {{ batch.list|length }} DPPs of {{ batch.grouper }}">
+            </td>
+            <td colspan="7">
+              <button type="button" class="group-toggle" aria-expanded="false" aria-controls="batch-{{ forloop.counter }}" data-group-toggle>
+                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                <span class="fw-medium">{{ batch.grouper }}</span>
+                <span class="badge rounded-pill text-bg-light">{{ batch.list|length }} DPP{{ batch.list|length|pluralize }}</span>
+                <span class="text-muted small">GTIN {{ batch.grouper.GTIN|default:"—" }}</span>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+        <tbody id="batch-{{ forloop.counter }}" class="group-rows" hidden>
+          {% for dpp in batch.list %}
+          {% url 'dpp:metadata_detail' dpp.pk as detail_url %}
+          <tr class="row-link" data-href="{{ detail_url }}" data-filterable>
+            <td class="select-cell">
+              <input class="form-check-input" type="checkbox" name="pk" value="{{ dpp.pk }}" data-select-row aria-label="Select DPP {{ dpp.registration_number }}">
+            </td>
+            <td class="registration-number">{{ dpp.registration_number }}</td>
+            <td>{{ dpp.product_item.serial_number }}</td>
+            <td>{{ dpp.issuer.name }}</td>
+            <td>{{ dpp.reo.name }}</td>
+            <td>{{ dpp.version|default:"—" }}</td>
+            <td>{{ dpp.creation_date|date:"d.m.y" }}</td>
+            <td class="row-actions">
+              <a href="{{ detail_url }}">View</a>
+              <a href="{% url 'dpp:dpp_full' dpp.pk %}">Public page</a>
+              {# Edit and Delete are on the View page; delete many DPPs with the checkboxes #}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% empty %}
+        <tbody>
+          <tr><td colspan="8" class="table-empty">No published DPPs yet. Publish them from a production line.</td></tr>
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+  </form>
+</div>
+{# Without scripts, show every DPP: the groups cannot open #}
+<noscript><style>.table-grouped .group-rows[hidden] { display: table-row-group !important; }</style></noscript>
+{% endblock %}

@@ -1,24 +1,19 @@
-{% extends "base.html" %}
+{% extends "auth_base.html" %}
 {% load crispy_forms_tags %}
 
-{% block title %}Log In | Lasers4MaaS SCE{% endblock %}
+{% block title %}Log in{% endblock %}
 
 {% block content %}
-<div class="max-w-md mx-auto mt-10 bg-white shadow ring-1 ring-black ring-opacity-5 rounded-lg px-8 py-8">
-  <h1 class="text-2xl font-semibold text-gray-900 mb-6">Log In</h1>
-
-  <form method="post">
-    {% csrf_token %}
-    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-    {{ form|crispy }}
-    <button type="submit" class="w-full mt-2 px-4 py-2 bg-blue-500 text-white font-bold rounded hover:bg-blue-700 transition">
-      Log In
-    </button>
-  </form>
-
-  <div class="mt-6 flex items-center justify-between text-sm">
-    <a href="{% url 'password_reset' %}" class="text-indigo-600 hover:text-indigo-800 hover:underline">Forgot your password?</a>
-    <a href="{% url 'accounts:signup' %}" class="text-indigo-600 hover:text-indigo-800 hover:underline">Create an account</a>
-  </div>
+<h1 class="h3 fw-normal mb-1">Log in</h1>
+<p class="text-secondary mb-4">Sustainability and Cost Evaluator</p>
+<form method="post" novalidate>
+  {% csrf_token %}
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  {{ form|crispy }}
+  <button type="submit" class="btn btn-primary w-100 justify-content-center mt-2">Log in</button>
+</form>
+<div class="d-flex justify-content-between flex-wrap gap-2 mt-4">
+  <a href="{% url 'password_reset' %}">Forgot your password?</a>
+  <a href="{% url 'accounts:signup' %}">Create an account</a>
 </div>
 {% endblock %}

@@ -2,37 +2,31 @@
 
 {% block title %}Delete {{ object }}{% endblock %}
 
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    {% url opts.app_label|add:':'|add:opts.model_name|add:'_list' as list_url %}
+    {% if list_url %}<li class="breadcrumb-item"><a href="{{ list_url }}">{{ opts.verbose_name_plural|capfirst }}</a></li>{% endif %}
+    <li class="breadcrumb-item"><a href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_detail' object.pk %}">{{ object }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Delete</li>
+  </ol>
+</nav>
+{% endblock %}
+
 {% block content %}
-<div class="px-4 sm:px-0">
-    <div class="mb-6">
-        <h2 class="text-2xl font-semibold text-gray-900">Confirm Deletion</h2>
-    </div>
+<div class="page-header">
+  <h1 class="page-title">Delete {{ verbose_name }}</h1>
+</div>
 
-    <div class="bg-white shadow sm:rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <div class="mb-4">
-                <p class="text-sm text-gray-700">
-                    Are you sure you want to delete <strong>{{ object }}</strong>?
-                </p>
-                <p class="mt-2 text-sm text-red-600">
-                    This action cannot be undone.
-                </p>
-            </div>
-
-            <form method="post">
-                {% csrf_token %}
-                <div class="flex items-center gap-x-3">
-                    <button type="submit" 
-                            class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">
-                        Yes, Delete
-                    </button>
-                    <a href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_detail' object.pk %}" 
-                       class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-700">
-                        Cancel
-                    </a>
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="card" style="max-width: 640px">
+  <div class="card-body">
+    <p class="mb-2">Are you sure you want to delete <strong>{{ object }}</strong>?</p>
+    <p class="text-danger mb-4"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> This cannot be undone.</p>
+    <form method="post" class="d-flex gap-2">
+      {% csrf_token %}
+      <a class="btn btn-outline-secondary" href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_detail' object.pk %}">Cancel</a>
+      <button type="submit" class="btn btn-danger"><i class="bi bi-trash" aria-hidden="true"></i>Delete</button>
+    </form>
+  </div>
 </div>
 {% endblock %}

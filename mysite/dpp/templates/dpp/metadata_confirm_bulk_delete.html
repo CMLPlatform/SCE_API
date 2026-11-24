@@ -1,0 +1,45 @@
+{% extends "dpp/base.html" %}
+
+{% block title %}Delete DPPs{% endblock %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'dpp:metadata_list' %}">Published DPPs</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Delete</li>
+  </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+{% regroup dpps by product_item.product_batch as batches %}
+<div class="page-header">
+  <h1 class="page-title">Delete {{ dpps|length }} DPP{{ dpps|length|pluralize }}</h1>
+</div>
+
+<div class="card" style="max-width: 720px">
+  <div class="card-body">
+    <p class="mb-3">You are about to delete these DPPs:</p>
+    <ul class="list-unstyled mb-3">
+      {% for batch in batches %}
+      <li class="mb-2">
+        <details>
+          <summary><strong>{{ batch.grouper }}</strong>: {{ batch.list|length }} DPP{{ batch.list|length|pluralize }}</summary>
+          <ul class="font-monospace small mt-2 mb-0">
+            {% for dpp in batch.list %}<li>{{ dpp.registration_number }}</li>{% endfor %}
+          </ul>
+        </details>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="text-danger mb-4"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> This cannot be undone. The public DPP pages stop working. The product items stay.</p>
+    <form method="post" action="{% url 'dpp:metadata_bulk_delete' %}" class="d-flex gap-2">
+      {% csrf_token %}
+      <input type="hidden" name="confirm" value="1">
+      {% for dpp in dpps %}<input type="hidden" name="pk" value="{{ dpp.pk }}">{% endfor %}
+      <a class="btn btn-outline-secondary" href="{% url 'dpp:metadata_list' %}">Cancel</a>
+      <button type="submit" class="btn btn-danger"><i class="bi bi-trash" aria-hidden="true"></i>Delete {{ dpps|length }} DPP{{ dpps|length|pluralize }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

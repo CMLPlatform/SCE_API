@@ -1,0 +1,9 @@
+{# Partial: session_chips.html — the choices made in step 2. Variables: session, short (optional) #}
+<div class="context-chips">
+  <span class="badge rounded-pill text-bg-light">Weights: <strong>{{ session.get_weight_mode_display }}</strong></span>
+  <span class="badge rounded-pill text-bg-light">Constraints: <strong>{{ session.get_scenario_display }}</strong></span>
+  {% if not short %}
+  <span class="badge rounded-pill text-bg-light">Preference model: <strong>{{ session.get_method_display }}</strong></span>
+  <span class="badge rounded-pill text-bg-light">Veto: <strong>{{ session.get_veto_type_display }}</strong></span>
+  {% endif %}
+</div>

@@ -1,0 +1,92 @@
+[
+  {
+    "experimentId": 1,
+    "weldLength": 2400,
+    "weldSpeed": 120,
+    "country": "UK",
+    "laserPowerkW": 4.5,
+    "weldingStationPowerkW": 14.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 1.2, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.33, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 2.0, "target": "min"},
+      {"name": "Tensile strength", "value": 180, "target": "max"}
+    ],
+    "maintenanceCosts": 18000,
+    "cycleTime": 75,
+    "scrapRate": 0.03,
+    "recyclability": "high",
+    "materials": [
+      {"name": "Aluminium sheet", "weight": 1.85}
+    ],
+    "productivity": [
+      {"name": "Process automation level", "value": "high", "target": "max"},
+      {"name": "Operator specialisation level", "value": "medium", "target": "min"},
+      {"name": "Process monitoring", "value": 5, "target": "min"},
+      {"name": "Production lead time", "value": 12, "target": "min"},
+      {"name": "Machine saturation", "value": 0.72, "target": "min"}
+    ]
+  },
+  {
+    "experimentId": 2,
+    "weldLength": 2400,
+    "weldSpeed": 120,
+    "country": "DE",
+    "laserPowerkW": 4.5,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 1.2, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.33, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 1.6, "target": "min"},
+      {"name": "Tensile strength", "value": 184, "target": "max"}
+    ],
+    "maintenanceCosts": 15000,
+    "cycleTime": 68,
+    "scrapRate": 0.02,
+    "recyclability": "high",
+    "materials": [
+      {"name": "Aluminium sheet", "weight": 1.85}
+    ],
+    "productivity": [
+      {"name": "Process automation level", "value": "high", "target": "max"},
+      {"name": "Operator specialisation level", "value": "high", "target": "min"},
+      {"name": "Process monitoring", "value": 2, "target": "min"},
+      {"name": "Production lead time", "value": 10, "target": "min"},
+      {"name": "Machine saturation", "value": 0.81, "target": "min"}
+    ]
+  },
+  {
+    "experimentId": 3,
+    "weldLength": 2400,
+    "weldSpeed": 100,
+    "country": "IT",
+    "laserPowerkW": 4.0,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 1.0, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.30, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 2.4, "target": "min"},
+      {"name": "Tensile strength", "value": 178, "target": "max"}
+    ],
+    "maintenanceCosts": 12000,
+    "cycleTime": 90,
+    "scrapRate": 0.04,
+    "recyclability": "medium",
+    "materials": [
+      {"name": "Aluminium sheet", "weight": 1.85}
+    ],
+    "productivity": [
+      {"name": "Process automation level", "value": "medium", "target": "max"},
+      {"name": "Operator specialisation level", "value": "medium", "target": "min"},
+      {"name": "Process monitoring", "value": 15, "target": "min"},
+      {"name": "Production lead time", "value": 14, "target": "min"},
+      {"name": "Machine saturation", "value": 0.64, "target": "min"}
+    ]
+  }
+]

@@ -15,10 +15,11 @@ urlpatterns = [
     path("publisher/<int:pk>/update/", views.PublisherUpdateView.as_view(), name='publisher_update'),
     path('publisher/<int:pk>/', views.PublisherDetailView.as_view(), name='publisher_detail'),
     path('final/<uuid:pk>/', views.DppFullView.as_view(), name='dpp_full'),
+    path('metadata/delete/', views.MetadataBulkDeleteView.as_view(), name='metadata_bulk_delete'),
 ]
 
 # urlpatterns = []
-for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Facility, Material, HazardousMaterial, Flow, ProductModel, ProductBatch, SecondaryProduct, DppDetails, ProductProperties, Emission, Composition, ProductItem, Activity, ProductionLine, Process, Exchange, ProductExchange, EnvExchange, LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent, ItemExchange, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker, Transport]:
+for model in [Institution, Company, Importer, ServiceOperator, Metadata, Document, Facility, Material, HazardousMaterial, Flow, ProductModel, ProductBatch, SecondaryProduct, DppDetails, ProductProperties, Emission, Composition, ProductItem, Activity, ProductionLine, Process, BackgroundProcess, Exchange, ProductExchange, EnvExchange, LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent, ItemExchange, ImpactCategory, SustainabilityEvaluation, SustainabilityScore, CircularityEvaluation, CircularityIndicator, CircularityScore, CircularityTracker, Transport]:
     name = model.__name__.lower()
     pk = "uuid:pk" if isinstance(model._meta.pk, models.UUIDField) else "int:pk"
     urlpatterns += [

@@ -19,10 +19,13 @@ def get_fields(obj):
     if not obj:
         return []
     for field in obj._meta.fields:
+        value = get_attr(obj, field.name)
+        if field.choices and hasattr(obj, f"get_{field.name}_display"):
+            value = getattr(obj, f"get_{field.name}_display")()  # label instead of stored code
         fields.append({
             'name': field.name,
             'verbose_name': field.verbose_name,
-            'value': get_attr(obj, field.name),
+            'value': value,
             'editable': field.editable,
         })
     return fields
@@ -50,3 +53,13 @@ def sentencecase(obj: str):
 @register.filter
 def lookup(dictionary, key):
     return dictionary.get(key)
+
+
+@register.simple_tag(takes_context=True)
+def nav_active(context, *prefixes):
+    """Return 'active' when the current URL name starts with one of `prefixes`.
+    Used to highlight the current section in the sidebar."""
+    request = context.get("request")
+    match = getattr(request, "resolver_match", None)
+    name = match.url_name if match and match.url_name else ""
+    return "active" if any(name.startswith(p) for p in prefixes) else ""

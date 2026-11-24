@@ -1,12 +1,24 @@
-django
-djangorestframework
-drf-spectacular
-django-countries
-django-extensions
-django-crispy-forms
-crispy-tailwind
-environs
-pandas
-psycopg2-binary
-brightway25
-sentier_brightway @ git+https://github.com/sentier-dev/sentier-brightway
+# Runtime dependencies, pinned to the versions the test suite passes with (Python 3.12).
+# Update deliberately: change a version, run the tests, then commit.
+
+# Web framework and API
+django==6.1.3
+djangorestframework==3.18.3
+drf-spectacular==0.30.0
+django-countries==9.1.0
+django-extensions==4.1
+
+# Forms, styled with Bootstrap 5 (Bootstrap itself is stored in mysite/dpp/static/vendor/)
+django-crispy-forms==2.7
+crispy-bootstrap5==2026.9
+
+# Settings from environment variables / .env
+environs==15.2.0
+
+# Data and database
+pandas==3.1.1
+psycopg2-binary==2.9.13
+
+# Life cycle assessment
+brightway25==1.1.1
+sentier_brightway @ git+https://github.com/sentier-dev/sentier-brightway@90d57eb47430015c378aa31572600c9722bb5b07

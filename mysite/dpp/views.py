@@ -1,12 +1,13 @@
-import json
+import uuid
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
-from django.http import HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.generic import View, ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
     Document, Material, HazardousMaterial,
@@ -63,11 +64,41 @@ class AdminTemplateMixin:
         })
         return context
 
-class PreFillFormMixin:
+class FormCardMixin:
+    """Show a view inside the form card (an on-screen dialog) when the URL has _card=1.
+
+    The page script (sce.js) loads the view with _card=1. The view then sends
+    only the form, without the page layout. After a valid save it sends JSON
+    {"pk": ..., "name": ...}, and the script returns the user to their page.
+    """
+    card_template_name = "dpp/partials/form_card.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.in_card = request.GET.get('_card') == '1'
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_template_names(self):
+        if self.in_card:
+            return [self.card_template_name]
+        return super().get_template_names()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['in_card'] = self.in_card
+        return context
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if self.in_card:
+            return JsonResponse({'pk': str(self.object.pk), 'name': str(self.object)})
+        return response
+
+
+class PreFillFormMixin(FormCardMixin):
     """
     Mixin that pre-fills form fields from URL query parameters.
     Any query parameter matching a field name will be used as initial value.
-    Also check if it's a popup, and define success_url
+    Also shows the form in the form card (see FormCardMixin), and defines success_url.
     """
     def get_initial(self):
         initial = super().get_initial()
@@ -81,40 +112,18 @@ class PreFillFormMixin:
                 else:
                     initial[field_name] = value
         return initial
-    
-    def dispatch(self, request, *args, **kwargs):
-        self.is_popup = request.GET.get('_popup', False)
-        return super().dispatch(request, *args, **kwargs)
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['is_popup'] = self.is_popup
-        return context
-    
+
     def get_success_url(self):
+        # Go back to the page that sent the user here (for example a fix link)
+        next_url = self.request.GET.get('next')
+        if next_url and url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={self.request.get_host()},
+                require_https=self.request.is_secure()):
+            return next_url
         return reverse(
             f"{self.model._meta.app_label}:{self.model._meta.model_name}_list"
         )
     
-    def form_valid(self, form):
-        self.object = form.save()
-        
-        # Check if this is a popup request
-        if self.is_popup:
-            # json.dumps + escaping of "<" prevents user-entered names
-            # from breaking out of the script (cross-site scripting)
-            pk = json.dumps(str(self.object.pk)).replace("<", "\\u003c")
-            name = json.dumps(str(self.object)).replace("<", "\\u003c")
-            return HttpResponse(
-                f'''
-                <script type="text/javascript">
-                    opener.dismissAddRelatedObjectPopup(window, {pk}, {name});
-                </script>
-                '''
-            )
-        
-        return super().form_valid(form)
-
 def make_crud_views(model):
     app_label = model._meta.app_label
 
@@ -150,13 +159,6 @@ def make_crud_views(model):
         def get_form_class(self):
             return get_model_form_plus(self.model)
         
-        def form_valid(self, form):
-            result = super().form_valid(form)
-            # If this is a pop-up window, close it
-            if self.request.POST.get('is_popup'):
-                return HttpResponse('<script>window.close();</script>')
-            return result
-
     class Delete(OwnedQuerysetMixin, AdminTemplateMixin, DeleteView):
         model = model
         success_url = reverse_lazy(f"{app_label}:{model.__name__.lower()}_list")
@@ -186,7 +188,7 @@ for model in [
     Document, Material, HazardousMaterial, Emission,
     Flow, ProductModel, ProductBatch, SecondaryProduct, Composition,
     ProductItem, DppDetails, ProductProperties,
-    Activity, ProductionLine, ManufacturingProcess, Process,
+    Activity, ProductionLine, ManufacturingProcess, BackgroundProcess, Process,
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
@@ -197,6 +199,58 @@ for model in [
 
 # Make them importable
 globals().update(views)
+
+
+# Published DPPs: the list groups the DPPs by product batch (see
+# metadata_list.html), and the user can delete many DPPs at once.
+DPP_ORDER = (
+    "product_item__product_batch__model__name",
+    "product_item__product_batch__batch_number",
+    "product_item__product_batch__pk",
+    "product_item__pk",
+)
+DPP_RELATED = ("product_item__product_batch__model", "issuer", "reo")
+
+
+class MetadataList(views["MetadataList"]):
+    """Published DPPs, grouped by product batch. Replaces the generated list."""
+    template_name = "dpp/metadata_list.html"
+    paginate_by = None  # A page break would split a batch
+
+    def get_queryset(self):
+        return super().get_queryset().select_related(*DPP_RELATED).order_by(*DPP_ORDER)
+
+
+class MetadataBulkDeleteView(LoginRequiredMixin, View):
+    """Delete the selected DPPs (POST field "pk", one per DPP).
+
+    The first POST shows a confirmation page. The POST from that page
+    (with confirm=1) deletes the DPPs. Users can only delete their own
+    DPPs (see dpp.permissions): other registration numbers are ignored.
+    """
+    http_method_names = ["post"]
+    template_name = "dpp/metadata_confirm_bulk_delete.html"
+
+    def post(self, request):
+        pks = []
+        for value in request.POST.getlist("pk"):
+            try:
+                pks.append(uuid.UUID(value))
+            except ValueError:
+                continue
+        dpps = filter_owned(Metadata.objects.filter(pk__in=pks), request.user)
+        if not dpps.exists():
+            messages.warning(request, "Select one or more DPPs to delete.")
+            return redirect("dpp:metadata_list")
+
+        if request.POST.get("confirm") != "1":
+            dpps = dpps.select_related(*DPP_RELATED).order_by(*DPP_ORDER)
+            return render(request, self.template_name, {"dpps": dpps})
+
+        count = dpps.count()
+        dpps.delete()
+        messages.success(request, f"{count} DPP{'s' if count != 1 else ''} deleted.")
+        return redirect("dpp:metadata_list")
 
 
 def create_flowchart(processes):
@@ -259,7 +313,9 @@ def create_flowchart(processes):
     # Add background processes
     for supp in suppliers:
         prod = supp.functional_flow
-        for exch in ProductExchange.objects.filter(product=prod):
+        # Only exchanges with this line's processes: not the aggregated copy
+        # made when publishing, nor other production lines using the same product.
+        for exch in ProductExchange.objects.filter(product=prod, process__in=processes):
             if exch.direction == 'in':
                 lines.append(
                     f"    a{supp.id}({prod}):::outside --> a{exch.process.id}"
@@ -351,9 +407,22 @@ class ProcessDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
         context['flow_icons'] = self.FLOW_ICONS
         return context
 
-class ProductDetailView(LoginRequiredMixin, AdminTemplateMixin, DetailView):
-    model = ProductModel
+class ProductDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
+    """Detail page of any Flow: a ProductModel or a ProductBatch.
+    Links come from Flow fields (final_product, functional_flow),
+    so the pk can belong to either subclass."""
+    model = Flow
     template_name = 'dpp/product_detail.html'
+
+    def get_object(self, queryset=None):
+        flow = super().get_object(queryset)
+        for child in ('productmodel', 'productbatch'):
+            if hasattr(flow, child):
+                flow = getattr(flow, child)
+                break
+        # Use the concrete class for the title and the edit/delete links
+        self.model = type(flow)
+        return flow
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -387,15 +456,21 @@ class TransportSubsetView(LoginRequiredMixin, AdminTemplateMixin, ListView):
             queryset = Transport.objects.filter(production_line=pl)
         return queryset
 
-class FlowCreateView(LoginRequiredMixin, CreateView):
+class FlowCreateView(LoginRequiredMixin, FormCardMixin, CreateView):
+    """Lets the user choose the kind of product to create (model or batch)."""
     model = Flow
     template_name = "dpp/create_flow.html"
+    card_template_name = "dpp/partials/create_flow_card.html"
     fields = []  # No user-editable fields
 
 class PublisherUpdateView(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin, PreFillFormMixin, UpdateView):
         model = Publisher
         fields = "__all__"
         template_name = "dpp/generic_form.html"
+
+        def get_success_url(self):
+            # Publisher has no list page: go back to its detail page
+            return reverse("dpp:publisher_detail", kwargs={"pk": self.object.pk})
 
 class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
     model = Publisher
@@ -406,16 +481,16 @@ class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
         action = request.POST.get('action')
         
         if action == 'run_all':
-            success = publisher.run_from_step(1)
-            if success:
+            failed = publisher.run_from_step(1)
+            if not failed:
                 messages.success(request, "All steps completed successfully!")
             else:
                 messages.error(request, f"Error: {publisher.error_message}")
         
         elif action == 'rerun_step':
             step = int(request.POST.get('step'))
-            success = publisher.run_from_step(step)
-            if success:
+            failed = publisher.run_from_step(step)
+            if not failed:
                 messages.success(request, f"Steps {step}-5 completed successfully!")
             else:
                 messages.error(request, f"Error: {publisher.error_message}")
@@ -445,6 +520,7 @@ class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
             }
             for i in range(1, 6)
         ]
+        context['issues'] = publisher.get_issues()
         context['lca_results'] = SustainabilityEvaluation.objects.filter(is_environmental=True, product=publisher.production_line.final_product)
         return context
 
