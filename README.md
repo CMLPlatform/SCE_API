@@ -206,10 +206,28 @@ Next, there are five steps to go through in order. Click 'Run all steps', or 'Ru
 2. Aggregate manufacturing process: combine all processes of the production line, such that details of individual steps are not disclosed.
 3. Compute concentrations and components: calculate the concentration of hazardous and critical materials, and list the product's components.
 4. Create transport table: add missing [transport](#transport) information for all the inputs that have none.
-5. Do Life Cycle Assessment: LCA calculations for [environmental assessment](#sustainability-evaluation).
+5. Do Life Cycle Assessment: LCA calculations for [environmental assessment](#sustainability-evaluation). See [How step 5 calculates the impacts](#how-step-5-calculates-the-impacts).
 
 Each step shows its status: Done, Failed or Pending. If a step fails, a message at the top explains why. You may need to make some changes before running the failed step again.
 When all five steps are done, a 'Publish' button appears at the top right. It creates DPPs for the requested number of product items. **Congratulations!** Each published DPP has a public page at `/dpp/final/<registration number>/`.
+
+### How step 5 calculates the impacts
+Step 5 writes the supply chain of the product to a Brightway database. Then it calculates the impacts with the EF 3.1 (Environmental Footprint 3.1) methods. Each method counts the flows of one biosphere database. A biosphere database is the list of elementary flows: the emissions to the environment and the resources taken from it.
+
+**Choice of the methods.** The Brightway project can hold EF 3.1 methods from more than one source, and each source uses its own biosphere database. Step 5 uses the source that uses the same biosphere database as the installed background database. With the BAFU database, step 5 uses the `sentier` methods and the `ef-3.1-biosphere` database. Step 5 does not calculate the "organics" and "inorganics" sub-indicators. Each indicator has the name of its impact category, for example "Climate change".
+
+**Your own emissions.** Step 5 counts the emissions and resources that you add to your [processes](#inputs-and-outputs) as follows:
+1. Step 5 finds the flow in the ecoinvent biosphere database with the same substance name and compartment.
+2. If the methods use a different biosphere database, step 5 replaces this flow with the matching flow in that database. The match comes from a published flow mapping: `ecoinvent-3.11-biosphere-EF-3.1-biosphere` in the `randonneur_data` package. For example, "Particulate Matter, < 2.5 um" to urban air becomes "Particles (PM2.5)" to urban air.
+3. Step 5 converts the amount to the unit of the flow, for example from g to kg.
+
+Step 5 stops with a message in these two cases, so that no emission is left out without a warning:
+- **The substance has no match in the biosphere database of the methods.** Choose a different substance or compartment. The mapping is for ecoinvent 3.11, so flows that are new in ecoinvent 3.12 have no match.
+- **The unit cannot be converted to the unit of the flow, for example g to m3.** Change the unit of the substance.
+
+Step 5 uses the combined process from step 2. After you add or change an emission, run the steps again from step 2.
+
+**For developers.** The functions are in `mysite/dpp/lca.py`. `select_methods()` chooses the methods, and `translate_biosphere_flow()` moves a flow to the biosphere database of the methods. `emission_amount()` converts the units. The constant `EF_FLOW_MAPPING` holds the name of the mapping file.
 
 ## Sustainability evaluation
 A DPP describes the sustainability aspects of a product. Many sustainability indicators need to be calculated using specialized software or assessment methods. A 'Sustainability evaluation' groups all measured indicator values that were determined on a specific date or by a specific organization. 
@@ -269,8 +287,13 @@ The breadcrumb at the top of each page leads back to the pages above it. Lists h
 ## Forms
 The app uses forms to create new items, such as products and manufacturing processes. 
 Required fields that must be filled are indicated with an asterisk, e.g. **Name\***. 
-Some fields ask to link to another item, such as the operator of a process. These fields can be recognized as a drop-down box with a plus sign (**+**) next to it. If you already created the item you want to link to, select it in the dropdown list. Otherwise, click the **+** to create it in a pop-up window. 
-After filling the form, click 'Create' (or 'Save changes') at the bottom. In case there are any issues with the information, an error message will explain what went wrong and how to correct it. 
+Most add and edit forms open in a form card: a window on top of the page that you work on. After you save, the card closes and the page shows the change. You stay on the same page. To open a form as a full page, open its link in a new browser tab.
+
+Some fields ask to link to another item, such as the operator of a process. These fields show a drop-down list with a plus sign (**+**) next to it. If the item exists, select it in the list. If not, click the **+**. The form for the new item opens in the same card. After you save it, the card goes back to the first form and selects the new item.
+
+On the publishing page, the buttons next to a problem open the form that fixes it. The card shows the problem at the top, under "What to fix".
+
+After you fill in the form, click 'Create' or 'Save changes' at the bottom. If the form has a problem, a "Not saved" message appears at the top. The fields with a problem are red, and each one has a message that tells you how to correct it. Some fields suggest values: click the field to see them.
 
 # API Manual
 Full Digital Product Passports (DPPs) and parts of a DPP can be retrieved using the API functionality.
