@@ -628,6 +628,20 @@ class AggregateProductionTests(SupplyChainTestCase):
         self.assertAlmostEqual(
             EnvExchange.objects.get(process=second).amount, 5)
 
+    def test_aggregate_production_updates_after_line_edit(self):
+        """A second run after a change to the line updates the same
+        ManufacturingProcess. It does not try to make a second one."""
+        first = self.line.aggregate_production()
+        self.line.description = "Changed description"
+        self.line.save()
+
+        second = self.line.aggregate_production()
+
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(second.description, "Changed description")
+        self.assertEqual(
+            ManufacturingProcess.objects.filter(functional_flow=self.final).count(), 1)
+
 
 # --------------------------------------------------------------------------
 # Publisher

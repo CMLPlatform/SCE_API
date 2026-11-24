@@ -728,13 +728,16 @@ class ProductionLine(models.Model):
         s = pd.Series(s, index=A.columns)
         
         ## Create aggregated process + exchanges
+        # Look up by product only. functional_flow is one-to-one, so a lookup
+        # on all fields fails after an edit and tries to create a duplicate.
         aggregated, created = ManufacturingProcess.objects.update_or_create(
-            name=self.final_product.model.name + " production",
-            amount=f[fu_loc],
-            facility=self.facility,
-            description=self.description,
             functional_flow=self.final_product,
-            # production_line=self,
+            defaults={
+                'name': self.final_product.model.name + " production",
+                'amount': f[fu_loc],
+                'facility': self.facility,
+                'description': self.description,
+            },
         )
         ProductExchange.objects.filter(process=aggregated).delete()
         for sup in suppliers:
