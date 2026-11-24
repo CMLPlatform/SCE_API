@@ -1,8 +1,30 @@
 # Installation
-To install the application on your computer, open a command line and run:
+The app is a Django project; it is not installed as a package. With Python 3.12:
+
 ```bash
-pip install sce@git+https://github.com/CMLPlatform/SCE_API.git
+git clone https://github.com/CMLPlatform/SCE_API.git
+cd SCE_API
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt          # or requirements-dev.txt to also run the tests
+cp .env.example .env                     # then set DJANGO_DEBUG=True for local development
+cd mysite
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver               # http://127.0.0.1:8000/
 ```
+
+Reference data (circularity indicators, document labels, socio-economic indicators and the emissions of the LCA database) is loaded with `python manage.py runscript data_imports`. The emissions need the Brightway project, which is created on first use.
+
+`requirements.txt` pins the versions the tests pass with. To upgrade a package, change its version, run the tests, then commit.
+
+## Running the tests
+```bash
+pip install -r requirements-dev.txt
+cd mysite
+DJANGO_SECRET_KEY=test python manage.py test api dpp accounts
+DJANGO_SECRET_KEY=test DJANGO_SETTINGS_MODULE=mysite.settings pytest dss/tests.py
+```
+The same commands run in GitHub Actions on every push.
 
 # Configuration
 Settings that differ per computer or server (secret key, debug mode, host names, database) are read from environment variables or from a `.env` file in the repository root. Copy `.env.example` to `.env` and fill it in. For local development, setting `DJANGO_DEBUG=True` is enough; on a server, always set `DJANGO_SECRET_KEY` and keep `DJANGO_DEBUG=False`.
@@ -12,6 +34,37 @@ Settings that differ per computer or server (secret key, debug mode, host names,
 - Production lines, and their processes, exchanges, transport entries and publishing steps, are only visible to the user who created the production line (and to staff). Companies, materials, products and background processes are shared between all logged-in users.
 - The REST API (`/api/`) requires login. Published DPPs (`/api/metadata/`) can be read by anyone; only staff can change them.
 - The Decision Support System API (`/dss/`) does not require login, so other tools can call it, but anonymous calls are rate-limited. Sessions are identified by a random ID (UUID), returned as `session_id`.
+
+## Demo data
+For testing and demonstrations, load a synthetic example of the battery cooling plate use case:
+
+```bash
+python manage.py seed_demo                  # load once; prints the password of user 'demo'
+python manage.py seed_demo --reset          # remove and load again
+python manage.py seed_demo --remove         # remove the demo data
+```
+
+It creates a manufacturer, a supplier, materials, products, a production line with three processes (degreasing, dynamic beam laser welding, leak test), transport, DPP details, publishing settings with steps 1 to 4 done, one published DPP, a sustainability evaluation and two decision-support sessions. Example requests in the format the L4M platform sends are in `mysite/dss/examples/` (see the README there), and the test page `/dss/kam-input/` lets you send a key account manager request from the browser, pre-filled with the same example. All names and numbers are invented; they are not measurements or real company data.
+
+## Front end
+The pages are server-rendered Django templates styled with [Bootstrap 5](https://getbootstrap.com/), following the look of the Lasers4MaaS platform. Everything the pages need is served by the app itself, so no page loads files from an outside server:
+
+| What | Where |
+| --- | --- |
+| Bootstrap 5.3 (CSS and JS) and Bootstrap Icons | `mysite/dpp/static/vendor/bootstrap/`, `.../bootstrap-icons/` |
+| Fonts: Roboto (app) and Outfit (landing page), latin subsets | `mysite/dpp/static/vendor/fonts/` |
+| Mermaid, for the production line flowchart | `mysite/dpp/static/vendor/mermaid/` |
+| App theme (colours, sidebar, tables, wizard) | `mysite/dpp/static/css/sce.css` |
+| Small shared scripts (table search, clickable rows, tabs) | `mysite/dpp/static/js/sce.js` |
+| Landing page styles | `mysite/dpp/static/css/landing.css` |
+
+Page layouts, in `mysite/templates/`:
+- `base.html`: the app layout with the sidebar; all app pages extend it (also through `dpp/base.html`).
+- `auth_base.html`: log in, sign up and password reset.
+- `public_base.html`: the public DPP page, without the sidebar.
+- `landing.html`: the public landing page at `/`.
+
+Forms are rendered with `crispy-bootstrap5`. To update a stored library, download the new version (for example with `npm pack bootstrap`), replace the files in `static/vendor/`, and check the pages.
 
 # User Manual
 ## Key features
@@ -24,23 +77,25 @@ In the sections below, instructions are provided for using the data collector ap
 ## Start page
 [-> Try live](http://127.0.0.1:8000/dpp/welcome)
 
-On the start page, you find a list of recently modified production lines. A [production line](#production-line) is a sequence of [manufacturing processes](#process) that produce a consumer [product](#product). To continue working on a production line, click on its name. To create a new production line, click the green button. It is also possible to view a more detailed list of production lines, including older ones, by clicking 'See detailed list'.
+The public landing page at `/` explains the tool; after logging in you arrive at the start page (Home in the sidebar). There you find a list of recently changed production lines. A [production line](#production-line) is a sequence of [manufacturing processes](#process) that produce a consumer [product](#product). To continue working on a production line, click its row. To create a new production line, click 'New production line' at the top right. For the full list, click 'All production lines' or Production lines in the sidebar.
 
 ## Production line
 [-> Try live](http://127.0.0.1:8000/dpp/productionline/)
 
-Creating a production line is simple: click on the button 'Add production line' when you are at the [start page](#start-page) or at the list of production lines. A [form](#forms) will be shown, which asks to enter some information about the new production line. 
+Creating a production line is simple: click 'New production line' on the [start page](#start-page), or 'Add production line' on the list of production lines. A [form](#forms) will be shown, which asks to enter some information about the new production line. 
 - **Name\***: The asterisk indicates that the name must be specified.
 - **Description**: Add a description if you want, or leave it empty.
-- **Final product\***: Select the product produced by this production line. Most likely, the product doesn't exist yet, so it isn't shown in the dropdown list. Instead, click the green **+** to create a new product. 
+- **Final product\***: Select the product produced by this production line. Most likely, the product doesn't exist yet, so it isn't shown in the dropdown list. Instead, click the **+** next to the list to create a new product. 
 - **Facility\***: Select the location where this production line is located. Click **+** if the [facility](#facility) is not in the list. 
-To go back to the list of production lines, simply follow the link in the [navigation pane](#navigation) on the left.
+To go back to the list of production lines, use the breadcrumb at the top of the page or Production lines in the [sidebar](#navigation).
 
-When a production line is selected, the following information is shown:
-- Detailed information about this production line, including a description, final product, and manufacturer.
-- A depiction of [inputs and outputs](#inputs-and-outputs) of the production line, and processes contained in it.
-- A list of [processes](#process). Click on one to see or edit it. Or click 'Add new process'.
-- A list of [transport operations](#transport), indicating how each input or output has been transported. At first, no transport operations are specified. To create an initial set, click the green button 'Add transport operations'.
+The page of a production line has four tabs:
+- **Overview**: a flowchart of the [inputs and outputs](#inputs-and-outputs) and the processes of the production line, and its details (description, final product, facility).
+- **Processes**: the list of [processes](#process), with a search box. Click a row to see or edit a process, or click 'Add process'.
+- **Transport**: the [transport operations](#transport), showing how each input or output is transported. At first there are none; click 'Add transport operations' to create an initial set.
+- **Publish DPP**: the status of [publishing](#publishing), and the button to start or continue it.
+
+The buttons at the top right add a process, or start or continue publishing.
 
 ## Facility
 A facility is described by 3 fields:
@@ -83,30 +138,19 @@ It is possible - and sometimes mandatory - to specify some details about a [prod
 ## Process
 Now it is time to add a production process to the production line. A process is described by:
 - **Name\***
-- **Production line\***: The production line that it belongs to. (Automatically filled when you use the 'Add new process' button in a [production line](production-line)).
+- **Production line\***: The production line that it belongs to. (Automatically filled when you use the 'Add process' button of a [production line](#production-line)).
 - **Main output**: The main product produced by this process. It could be an intermediate product or a final product. It is important that each product is only produced by a single process! Even if two processes produce a similar product, you need to define a separate product for each.
 - **Amount**: The number of units of the main output produced by this process. If you set the amount to '10', then you need to specify all [inputs and outputs](#inputs-and-outputs) needed to produce 10 items of the main output. 
 - **Facility**: The location of this process. If you leave this empty, the location of the production line will be set.
 - **Description**: Optional description.
 - **Outsourced**: Check the box if the process is operated by an external company. This will be set automatically.
 
-After adding a process, you can see the following process details:
-- Inputs to process: shows a list of inputs. The symbol indicates the input type: 
-	- 🧩 Component of the product
-	- 🧃 Consumable
-	- 🔥 Electricity or heat
-	- ⚙️ Utility or equipment
-	- 🧑‍🔧 Service
-	- 📦 Packaging
-	- ⚗️ Reactant
-	- 🗑️ Waste (used as feedstock)
-	- ⛏️ Natural resource extraction
-- Buttons to add a new input.
-- Outputs of process: Shows the main product, waste flows, and emissions.
-- Buttons to add a new output.
-- Detailed information about the process
+After adding a process, its page shows:
+- **Inputs**: a table of the inputs, with a label for the type of each: component of the product, consumable, electricity or heat, utility or equipment, service, packaging, reactant, waste (used as feedstock) or resource extraction. Click an amount to edit an input, or × to remove it. The buttons below the table add an input, packaging or a resource extraction.
+- **Outputs**: the main product, waste flows and emissions, with buttons to add waste or an emission. 'View' opens the main product.
+- **Details**: the details of the process. Edit or delete the process with the buttons at the top right.
 
-To verify that all processes are connected properly, go back to the [production line](#production-line) page and check the process diagram.
+To verify that all processes are connected properly, go back to the [production line](#production-line) page and check the flowchart on the Overview tab.
 
 ## Inputs and outputs
 Inputs to processes and outputs of processes all fall in the category of Exchanges. Two types of exchanges exist:
@@ -143,30 +187,29 @@ It is best to create the transport operations after all processes and exchanges 
 It is assumed that transport is only needed for products entering an leaving the production line. If transport occurs between two internal processes, you can add it manually by selecting a transport service as input. Automatically created transport entries can - and should - be edited to update the transport distance and mode of transport.
 
 ## Compositions
-To see the details of a [product](#product), click on 'View' in the [process](#process) that produces it. (It will be possible later to also access from the production line page.) On this page, you can see:
-- Information about the product
-- Origin: the manufacturer and the production process.
-- Bill of materials (BoM): list of materials in the product. This will be empty at first. Hazardous and critical materials are labeled as such.
-- Components with missing BoM: supports the completion of material info, see below.
+To see the details of a [product](#product), click 'View' next to the main product of the [process](#process) that produces it, or open it from Products in the sidebar. The product page has three tabs:
+- **Product details**: information about the product, its origin (the manufacturer and the production process) and its physical properties.
+- **Composition**: the bill of materials (BoM), the list of materials in the product. It is empty at first. Hazardous and critical materials are labelled as such. Next to it, the components that have no BoM yet, see below.
+- **DPP details**: the [product details](#product-details) needed for the passport.
 
 There are two ways to complete the BoM:
 1. Add all the materials by clicking 'Add material' multiple times. Useful when the product consists solely of primary raw materials.
-2. Go to the component(s) with missing BoM, add the composition following approach 1, go back to the original product and click 'Recalculate'.
+2. Go to the component(s) with missing BoM, add the composition following approach 1, go back to the original product and click 'Recalculate from components'.
 
 ## Publishing
 After you have created the [production processes](#process), [products](#product), and their [compositions](#compositions), it is time to compile all information for a publishable DPP. The publishing page will guide you through all steps needed to validate the data, calculate sustainability scores, and register the DPP.
 
-On the [production line page](#production-line), click the button 'Review & Publish DPP' at the bottom. Please make sure that the [facility](#facility) of the production line is specified! First of all, click the 'Edit' button to make changes to the metadata for publishing.
+On the [production line page](#production-line), click 'Review & publish DPP' at the top right (or on the Publish DPP tab). Please make sure that the [facility](#facility) of the production line is specified! First, click 'Edit publishing details' to fill in the metadata for publishing.
 
-Next, there are five steps to go through in order:
+Next, there are five steps to go through in order. Click 'Run all steps', or 'Run from here' next to a step:
 1. Check completeness: this will check if all required information on the product is available.
 2. Aggregate manufacturing process: combine all processes of the production line, such that details of individual steps are not disclosed.
 3. Compute concentrations and components: calculate the concentration of hazardous and critical materials, and list the product's components.
 4. Create transport table: add missing [transport](#transport) information for all the inputs that have none.
 5. Do Life Cycle Assessment: LCA calculations for [environmental assessment](#sustainability-evaluation).
 
-After running one or more steps, the status (success or failure) will be indicated. An error message explains the reason of eventual errors. You may need to make some changes before re-running failed steps.
-When all five steps are completed, you can click 'Publish DPP'. This will create DPPs for the requested number of product items. **Congratulations!**
+Each step shows its status: Done, Failed or Pending. If a step fails, a message at the top explains why. You may need to make some changes before running the failed step again.
+When all five steps are done, a 'Publish' button appears at the top right. It creates DPPs for the requested number of product items. **Congratulations!** Each published DPP has a public page at `/dpp/final/<registration number>/`.
 
 ## Sustainability evaluation
 A DPP describes the sustainability aspects of a product. Many sustainability indicators need to be calculated using specialized software or assessment methods. A 'Sustainability evaluation' groups all measured indicator values that were determined on a specific date or by a specific organization. 
@@ -216,19 +259,18 @@ In various forms, documents can be selected or uploaded. These documents contain
 - Other
 
 ## Navigation
-To enable easy navigation through the app, use the links provided by the navigation panel on the left:
-- Production lines
-- Products
-- Importers
-- Sustainability evaluations
-- Published DPPs
-- User profile settings
+The sidebar on the left (behind the menu button on a phone) links to:
+- Home, Production lines, Products, Sustainability evaluations and Published DPPs;
+- under **Libraries**: Materials, Companies, Facilities, Importers, Emissions and Documents;
+- at the bottom: Settings (your profile and password) and Log out.
+
+The breadcrumb at the top of each page leads back to the pages above it. Lists have a search box that filters the rows on the page.
 
 ## Forms
 The app uses forms to create new items, such as products and manufacturing processes. 
 Required fields that must be filled are indicated with an asterisk, e.g. **Name\***. 
-Some fields ask to link to another item, such as the operator of a process. These fields can be recognized as a drop-down box with a green plus sign (**+**) next to it. If you already created the item you wan to link to, select it in the dropdown list. Otherwise, click the **+** to create it in a pop-up window. 
-After filling the form, click the 'Save' button at the bottom. In case there are any issues with the information, an error message will explain what went wrong and how to correct it. 
+Some fields ask to link to another item, such as the operator of a process. These fields can be recognized as a drop-down box with a plus sign (**+**) next to it. If you already created the item you want to link to, select it in the dropdown list. Otherwise, click the **+** to create it in a pop-up window. 
+After filling the form, click 'Create' (or 'Save changes') at the bottom. In case there are any issues with the information, an error message will explain what went wrong and how to correct it. 
 
 # API Manual
 Full Digital Product Passports (DPPs) and parts of a DPP can be retrieved using the API functionality.
@@ -360,7 +402,17 @@ A DPP is uniquely identified by its registration number. It can be accessed thro
 ```
 
 # Decision Support System manual
-The Sustainability and Cost Module features a Decision Support System (DSS) that can be accessed through an API. It is specifically designed for supporting decisions in laser welding. The DSS has a user interface to guide you through the process of setting decision preferences. 
+The Sustainability and Cost Module features a Decision Support System (DSS) that can be accessed through an API. It is specifically designed for supporting decisions in laser welding. The DSS has a user interface to guide you through the process of setting decision preferences, in four steps: KPI selection (including any missing KPI values), analysis setup, weights and thresholds, and sampling and ranking. The results page shows the ranking in charts and tables.
+
+| Endpoint | Role | Returns |
+| --- | --- | --- |
+| `POST /dss/experiment/` | Process developer | The KPIs of one experiment |
+| `POST /dss/experiments/` | Process developer | A redirect to the wizard for comparing the experiments |
+| `POST /dss/welding-station/` | Key account manager | The KPIs of one welding station |
+| `POST /dss/welding-stations/` | Key account manager | `{"session_id": ...}`; the wizard is at `/dss/<session_id>/step/0/` |
+| `POST /dss/calculate/` | Any | The MCDA ranking for a decision matrix and settings |
+
+The full API description is at `/schema/swagger/`. Example requests for each endpoint are in `mysite/dss/examples/`.
 
 ## API access
 To receive decision support for comparing different laser welding parameters, send a post request to [main-domain.com/dss/experiments/]. The request should contain a list of experiments with the following structure:
@@ -414,7 +466,7 @@ To receive decision support for comparing different laser welding parameters, se
 
 ## Criteria calculations
 
-Calculations for deriving the KPIs used as decision criteria in the DSS, for the Process Developer. These calculations are implemented in the function calculate_kpis, in script views.py.
+Calculations for deriving the KPIs used as decision criteria in the DSS, for the Process Developer. These calculations are implemented in the function `calculate_experiment_kpis`, in `mysite/dss/views.py`.
 - Amount of shielding gas = gas flow rate × processing time
 - Amount of filler wire = filler wire use rate × processing time
 - Consumables costs = Σ amount × price (for all consumables)
@@ -426,21 +478,22 @@ Calculations for deriving the KPIs used as decision criteria in the DSS, for the
 - Process carbon footprint = consumables footprint + process energy use × electricity footprint (in the specific country)
 - The technical quality indicators are directly used without calculations.
 
-Calculations for deriving KPIs for the Key Account Manager. This is not implemented yet (July 2026).
+Calculations for deriving KPIs for the Key Account Manager, in the same function. Processing time = weld length / weld speed; cycle time is given in the request.
 - Amount of shielding gas = gas flow rate × processing time
 - Amount of filler wire = filler wire use rate × processing time
 - Consumables costs = Σ amount × price (for all consumables)
 - Labour costs = cycle time × 3 × wages (in the specific country)
 - Process energy use = processing time × laser power + cycle time × welding station power
 - Energy costs = process energy use × electricity price (in the specific country)
-- Operating costs = consumables costs + labour costs + energy costs + maintenance costs
-- Materials costs = Σ material weight × material price / (1 – scrap rate) (for all parts)
-- Service life = 15 years (fixed value)
 - Annual production = 240 days/year × 16 hours/day × 3600 seconds/hour / cycle time
+- Operating costs = consumables costs + labour costs + energy costs + maintenance costs / annual production
+- Materials costs = Σ material weight × material price (for all parts)
+- Investment costs (CAPEX) = 5,860,000 / 3 € (fixed value in the code)
+- Service life = 15 years (fixed value)
 - Amortized CAPEX = investment costs / (service life × annual production)
-- Total production costs = operating costs + materials costs + amortized CAPEX
+- Total production costs = (operating costs + materials costs + amortized CAPEX) / (1 – scrap rate)
 - Consumables footprint = Σ amount × material carbon footprint (for all consumables)
 - Process carbon footprint = consumables footprint + process energy use × electricity footprint (in the specific country)
-- Materials footprint = Σ material weight × material carbon footprint / (1 – scrap rate) (for all parts)
-- Product carbon footprint = process carbon footprint + materials footprint
+- Materials footprint = Σ material weight × material carbon footprint (for all parts)
+- Product carbon footprint = (process carbon footprint + materials footprint) / (1 – scrap rate)
 - The remaining KPIs are directly used without calculations: recyclability, process monitoring, process automation level, operator specialization level, production lead time, machine saturation, technical quality indicators.

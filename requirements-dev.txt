@@ -1,0 +1,4 @@
+# Everything needed to run the tests: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.2.0
+pytest-django==4.14.0
