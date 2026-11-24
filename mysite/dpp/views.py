@@ -353,9 +353,22 @@ class ProcessDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
         context['flow_icons'] = self.FLOW_ICONS
         return context
 
-class ProductDetailView(LoginRequiredMixin, AdminTemplateMixin, DetailView):
-    model = ProductModel
+class ProductDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
+    """Detail page of any Flow: a ProductModel or a ProductBatch.
+    Links come from Flow fields (final_product, functional_flow),
+    so the pk can belong to either subclass."""
+    model = Flow
     template_name = 'dpp/product_detail.html'
+
+    def get_object(self, queryset=None):
+        flow = super().get_object(queryset)
+        for child in ('productmodel', 'productbatch'):
+            if hasattr(flow, child):
+                flow = getattr(flow, child)
+                break
+        # Use the concrete class for the title and the edit/delete links
+        self.model = type(flow)
+        return flow
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

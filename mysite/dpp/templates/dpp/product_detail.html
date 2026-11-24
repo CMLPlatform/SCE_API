@@ -42,8 +42,8 @@
           {% if object.properties %}
           {% with props=object.properties %}
           <dl class="detail-list">
-            <div><dt>Weight</dt><dd>{{ props.weight|default:"—" }} {{ props.weight_unit }}/{{ object.unit }}</dd></div>
-            <div><dt>Volume</dt><dd>{{ props.volume|default:"—" }} {{ props.volume_unit }}/{{ object.unit }}</dd></div>
+            <div><dt>Weight</dt><dd>{{ props.weight|default:"—" }} {{ props.weight_unit }}/{{ object.model.unit }}</dd></div>
+            <div><dt>Volume</dt><dd>{{ props.volume|default:"—" }} {{ props.volume_unit }}/{{ object.model.unit }}</dd></div>
             <div><dt>Density</dt><dd>{{ props.density|default:"—" }} {{ props.weight_unit }}/{{ props.volume_unit }}</dd></div>
             <div><dt>Includes packaging</dt><dd>{{ props.includes_packaging|yesno:"Yes,No,—" }}</dd></div>
           </dl>

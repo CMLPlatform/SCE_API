@@ -11,7 +11,9 @@ from django.test import TestCase
 from django.urls import reverse
 
 from dpp.management.commands.seed_demo import LINE_NAME, MANUFACTURER
-from dpp.models import Company, ManufacturingProcess, Metadata, Process, ProductionLine, Publisher
+from dpp.models import (
+    Company, ManufacturingProcess, Metadata, Process, ProductBatch, ProductionLine, Publisher,
+)
 from dss.models import McdaSession
 
 EXAMPLES = Path(settings.BASE_DIR) / "dss" / "examples"
@@ -83,6 +85,18 @@ class SeedDemoTests(TestCase):
         response = self.client.get(reverse("dpp:dpp_full", args=[dpp.pk]))  # public page
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "DEMO-BCP-0001")
+
+    def test_product_page_accepts_batch(self):
+        """The product page also opens for a ProductBatch (a Flow that is
+        not a ProductModel), e.g. when it is a final product."""
+        seed("--no-dss")
+        line = ProductionLine.objects.get(name=LINE_NAME)
+        model = line.final_product.model
+        batch = ProductBatch.objects.create(model=model, batch_number=1, GTIN="0000000000000")
+        self.client.force_login(line.created_by)
+        response = self.client.get(reverse("dpp:product_detail", args=[batch.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["opts"].model_name, "productbatch")
 
 
 class ExampleRequestTests(TestCase):
