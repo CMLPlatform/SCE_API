@@ -10,6 +10,11 @@ Data attached to a product (properties, DPP details, composition,
 evaluations and their scores, ...) belongs to the owner of that
 product. A product that no production line makes is shared.
 
+A published DPP (Metadata) belongs to the owner of its product batch.
+If no production line makes the batch (publishing a product model
+creates a new batch), the DPP belongs to the owner of the product model.
+The public DPP page and the API show every DPP (see api.views).
+
 Everything else (companies, materials, background processes, ...) is
 shared reference data that every logged-in user can use.
 
@@ -19,9 +24,12 @@ from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db.models import Q
 
 from .models import (
-    Activity, EnvExchange, Flow, Process, ProductExchange,
+    Activity, EnvExchange, Flow, Metadata, Process, ProductExchange,
     ProductionLine, ProductItem, Publisher, Transport,
 )
+
+# Lookup path from a Metadata (DPP) to its product batch
+DPP_BATCH = "product_item__product_batch__"
 
 
 def is_privileged(user) -> bool:
@@ -40,15 +48,31 @@ def _flow_owner(flow):
         return None
 
 
-def _flow_q(user, prefix=""):
-    """Q filter for the flows (at `prefix`) that `user` may see."""
-    unowned = Q(**{f"{prefix}produced_by__isnull": True}) & Q(
+def _unowned_q(prefix=""):
+    """Q filter for the flows (at `prefix`) that no production line makes."""
+    return Q(**{f"{prefix}produced_by__isnull": True}) & Q(
         **{f"{prefix}productionline__isnull": True}
     )
+
+
+def _owned_by_q(user, prefix=""):
+    """Q filter for the flows (at `prefix`) that a line of `user` makes."""
+    return Q(**{f"{prefix}produced_by__production_line__created_by": user}) | Q(
+        **{f"{prefix}productionline__created_by": user}
+    )
+
+
+def _flow_q(user, prefix=""):
+    """Q filter for the flows (at `prefix`) that `user` may see."""
+    return _unowned_q(prefix) | _owned_by_q(user, prefix)
+
+
+def _dpp_q(user):
+    """Q filter for the DPPs (Metadata) that `user` may see."""
+    batch, model = DPP_BATCH, f"{DPP_BATCH}model__"
     return (
-        unowned
-        | Q(**{f"{prefix}produced_by__production_line__created_by": user})
-        | Q(**{f"{prefix}productionline__created_by": user})
+        _owned_by_q(user, batch)
+        | (_unowned_q(batch) & (_unowned_q(model) | _owned_by_q(user, model)))
     )
 
 
@@ -90,6 +114,9 @@ def get_owner(obj):
             return None
     if isinstance(obj, Flow):
         return _flow_owner(obj)
+    if isinstance(obj, Metadata):
+        batch = obj.product_item.product_batch
+        return _flow_owner(batch) or _flow_owner(batch.model)
     if path := _product_path(type(obj)):
         product = obj
         for name in path.split("__"):
@@ -129,6 +156,8 @@ def filter_owned(queryset, user):
         )
     if issubclass(model, Flow):
         return queryset.filter(_flow_q(user))
+    if issubclass(model, Metadata):
+        return queryset.filter(_dpp_q(user))
     if path := _product_path(model):
         return queryset.filter(_flow_q(user, f"{path}__"))
     return queryset

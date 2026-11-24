@@ -15,6 +15,7 @@ urlpatterns = [
     path("publisher/<int:pk>/update/", views.PublisherUpdateView.as_view(), name='publisher_update'),
     path('publisher/<int:pk>/', views.PublisherDetailView.as_view(), name='publisher_detail'),
     path('final/<uuid:pk>/', views.DppFullView.as_view(), name='dpp_full'),
+    path('metadata/delete/', views.MetadataBulkDeleteView.as_view(), name='metadata_bulk_delete'),
 ]
 
 # urlpatterns = []

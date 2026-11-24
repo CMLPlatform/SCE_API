@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
@@ -5,7 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.views.generic import View, ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
     Document, Material, HazardousMaterial,
@@ -197,6 +199,58 @@ for model in [
 
 # Make them importable
 globals().update(views)
+
+
+# Published DPPs: the list groups the DPPs by product batch (see
+# metadata_list.html), and the user can delete many DPPs at once.
+DPP_ORDER = (
+    "product_item__product_batch__model__name",
+    "product_item__product_batch__batch_number",
+    "product_item__product_batch__pk",
+    "product_item__pk",
+)
+DPP_RELATED = ("product_item__product_batch__model", "issuer", "reo")
+
+
+class MetadataList(views["MetadataList"]):
+    """Published DPPs, grouped by product batch. Replaces the generated list."""
+    template_name = "dpp/metadata_list.html"
+    paginate_by = None  # A page break would split a batch
+
+    def get_queryset(self):
+        return super().get_queryset().select_related(*DPP_RELATED).order_by(*DPP_ORDER)
+
+
+class MetadataBulkDeleteView(LoginRequiredMixin, View):
+    """Delete the selected DPPs (POST field "pk", one per DPP).
+
+    The first POST shows a confirmation page. The POST from that page
+    (with confirm=1) deletes the DPPs. Users can only delete their own
+    DPPs (see dpp.permissions): other registration numbers are ignored.
+    """
+    http_method_names = ["post"]
+    template_name = "dpp/metadata_confirm_bulk_delete.html"
+
+    def post(self, request):
+        pks = []
+        for value in request.POST.getlist("pk"):
+            try:
+                pks.append(uuid.UUID(value))
+            except ValueError:
+                continue
+        dpps = filter_owned(Metadata.objects.filter(pk__in=pks), request.user)
+        if not dpps.exists():
+            messages.warning(request, "Select one or more DPPs to delete.")
+            return redirect("dpp:metadata_list")
+
+        if request.POST.get("confirm") != "1":
+            dpps = dpps.select_related(*DPP_RELATED).order_by(*DPP_ORDER)
+            return render(request, self.template_name, {"dpps": dpps})
+
+        count = dpps.count()
+        dpps.delete()
+        messages.success(request, f"{count} DPP{'s' if count != 1 else ''} deleted.")
+        return redirect("dpp:metadata_list")
 
 
 def create_flowchart(processes):

@@ -12,12 +12,105 @@ document.querySelectorAll("[data-table-filter]").forEach((input) => {
   });
 });
 
-// Clickable rows: <tr data-href="..."> opens the link, unless a link or button inside was clicked.
+// Clickable rows: <tr data-href="..."> opens the link, unless a link, button or checkbox cell was clicked.
 document.querySelectorAll("tr[data-href]").forEach((row) => {
   row.addEventListener("click", (event) => {
-    if (event.target.closest("a, button, input, form")) return;
+    if (event.target.closest("a, button, input, label, form, .select-cell")) return;
     window.location = row.dataset.href;
   });
+});
+
+// Grouped selection table (see dpp/metadata_list.html), inside [data-grouped-table]:
+// - <tbody data-group="ID"> is the head row of a group. Its [data-group-toggle] button
+//   opens and closes <tbody id="ID">, which holds the rows of the group.
+// - [data-select-all], [data-select-group] and [data-select-row] are checkboxes.
+//   "Select all" and a group checkbox skip rows that the search hides.
+// - [data-delete-selected] is enabled when one or more rows are selected, and
+//   [data-selected-count] shows how many.
+// - [data-expand-all] opens or closes all groups.
+// - While the search box has text, the groups with a match open and the others hide.
+document.querySelectorAll("[data-grouped-table]").forEach((root) => {
+  const rowBoxes = [...root.querySelectorAll("[data-select-row]")];
+  const selectAll = root.querySelector("[data-select-all]");
+  const deleteButton = root.querySelector("[data-delete-selected]");
+  const count = root.querySelector("[data-selected-count]");
+  const expandAll = root.querySelector("[data-expand-all]");
+  const search = root.querySelector("[data-table-filter]");
+  const groups = [...root.querySelectorAll("tbody[data-group]")].map((head) => {
+    const body = document.getElementById(head.dataset.group);
+    return {
+      head, body,
+      toggle: head.querySelector("[data-group-toggle]"),
+      box: head.querySelector("[data-select-group]"),
+      rows: [...body.querySelectorAll("[data-select-row]")],
+      open: false,
+    };
+  });
+  const searching = () => Boolean(search && search.value.trim());
+  const visible = (boxes) => boxes.filter((box) => !box.closest("tr").hidden);
+
+  function setBox(box, boxes) {
+    const checked = boxes.filter((b) => b.checked).length;
+    box.checked = boxes.length > 0 && checked === boxes.length;
+    box.indeterminate = checked > 0 && checked < boxes.length;
+  }
+
+  function update() {
+    groups.forEach((g) => setBox(g.box, visible(g.rows)));
+    setBox(selectAll, visible(rowBoxes));
+    const selected = rowBoxes.filter((b) => b.checked).length;
+    if (count) count.textContent = selected;
+    if (deleteButton) deleteButton.disabled = selected === 0;
+  }
+
+  function show(g, open) {
+    g.body.hidden = !open;
+    g.toggle.setAttribute("aria-expanded", String(open));
+  }
+
+  function render() {
+    groups.forEach((g) => {
+      const matches = visible(g.rows).length > 0;
+      g.head.hidden = searching() && !matches;
+      show(g, searching() ? matches : g.open);
+    });
+    if (expandAll) {
+      const allOpen = groups.every((g) => g.open);
+      expandAll.setAttribute("aria-pressed", String(allOpen));
+      expandAll.querySelector("span").textContent = allOpen ? "Collapse all" : "Expand all";
+      expandAll.querySelector(".bi").className = `bi ${allOpen ? "bi-arrows-collapse" : "bi-arrows-expand"}`;
+    }
+    update();
+  }
+
+  groups.forEach((g) => {
+    g.toggle.addEventListener("click", () => {
+      if (searching()) return show(g, g.body.hidden); // Until the search changes
+      g.open = !g.open;
+      render();
+    });
+    g.box.addEventListener("change", () => {
+      visible(g.rows).forEach((b) => { b.checked = g.box.checked; });
+      update();
+    });
+  });
+  rowBoxes.forEach((b) => b.addEventListener("change", update));
+  if (selectAll) {
+    selectAll.addEventListener("change", () => {
+      visible(rowBoxes).forEach((b) => { b.checked = selectAll.checked; });
+      update();
+    });
+  }
+  if (expandAll) {
+    expandAll.addEventListener("click", () => {
+      const open = !groups.every((g) => g.open);
+      groups.forEach((g) => { g.open = open; });
+      render();
+    });
+  }
+  // Runs after the table search above, so the rows that match are already known
+  if (search) search.addEventListener("input", render);
+  render(); // The browser can keep checked boxes after "Back"
 });
 
 // Keep the selected tab when the page reloads (e.g. after a form post): uses the URL hash.

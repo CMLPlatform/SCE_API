@@ -172,6 +172,22 @@ body.app { background: #fff; }
 .row-actions a:hover { text-decoration: underline; }
 .btn-icon { padding: 0.25rem 0.5rem; }
 
+/* Grouped tables with checkboxes (published DPPs) */
+.table-sce .select-cell { width: 1%; padding-right: 0.25rem; cursor: default; }
+.table-sce .select-cell .form-check-input { margin: 0; cursor: pointer; }
+.table-grouped > tbody > tr:last-child > td { border-bottom: 1px solid var(--bs-table-border-color); }
+.table-grouped > tbody:last-of-type > tr:last-child > td { border-bottom: 0; }
+.table-grouped > .group-head > tr > td { background: #FAFBFC; }
+.group-toggle {
+  display: inline-flex; align-items: center; gap: 10px; padding: 0; border: 0;
+  background: none; color: inherit; text-align: left;
+}
+.group-toggle:focus-visible { outline: 2px solid var(--sce-primary); outline-offset: 4px; border-radius: 4px; }
+.group-toggle .bi-chevron-right { transition: transform 0.15s; }
+.group-toggle[aria-expanded="true"] .bi-chevron-right { transform: rotate(90deg); }
+.table-grouped > .group-rows > tr > td:nth-child(2) { padding-left: 2.25rem; }
+.registration-number { font-family: var(--bs-font-monospace); font-size: 0.8125rem; white-space: nowrap; }
+
 /* Badges: pill-shaped like the platform's Pass / Fail / Pending */
 .badge { font-weight: 500; font-size: 0.8125rem; padding: 0.4em 0.8em; }
 .badge.text-bg-light { background: #F8F9FA !important; color: #3B3F45 !important; border: 1px solid var(--sce-line); font-weight: 400; }
