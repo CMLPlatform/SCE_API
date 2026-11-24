@@ -1,24 +1,16 @@
-{% load i18n %}
-{% load static %}
-<link rel="stylesheet" href="{% static 'css/components.css' %}">
+{% extends "dpp/base.html" %}
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Create a new product | Lasers4MaaS SCE{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
+{% block title %}New product{% endblock %}
 
 {% block content %}
-<h1>Create a new product</h1>
-
-{% csrf_token %}
-
-<div class="add-button">
-  <a href="{% url 'dpp:productmodel_add' %}?_popup=1" class="btn btn-primary">Create Product Model</a>
-  <a href="{% url 'dpp:productbatch_add' %}?_popup=1" class="btn btn-primary">Create Product Batch</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">New product</h1>
+    <p class="page-subtitle">Choose what kind of product to create.</p>
+  </div>
 </div>
-
+<div class="d-flex flex-wrap gap-2">
+  <a class="btn btn-primary" href="{% url 'dpp:productmodel_add' %}?_popup=1"><i class="bi bi-plus-circle" aria-hidden="true"></i>Product model</a>
+  <a class="btn btn-outline-primary" href="{% url 'dpp:productbatch_add' %}?_popup=1"><i class="bi bi-plus-circle" aria-hidden="true"></i>Product batch</a>
+</div>
 {% endblock %}

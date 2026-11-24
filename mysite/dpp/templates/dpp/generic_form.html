@@ -1,54 +1,59 @@
 {% extends "dpp/base.html" %}
-{% load crispy_forms_tags %}
-{% load static %}
+{% load crispy_forms_tags static %}
 
 {% block extra_js %}
-    {{ block.super }}
-    <script src="{% url 'admin:jsi18n' %}"></script>
-    <!-- jQuery (required for admin widgets) -->
-    <script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
-    <script src="{% static 'admin/js/jquery.init.js' %}"></script>
-    
-    <!-- Admin popup handling -->
-    <script src="{% static 'admin/js/core.js' %}"></script>
-    <script src="{% static 'admin/js/admin/RelatedObjectLookups.js' %}"></script>
-    
-    <!-- scripts defined in form -->
-    {{ form.media }}
+  {{ block.super }}
+  <script src="{% url 'admin:jsi18n' %}"></script>
+  {# jQuery and the admin scripts handle the "+" pop-ups for related objects #}
+  <script src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+  <script src="{% static 'admin/js/jquery.init.js' %}"></script>
+  <script src="{% static 'admin/js/core.js' %}"></script>
+  <script src="{% static 'admin/js/admin/RelatedObjectLookups.js' %}"></script>
+  {{ form.media }}
 {% endblock %}
 
-{% block title %}{% if object %}Edit{% else %}Create new{% endif %} {{ verbose_name }}{% endblock %}
+{% block title %}{% if object %}Edit{% else %}New{% endif %} {{ verbose_name }}{% endblock %}
+
+{% block breadcrumbs %}
+{% if not is_popup %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    {% url opts.app_label|add:':'|add:opts.model_name|add:'_list' as list_url %}
+    {% if list_url %}<li class="breadcrumb-item"><a href="{{ list_url }}">{{ opts.verbose_name_plural|capfirst }}</a></li>{% endif %}
+    {% if object %}
+    <li class="breadcrumb-item"><a href="{% url opts.app_label|add:':'|add:opts.model_name|add:'_detail' object.pk %}">{{ object }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    {% else %}
+    <li class="breadcrumb-item active" aria-current="page">New</li>
+    {% endif %}
+  </ol>
+</nav>
+{% endif %}
+{% endblock %}
 
 {% block content %}
-<div class="px-4 sm:px-0">
-    <div class="mb-6">
-        <h2 class="text-2xl font-semibold text-gray-900">
-            {% if object %}Edit{% else %}Create{% endif %} {{ verbose_name }}
-        </h2>
-    </div>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">{% if object %}Edit {{ verbose_name }}{% else %}New {{ verbose_name }}{% endif %}</h1>
+    <p class="page-subtitle">Fields marked <span class="asteriskField">*</span> are required.</p>
+  </div>
+</div>
 
-    <div class="bg-white shadow sm:rounded-lg">
-        <div class="px-4 py-5 sm:p-6">
-            <form method="post">
-                {% csrf_token %}
-                {{ form|crispy }}
-                
-                <p>*: Required field</p>
-                {% if is_popup %}
-                <input type="hidden" name="is_popup" value="1">
-                {% endif %}
-                <div class="mt-6 flex items-center justify-end gap-x-3">
-                    <a href="{{request.META.HTTP_REFERER}}" 
-                       class="text-sm font-semibold leading-6 text-gray-900 hover:text-gray-700">
-                        Cancel
-                    </a>
-                    <button type="submit" 
-                            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-                        {% if object %}Update{% else %}Create{% endif %}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+<div class="card" style="max-width: 820px">
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      {{ form|crispy }}
+      {% if is_popup %}<input type="hidden" name="is_popup" value="1">{% endif %}
+      <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+        {% if is_popup %}
+        <button type="button" class="btn btn-outline-secondary" onclick="window.close()">Cancel</button>
+        {% else %}
+        <a class="btn btn-outline-secondary" href="{{ request.META.HTTP_REFERER|default:'javascript:history.back()' }}">Cancel</a>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">{% if object %}Save changes{% else %}Create{% endif %}</button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

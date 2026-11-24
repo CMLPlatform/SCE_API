@@ -1,0 +1,23 @@
+{% load static %}<!DOCTYPE html>
+<html lang="{% block lang %}en{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Digital Product Passport{% endblock %} | Lasers4MaaS</title>
+  <link rel="stylesheet" href="{% static 'vendor/fonts/fonts.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/sce.css' %}">
+</head>
+<body>
+<header class="public-header">
+  <div class="container py-3 d-flex align-items-center gap-3">
+    <a href="{% url 'landing' %}"><img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS home"></a>
+    <span class="text-secondary border-start ps-3">Digital Product Passport</span>
+  </div>
+</header>
+<main class="container py-4 py-md-5">
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

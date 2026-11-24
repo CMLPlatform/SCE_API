@@ -1,0 +1,70 @@
+[
+  {
+    "experimentId": 101,
+    "weldLength": 2400,
+    "weldSpeed": 100,
+    "country": "DE",
+    "laserPowerkW": 4.0,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 1.2, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.30, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 1.8, "target": "min"},
+      {"name": "Tensile strength", "value": 182, "target": "max"},
+      {"name": "Weld depth", "value": 1.4, "target": 1.5}
+    ]
+  },
+  {
+    "experimentId": 102,
+    "weldLength": 2400,
+    "weldSpeed": 140,
+    "country": "DE",
+    "laserPowerkW": 5.0,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 1.2, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.36, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 2.6, "target": "min"},
+      {"name": "Tensile strength", "value": 176, "target": "max"},
+      {"name": "Weld depth", "value": 1.6, "target": 1.5}
+    ]
+  },
+  {
+    "experimentId": 103,
+    "weldLength": 2400,
+    "weldSpeed": 80,
+    "country": "DE",
+    "laserPowerkW": 3.5,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Argon", "flowRate": 0.9, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.24, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 1.1, "target": "min"},
+      {"name": "Tensile strength", "value": 188, "target": "max"},
+      {"name": "Weld depth", "value": 1.3, "target": 1.5}
+    ]
+  },
+  {
+    "experimentId": 104,
+    "weldLength": 2400,
+    "weldSpeed": 120,
+    "country": "DE",
+    "laserPowerkW": 4.5,
+    "weldingStationPowerkW": 12.0,
+    "consumables": [
+      {"name": "Nitrogen", "flowRate": 1.5, "unit": "m3/h"},
+      {"name": "Aluminium filler wire", "flowRate": 0.33, "unit": "kg/h"}
+    ],
+    "qualityParameters": [
+      {"name": "Porosity", "value": 3.4, "target": "min"},
+      {"name": "Tensile strength", "value": 171, "target": "max"},
+      {"name": "Weld depth", "value": 1.5, "target": 1.5}
+    ]
+  }
+]

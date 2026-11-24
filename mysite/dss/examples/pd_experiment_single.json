@@ -1,0 +1,37 @@
+{
+  "experimentId": 101,
+  "weldLength": 2400,
+  "weldSpeed": 100,
+  "country": "DE",
+  "laserPowerkW": 4.0,
+  "weldingStationPowerkW": 12.0,
+  "consumables": [
+    {
+      "name": "Argon",
+      "flowRate": 1.2,
+      "unit": "m3/h"
+    },
+    {
+      "name": "Aluminium filler wire",
+      "flowRate": 0.3,
+      "unit": "kg/h"
+    }
+  ],
+  "qualityParameters": [
+    {
+      "name": "Porosity",
+      "value": 1.8,
+      "target": "min"
+    },
+    {
+      "name": "Tensile strength",
+      "value": 182,
+      "target": "max"
+    },
+    {
+      "name": "Weld depth",
+      "value": 1.4,
+      "target": 1.5
+    }
+  ]
+}

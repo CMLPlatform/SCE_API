@@ -259,7 +259,9 @@ def create_flowchart(processes):
     # Add background processes
     for supp in suppliers:
         prod = supp.functional_flow
-        for exch in ProductExchange.objects.filter(product=prod):
+        # Only exchanges with this line's processes: not the aggregated copy
+        # made when publishing, nor other production lines using the same product.
+        for exch in ProductExchange.objects.filter(product=prod, process__in=processes):
             if exch.direction == 'in':
                 lines.append(
                     f"    a{supp.id}({prod}):::outside --> a{exch.process.id}"
@@ -397,6 +399,10 @@ class PublisherUpdateView(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin
         fields = "__all__"
         template_name = "dpp/generic_form.html"
 
+        def get_success_url(self):
+            # Publisher has no list page: go back to its detail page
+            return reverse("dpp:publisher_detail", kwargs={"pk": self.object.pk})
+
 class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
     model = Publisher
     template_name = "dpp/publisher_detail.html"
@@ -406,16 +412,16 @@ class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
         action = request.POST.get('action')
         
         if action == 'run_all':
-            success = publisher.run_from_step(1)
-            if success:
+            failed = publisher.run_from_step(1)
+            if not failed:
                 messages.success(request, "All steps completed successfully!")
             else:
                 messages.error(request, f"Error: {publisher.error_message}")
         
         elif action == 'rerun_step':
             step = int(request.POST.get('step'))
-            success = publisher.run_from_step(step)
-            if success:
+            failed = publisher.run_from_step(step)
+            if not failed:
                 messages.success(request, f"Steps {step}-5 completed successfully!")
             else:
                 messages.error(request, f"Error: {publisher.error_message}")

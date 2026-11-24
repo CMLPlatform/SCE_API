@@ -1,0 +1,10 @@
+{% comment %}
+  Partial: wizard_nav.html — Back link and submit button.
+  Variables: back_url (optional), submit_label, submit_icon
+{% endcomment %}
+<div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+  {% if back_url %}
+  <a class="btn btn-outline-secondary" href="{{ back_url }}"><i class="bi bi-arrow-left" aria-hidden="true"></i>Back</a>
+  {% else %}<span></span>{% endif %}
+  <button type="submit" class="btn btn-primary">{{ submit_label|default:"Continue" }}<i class="bi {{ submit_icon|default:'bi-arrow-right' }}" aria-hidden="true"></i></button>
+</div>

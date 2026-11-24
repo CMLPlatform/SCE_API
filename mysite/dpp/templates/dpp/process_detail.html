@@ -1,102 +1,97 @@
 {% extends "dpp/generic_detail.html" %}
-{% load static %}
-{% load dpp_extras %} <!-- contains the lookup filter -->
+{% load dpp_extras %}
+
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'dpp:productionline_list' %}">Production lines</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'dpp:production_line_detail' object.production_line.pk %}#processes">{{ object.production_line }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ object }}</li>
+  </ol>
+</nav>
+{% endblock %}
 
 {% block special_detail %}
-
-<div class="grid md:grid-cols-2 gap-8">
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">Inputs to process</h2>
-    <table>
-    <tbody>
-      {% for input in inputs %}
-      <tr class="{% cycle 'bg-gray-200' 'bg-white' %}">
-        <td class="px-3 py-1"
-            title="{{ flow_icons.texts|lookup:input.type }}">
-          {{flow_icons|lookup:input.type}}
-        </td>
-        <td class="px-3 py-1"><a href="{% url 'dpp:productexchange_update' input.pk %}">{{input.amount}}</a></td>
-        <td class="px-3 py-1">{{input.product.model.unit}}</td>
-        <td class="px-3 py-1">{{input.product.model.name}}</td>
-        <td class="px-3 py-1"><a href="{% url 'dpp:productexchange_delete' input.pk %}"
-          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
-          title="Remove this input">
-            ×
-        </a></td>
-      </tr>
-      {% endfor %}
-      {% for bioflow in emissions %}
-      {% if bioflow.direction == 'in' %}
-      <tr>
-        <td class="px-3 py-1" title="Resource extraction">⛏️</td>
-        <td class="px-3 py-1">{{bioflow.amount}}</td>
-        <td class="px-3 py-1">{{bioflow.substance.unit}}</td>
-        <td class="px-3 py-1">{{bioflow.substance.name}}</td>
-        <td class="px-3 py-1"><a href="{% url 'dpp:envexchange_delete' bioflow.pk %}"
-          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
-          title="Remove this input">
-            ×
-        </a></td>
-      </tr>
-      {% endif%}
-      {% endfor %}
-    </tbody>
-    </table>
-    <div class="add-button">
-      <a href="{% url 'dpp:productexchange_add' %}?direction=in&process={{object.pk}}" class="btn btn-primary">Add input</a>
-      <a href="{% url 'dpp:productexchange_add' %}?direction=in&process={{object.pk}}&type=pack" class="btn btn-primary">Add packaging</a>
-      <a href="{% url 'dpp:envexchange_add' %}?direction=in&process={{object.pk}}" class="btn btn-primary">Add resource extraction</a>
+<div class="row g-4 mb-4">
+  {# ── Inputs ── #}
+  <div class="col-xl-6">
+    <div class="card h-100">
+      <div class="card-header">Inputs</div>
+      <div class="table-responsive">
+        <table class="table table-sce mb-0">
+          <thead><tr><th scope="col">Type</th><th scope="col" class="num">Amount</th><th scope="col">Unit</th><th scope="col">Name</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+          <tbody>
+            {% for input in inputs %}
+            <tr>
+              <td><span class="badge rounded-pill text-bg-light">{{ flow_icons.texts|lookup:input.type|default:input.type }}</span></td>
+              <td class="num"><a href="{% url 'dpp:productexchange_update' input.pk %}" title="Edit this input">{{ input.amount }}</a></td>
+              <td>{{ input.product.model.unit }}</td>
+              <td>{{ input.product.model.name }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-link link-danger btn-icon" href="{% url 'dpp:productexchange_delete' input.pk %}" title="Remove this input" aria-label="Remove {{ input.product.model.name }}"><i class="bi bi-x-lg" aria-hidden="true"></i></a></td>
+            </tr>
+            {% endfor %}
+            {% for bioflow in emissions %}{% if bioflow.direction == 'in' %}
+            <tr>
+              <td><span class="badge rounded-pill text-bg-light">Resource extraction</span></td>
+              <td class="num">{{ bioflow.amount }}</td>
+              <td>{{ bioflow.substance.unit }}</td>
+              <td>{{ bioflow.substance.name }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-link link-danger btn-icon" href="{% url 'dpp:envexchange_delete' bioflow.pk %}" title="Remove this input" aria-label="Remove {{ bioflow.substance.name }}"><i class="bi bi-x-lg" aria-hidden="true"></i></a></td>
+            </tr>
+            {% endif %}{% endfor %}
+            {% if not inputs %}<tr><td colspan="5" class="table-empty">No inputs yet.</td></tr>{% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body d-flex flex-wrap align-items-start align-content-start gap-2 border-top flex-grow-0 mt-auto">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:productexchange_add' %}?direction=in&process={{ object.pk }}"><i class="bi bi-plus" aria-hidden="true"></i>Input</a>
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:productexchange_add' %}?direction=in&process={{ object.pk }}&type=pack"><i class="bi bi-plus" aria-hidden="true"></i>Packaging</a>
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:envexchange_add' %}?direction=in&process={{ object.pk }}"><i class="bi bi-plus" aria-hidden="true"></i>Resource extraction</a>
+      </div>
     </div>
   </div>
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">Outputs of process</h2>
-    <table>
-    <tbody class="{% cycle 'bg-gray-50' 'bg-white' %} divide-gray-200">
-      <tr class="font-bold">
-        <td class="px-3 py-1">Main product</td>
-        <td class="px-3 py-1">{{process.amount}}</td>
-        <td class="px-3 py-1">{{process.functional_flow.model.unit}}</td>
-        <td class="px-3 py-1">{{process.functional_flow.model.name}}</td>
-        <td class="px-3 py-1 text-blue-600"><a href="{% url 'dpp:product_detail' process.functional_flow.pk %}">View</a></td>
-      </tr>
-      {% for output in outputs %}
-      <tr>
-        <td class="px-3 py-1"
-            title="{{ flow_icons.texts|lookup:output.type }}">
-          {{flow_icons|lookup:output.type}}
-        </td>
-        <td class="px-3 py-1">{{output.amount}}</td>
-        <td class="px-3 py-1">{{output.product.model.unit}}</td>
-        <td class="px-3 py-1">{{output.product.model.name}}</td>
-        <td class="px-3 py-1"><a href="{% url 'dpp:productexchange_delete' output.pk %}"
-          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
-          title="Remove this output">
-            ×
-        </a></td>
-      </tr>
-      {% endfor %}
-      {% for bioflow in emissions %}
-      {% if bioflow.direction == 'out' %}
-      <tr>
-        <td class="px-3 py-1" title="Emission">☁️</td>
-        <td class="px-3 py-1">{{bioflow.amount}}</td>
-        <td class="px-3 py-1">{{bioflow.substance.unit}}</td>
-        <td class="px-3 py-1">{{bioflow.substance.name}} to {{bioflow.compartment}}</td>
-        <td class="px-3 py-1"><a href="{% url 'dpp:envexchange_delete' bioflow.pk %}"
-          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
-          title="Remove this output">
-            ×
-        </a></td>
-      </tr>
-      {% endif%}
-      {% endfor %}
-    </tbody>
-    </table>
-    <div class="add-button">
-      <a href="{% url 'dpp:productexchange_add' %}?direction=out&process={{object.pk}}&type=waste" class="btn btn-primary">Add waste</a>
-      <a href="{% url 'dpp:envexchange_add' %}?direction=out&process={{object.pk}}" class="btn btn-primary">Add emission</a>
+
+  {# ── Outputs ── #}
+  <div class="col-xl-6">
+    <div class="card h-100">
+      <div class="card-header">Outputs</div>
+      <div class="table-responsive">
+        <table class="table table-sce mb-0">
+          <thead><tr><th scope="col">Type</th><th scope="col" class="num">Amount</th><th scope="col">Unit</th><th scope="col">Name</th><th scope="col"><span class="visually-hidden">Action</span></th></tr></thead>
+          <tbody>
+            <tr class="fw-medium">
+              <td><span class="badge rounded-pill text-bg-primary">Main product</span></td>
+              <td class="num">{{ process.amount }}</td>
+              <td>{{ process.functional_flow.model.unit }}</td>
+              <td>{{ process.functional_flow.model.name }}</td>
+              <td class="row-actions text-end">{% if process.functional_flow %}<a href="{% url 'dpp:product_detail' process.functional_flow.pk %}">View</a>{% endif %}</td>
+            </tr>
+            {% for output in outputs %}
+            <tr>
+              <td><span class="badge rounded-pill text-bg-light">{{ flow_icons.texts|lookup:output.type|default:output.type }}</span></td>
+              <td class="num">{{ output.amount }}</td>
+              <td>{{ output.product.model.unit }}</td>
+              <td>{{ output.product.model.name }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-link link-danger btn-icon" href="{% url 'dpp:productexchange_delete' output.pk %}" title="Remove this output" aria-label="Remove {{ output.product.model.name }}"><i class="bi bi-x-lg" aria-hidden="true"></i></a></td>
+            </tr>
+            {% endfor %}
+            {% for bioflow in emissions %}{% if bioflow.direction == 'out' %}
+            <tr>
+              <td><span class="badge rounded-pill text-bg-light">Emission</span></td>
+              <td class="num">{{ bioflow.amount }}</td>
+              <td>{{ bioflow.substance.unit }}</td>
+              <td>{{ bioflow.substance.name }} to {{ bioflow.compartment }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-link link-danger btn-icon" href="{% url 'dpp:envexchange_delete' bioflow.pk %}" title="Remove this output" aria-label="Remove {{ bioflow.substance.name }}"><i class="bi bi-x-lg" aria-hidden="true"></i></a></td>
+            </tr>
+            {% endif %}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body d-flex flex-wrap align-items-start align-content-start gap-2 border-top flex-grow-0 mt-auto">
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:productexchange_add' %}?direction=out&process={{ object.pk }}&type=waste"><i class="bi bi-plus" aria-hidden="true"></i>Waste</a>
+        <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:envexchange_add' %}?direction=out&process={{ object.pk }}"><i class="bi bi-plus" aria-hidden="true"></i>Emission</a>
+      </div>
     </div>
   </div>
 </div>
-
 {% endblock %}

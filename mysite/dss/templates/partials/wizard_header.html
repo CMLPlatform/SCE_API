@@ -1,0 +1,22 @@
+{% comment %}
+  Partial: wizard_header.html
+  Variables: step (1-4), progress (25/50/75/100), title, hint
+{% endcomment %}
+<div class="mb-4">
+  <div class="progress" role="progressbar" aria-label="Wizard progress" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100" style="height: 6px">
+    <div class="progress-bar" style="width: {{ progress }}%"></div>
+  </div>
+  <div class="wizard-steps" aria-hidden="true">
+    <span{% if step == 1 %} class="current"{% endif %}>1. KPIs</span>
+    <span{% if step == 2 %} class="current"{% endif %}>2. Analysis setup</span>
+    <span{% if step == 3 %} class="current"{% endif %}>3. Weights</span>
+    <span{% if step == 4 %} class="current"{% endif %}>4. Ranking</span>
+  </div>
+</div>
+<div class="page-header">
+  <div>
+    <p class="text-secondary small text-uppercase fw-medium mb-1">Decision support · Step {{ step }} of 4</p>
+    <h1 class="page-title">{{ title }}</h1>
+    {% if hint %}<p class="page-subtitle">{{ hint }}</p>{% endif %}
+  </div>
+</div>

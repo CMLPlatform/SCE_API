@@ -1,35 +1,100 @@
-{% load i18n %}
-{% load static %}
-<!DOCTYPE html>
+{% load static dpp_extras %}<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Lasers4MaaS authentication{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/components.css' %}">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Lasers4MaaS SCE{% endblock %} | Lasers4MaaS SCE</title>
+  <link rel="stylesheet" href="{% static 'vendor/fonts/fonts.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap/css/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/bootstrap-icons/bootstrap-icons.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/sce.css' %}">
+  {% block extra_js %}{% endblock %}
+  {% block extra_head %}{% endblock %}
 </head>
-<body>
-{% block header %}
-<div id="header" style="background:#088488; color:white; padding:15px 20px; min-height:60px;">
-  <div style="max-width:1200px; margin:auto; display:flex">
-    <!-- Logo + Title -->
-    <div style="display:flex; align-items:center; gap:15px;">
-      <img src="{% static 'img/L4M_logo.png' %}"
-      style="height: 40px; width: auto;"
-      alt="Logo">
-      <a href="/" style="color:white; text-decoration:none; font-size:22px; font-weight:bold;">
-        Lasers4MaaS Sustainability Cost Evaluation
-      </a>
+<body class="app">
+<div class="app-shell">
+  {% if not is_popup %}
+  {# Top bar with menu button, small screens only #}
+  <header class="app-topbar d-lg-none">
+    <a href="{% url 'landing' %}"><img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS home"></a>
+    <button class="btn btn-outline-secondary btn-icon" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar" aria-label="Open menu">
+      <i class="bi bi-list fs-4" aria-hidden="true"></i>
+    </button>
+  </header>
+
+  <aside id="sidebar" class="app-sidebar offcanvas-lg offcanvas-start" tabindex="-1" aria-label="Main menu">
+    <div class="offcanvas-header d-lg-none justify-content-end">
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close menu"></button>
     </div>
-  </div>
-</div>
-{% endblock %}
+    <div class="sidebar-inner">
+      <a class="sidebar-brand" href="{% url 'landing' %}"><img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS home"></a>
 
-  <main class="px-6 py-6">
-    {% block content %}
-    {% endblock %}
+      {% if user.is_authenticated %}
+      <nav class="nav flex-column sidebar-nav" aria-label="Sections">
+        <a class="nav-link {% nav_active 'home' %}" href="{% url 'dpp:home' %}"><i class="bi bi-house" aria-hidden="true"></i>Home</a>
+        <a class="nav-link {% nav_active 'productionline' 'production_line' 'process' 'productexchange' 'envexchange' 'transport' 'publisher' %}" href="{% url 'dpp:productionline_list' %}"><i class="bi bi-diagram-3" aria-hidden="true"></i>Production lines</a>
+        <a class="nav-link {% nav_active 'productmodel' 'productbatch' 'product_' 'productproperties' 'dppdetails' 'composition' 'flow' 'secondaryproduct' %}" href="{% url 'dpp:productmodel_list' %}"><i class="bi bi-box-seam" aria-hidden="true"></i>Products</a>
+        <a class="nav-link {% nav_active 'sustainabilityevaluation' 'sustainabilityscore' 'circularity' %}" href="{% url 'dpp:sustainabilityevaluation_list' %}"><i class="bi bi-leaf" aria-hidden="true"></i>Sustainability evaluations</a>
+        <a class="nav-link {% nav_active 'metadata' 'dpp_full' %}" href="{% url 'dpp:metadata_list' %}"><i class="bi bi-qr-code" aria-hidden="true"></i>Published DPPs</a>
+
+        <div class="sidebar-label">Libraries</div>
+        <a class="nav-link {% nav_active 'material' 'hazardousmaterial' %}" href="{% url 'dpp:material_list' %}"><i class="bi bi-boxes" aria-hidden="true"></i>Materials</a>
+        <a class="nav-link {% nav_active 'company' 'institution' 'serviceoperator' %}" href="{% url 'dpp:company_list' %}"><i class="bi bi-building" aria-hidden="true"></i>Companies</a>
+        <a class="nav-link {% nav_active 'facility' %}" href="{% url 'dpp:facility_list' %}"><i class="bi bi-geo-alt" aria-hidden="true"></i>Facilities</a>
+        <a class="nav-link {% nav_active 'importer' %}" href="{% url 'dpp:importer_list' %}"><i class="bi bi-truck" aria-hidden="true"></i>Importers</a>
+        <a class="nav-link {% nav_active 'emission' %}" href="{% url 'dpp:emission_list' %}"><i class="bi bi-cloud" aria-hidden="true"></i>Emissions</a>
+        <a class="nav-link {% nav_active 'document' %}" href="{% url 'dpp:document_list' %}"><i class="bi bi-file-earmark-text" aria-hidden="true"></i>Documents</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <nav class="nav flex-column sidebar-nav" aria-label="Account">
+          <a class="nav-link {% nav_active 'profile' 'password' %}" href="{% url 'accounts:profile' %}"><i class="bi bi-gear" aria-hidden="true"></i>Settings</a>
+          <form action="{% url 'logout' %}" method="post" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="nav-link"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Log out</button>
+          </form>
+        </nav>
+        <div class="sidebar-user">
+          <span class="avatar" aria-hidden="true"><i class="bi bi-person"></i></span>
+          <div class="min-w-0">
+            <div class="sidebar-user-name text-truncate">{{ user.get_full_name|default:user.username }}</div>
+            {% if user.email %}<div class="sidebar-user-meta text-truncate">{{ user.email }}</div>{% endif %}
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <nav class="nav flex-column sidebar-nav" aria-label="Sections">
+        <a class="nav-link" href="{% url 'landing' %}"><i class="bi bi-house" aria-hidden="true"></i>About the SCE</a>
+      </nav>
+      <div class="sidebar-footer">
+        <nav class="nav flex-column sidebar-nav" aria-label="Account">
+          <a class="nav-link" href="{% url 'login' %}?next={{ request.path|urlencode }}"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>Log in</a>
+        </nav>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+  {% endif %}
+
+  <main class="app-main" id="main">
+    <div class="app-content{% if is_popup %} app-content--popup{% endif %}">
+      {% block breadcrumbs %}{% endblock %}
+
+      {% if messages %}
+      {% for message in messages %}
+      <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </div>
   </main>
+</div>
+<script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/sce.js' %}"></script>
+{% block extra_js_end %}{% endblock %}
 </body>
-
 </html>

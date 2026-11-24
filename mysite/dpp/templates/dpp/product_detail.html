@@ -1,155 +1,135 @@
 {% extends "dpp/generic_detail.html" %}
-{% load static %}
-{% load dpp_extras %} <!-- contains get_fields filter -->
+{% load dpp_extras %}
 
-{% block content %}
-{{ block.super }}
+{% block breadcrumbs %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'dpp:productmodel_list' %}">Products</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ object }}</li>
+  </ol>
+</nav>
+{% endblock %}
 
-<!-- Add related info objects-->
-<div class="grid md:grid-cols-2 gap-8 py-2">
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">DPP details</h2>
-    <table>
-      {% for field in object.details|get_fields %}
-      {% if field.name != "product" %}
-      <tr class="{% cycle 'bg-teal-50' 'bg-white' %}">
-        <td class="px-4 py-2 text-sm font-medium text-gray-500 sm:px-6">
-          {{ field.verbose_name|sentencecase }}
-        </td>
-        <td class="px-4 py-2 text-sm text-gray-900">
-          {{ field.value|default:"—" }}
-        </td>
-      </tr>
-      {% endif %}
-      {% empty %}
-      <tr>
-        <td colspan="2" class="add-button px-4 py-2">
-          <a href="{% url 'dpp:dppdetails_add' %}?product={{object.pk}}&_popup=1" onclick="window.open(this.href, 'dppdetails-popup', 'width=400,height=600,toolbar=no,scrollbars=yes,resizable=yes'); return false;" class="btn btn-primary">
-            Add details for DPP
-          </a>
-        </td>
-      </tr>
-      {% endfor %}
-      {% if object.details|get_fields %}
-      <tr>
-        <td colspan="2" class="px-4">
-          <a href="{% url opts.app_label|add:':dppdetails_update' object.pk %}"
-            class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
-            Edit
-          </a>
-        </td>
-      </tr>
-      {% endif %}
-    </table>
-  </div>
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">Physical properties</h2>
-    <div class="border-t border-gray-200">
-      {% if object.properties %}
-      {% with props=object.properties %}
-      <table class="min-w-full divide-y divide-gray-200">
-        <tbody class="bg-white">
-          <tr class="bg-teal-50">
-            <td class="px-4 py-2 text-sm font-medium text-gray-500">Weight</td>
-            <td class="px-4 py-2 text-sm text-gray-900">
-              {{ props.weight|default:"—" }} {{ props.weight_unit }}/{{ object.unit }}
-            </td>
-          </tr>
-          <tr class="bg-white">
-            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">Volume</td>
-            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-              {{ props.volume|default:"—" }} {{ props.volume_unit }}/{{ object.unit }}
-            </td>
-          </tr>
-          <tr class="bg-teal-50">
-            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">Density</td>
-            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-              {{ props.density|default:"—" }} {{ props.weight_unit }}/{{ props.volume_unit }}
-            </td>
-          </tr>
-          <tr class="bg-white">
-            <td class="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-500">
-              The above includes packaging
-            </td>
-            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-              {{ props.includes_packaging|yesno:"Yes,No,—" }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="px-4">
-        <a href="{% url opts.app_label|add:':productproperties_update' props.pk %}" 
-            class="bg-orange-700 hover:bg-orange-800 text-white font-bold py-2 px-4 rounded mr-2">
-            Edit
-        </a>
+{% block detail_body %}
+<ul class="nav nav-underline" role="tablist">
+  <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#details" type="button" role="tab" aria-controls="details" aria-selected="true">Product details</button></li>
+  <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#composition" type="button" role="tab" aria-controls="composition" aria-selected="false">Composition</button></li>
+  <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dpp" type="button" role="tab" aria-controls="dpp" aria-selected="false">DPP details</button></li>
+</ul>
+
+<div class="tab-content">
+  {# ── Product details, origin and physical properties ── #}
+  <div class="tab-pane fade show active" id="details" role="tabpanel" tabindex="0">
+    <div class="row g-4">
+      <div class="col-xl-7">{% include "dpp/partials/field_list.html" with fields=object|get_fields %}</div>
+      <div class="col-xl-5">
+        <div class="card mb-4">
+          <div class="card-header">Origin</div>
+          <div class="card-body">
+            {% if produced_by %}
+            <p class="mb-1"><span class="text-secondary">Manufacturer:</span> {{ manufacturer|default:"—" }}</p>
+            <p class="mb-0"><span class="text-secondary">Production process:</span> <a href="{% url 'dpp:process_detail' produced_by.pk %}">{{ produced_by }}</a></p>
+            {% else %}
+            <p class="mb-0 text-secondary">No production process yet. Create a process that produces {{ object }}.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card mb-4">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            Physical properties
+            {% if object.properties %}<a class="btn btn-sm btn-outline-secondary" href="{% url 'dpp:productproperties_update' object.properties.pk %}"><i class="bi bi-pencil" aria-hidden="true"></i>Edit</a>{% endif %}
+          </div>
+          {% if object.properties %}
+          {% with props=object.properties %}
+          <dl class="detail-list">
+            <div><dt>Weight</dt><dd>{{ props.weight|default:"—" }} {{ props.weight_unit }}/{{ object.unit }}</dd></div>
+            <div><dt>Volume</dt><dd>{{ props.volume|default:"—" }} {{ props.volume_unit }}/{{ object.unit }}</dd></div>
+            <div><dt>Density</dt><dd>{{ props.density|default:"—" }} {{ props.weight_unit }}/{{ props.volume_unit }}</dd></div>
+            <div><dt>Includes packaging</dt><dd>{{ props.includes_packaging|yesno:"Yes,No,—" }}</dd></div>
+          </dl>
+          {% endwith %}
+          {% else %}
+          <div class="card-body">
+            <a class="btn btn-outline-primary" href="{% url 'dpp:productproperties_add' %}?product={{ object.pk }}&_popup=1" onclick="window.open(this.href, 'productproperties-popup', 'width=520,height=680,scrollbars=yes,resizable=yes'); return false;"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add physical properties</a>
+          </div>
+          {% endif %}
+        </div>
       </div>
-      {% endwith %}
-      {% else %}
-      <div class="add-button">
-        <a href="{% url 'dpp:productproperties_add' %}?product={{object.pk}}&_popup=1" onclick="window.open(this.href, 'productproperties-popup', 'width=400,height=600,toolbar=no,scrollbars=yes,resizable=yes'); return false;" class="btn btn-primary">
-          Add physical properties
-        </a>
-      </div>
-      {% endif %}
     </div>
   </div>
-</div>
 
-<!-- Manufacturing info-->
-<div class="py-6">
-  <h2 class="text-xl font-semibold">Origin</h2>
-  {% if produced_by%}
-  <p>Manufacturer: {{manufacturer}}</p>
-  <p>Production process: <a href="{% url 'dpp:process_detail' produced_by.pk%}">{{produced_by}}</a></p>
-  {% else %}
-  <p>Production process: unspecified. <i>Create a new process to describe the production of {{object}}.</i></p>
-  {% endif %}
-</div>
-
-<!-- Composition info-->
-<div class="grid md:grid-cols-2 gap-8">
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">Bill of Materials</h2>
-    <table>
-    <tbody>
-      {% for comp in materials %}
-      <tr class="{% cycle 'bg-white' 'bg-gray-100' %}">
-        <td class="px-4 py-1">{{comp.quantity}} {{comp.unit}}</td>
-        <td class="px-4 py-1"><a href="{% url 'dpp:material_detail' comp.material.pk %}">{{comp.material.name}}</a></td>
-        <td class="px-4 py-1">
-          {% if comp.material.is_hazardous %}⚠️ Hazardous{% elif comp.material.is_critical%}🔴 Critical{% endif %}
-        </td>
-        <td class="px-4 py-1"><a href="{% url 'dpp:composition_delete' comp.pk %}"
-          class="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 hover:text-red-800 text-xl font-bold transition"
-          title="Remove this material">
-            ×
-        </a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    </table>
-    <div class="add-button">
-      <a href="{% url 'dpp:composition_add' %}" class="btn btn-primary">Add material</a>
-      <form method="post" action="">
-          {% csrf_token %}
-          <button type="submit" name="recalculate" class="btn">Recalculate</button>
-      </form>
+  {# ── Bill of materials ── #}
+  <div class="tab-pane fade" id="composition" role="tabpanel" tabindex="0">
+    <div class="row g-4">
+      <div class="col-xl-7">
+        <div class="card">
+          <div class="card-header">Bill of materials</div>
+          <div class="table-responsive">
+            <table class="table table-sce mb-0">
+              <thead><tr><th scope="col" class="num">Quantity</th><th scope="col">Material</th><th scope="col">Flag</th><th scope="col"><span class="visually-hidden">Remove</span></th></tr></thead>
+              <tbody>
+                {% for comp in materials %}
+                <tr>
+                  <td class="num">{{ comp.quantity }} {{ comp.unit }}</td>
+                  <td><a href="{% url 'dpp:material_detail' comp.material.pk %}">{{ comp.material.name }}</a></td>
+                  <td>{% if comp.material.is_hazardous %}<span class="badge rounded-pill text-bg-danger">Hazardous</span>{% elif comp.material.is_critical %}<span class="badge rounded-pill text-bg-warning">Critical</span>{% endif %}</td>
+                  <td class="text-end">{% if comp.pk %}<a class="btn btn-sm btn-link link-danger btn-icon" href="{% url 'dpp:composition_delete' comp.pk %}" title="Remove this material" aria-label="Remove {{ comp.material.name }}"><i class="bi bi-x-lg" aria-hidden="true"></i></a>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="table-empty">No materials yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="card-body d-flex flex-wrap align-items-start align-content-start gap-2 border-top flex-grow-0 mt-auto">
+            <a class="btn btn-sm btn-outline-primary" href="{% url 'dpp:composition_add' %}"><i class="bi bi-plus" aria-hidden="true"></i>Add material</a>
+            <form method="post" class="m-0">
+              {% csrf_token %}
+              <button type="submit" name="recalculate" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Recalculate from components</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="col-xl-5">
+        <div class="card">
+          <div class="card-header">Components without a bill of materials</div>
+          <ul class="list-group list-group-flush">
+            {% for flow in missing_bom %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <a href="{% url 'dpp:product_detail' flow.product.pk %}">{{ flow.product.model.name }}</a>
+              <span class="badge rounded-pill text-bg-light">{{ flow.type }}</span>
+            </li>
+            {% empty %}
+            <li class="list-group-item text-secondary">None: all components have a bill of materials.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="bg-white rounded-lg shadow-md overflow-hidden">
-    <h2 class="px-4 text-xl font-semibold">Componets with missing BoM</h2>
-    <table>
-    <tbody class="{% cycle 'bg-gray-50' 'bg-white' %} divide-gray-200">
-      {% for flow in missing_bom %}
-      <tr>
-        <td class="px-3 py-1">Type: {{flow.type}}</td>
-        <td class="px-3 py-1"><a href="{% url app_label|add:':product_detail' flow.product.pk %}">{{flow.product.model.name}}</a></td>
-      </tr>
-      {% empty%}
-      <tr class="px-3 py-1">None</tr>
-      {% endfor %}
-    </tbody>
-    </table>
+
+  {# ── DPP details ── #}
+  <div class="tab-pane fade" id="dpp" role="tabpanel" tabindex="0">
+    {% with details=object.details|get_fields %}
+    {% if details %}
+    <div class="card" style="max-width: 820px">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        DPP details
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'dpp:dppdetails_update' object.details.pk %}"><i class="bi bi-pencil" aria-hidden="true"></i>Edit</a>
+      </div>
+      <dl class="detail-list">
+        {% for field in details %}{% if field.name != "product" %}
+        <div><dt>{{ field.verbose_name|sentencecase }}</dt><dd>{{ field.value|default:"—" }}</dd></div>
+        {% endif %}{% endfor %}
+      </dl>
+    </div>
+    {% else %}
+    <div class="card" style="max-width: 820px"><div class="card-body">
+      <p>The DPP details (importer, codes, warranty, take-back system) are needed before the passport can be published.</p>
+      <a class="btn btn-primary" href="{% url 'dpp:dppdetails_add' %}?product={{ object.pk }}&_popup=1" onclick="window.open(this.href, 'dppdetails-popup', 'width=520,height=720,scrollbars=yes,resizable=yes'); return false;"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add DPP details</a>
+    </div></div>
+    {% endif %}
+    {% endwith %}
   </div>
 </div>
 {% endblock %}

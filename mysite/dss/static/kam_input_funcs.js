@@ -1,249 +1,226 @@
+// Test page for POST /dss/welding-stations/ (KAM comparison).
+// Builds one tab per welding station and sends them as the platform would.
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Configuration — predefined names and default values
+// Options and example values
+// Material and consumable names must exist in init_data/material_data.csv;
+// country codes follow init_data/country_data.csv (Eurostat: UK, EL).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COUNTRIES = ['DE', 'US', 'FR', 'NL', 'BE', 'PL', 'IT', 'UK'];
+const COUNTRIES = ['DE', 'UK', 'IT', 'FR', 'NL', 'BE', 'PL', 'ES', 'AT', 'SE'];
 const QUALITY_OPTIONS = ['low', 'medium', 'high'];
+const MATERIALS = [
+  'Aluminium sheet', 'Aluminium alloy, wrought', 'Aluminium alloy, cast', 'Aluminium, virgin',
+  'AISI 316 steel plate', 'Chromium steel sheets', 'Chromium steel pipe',
+  'Steel sheets', 'Steel, low-alloyed', 'Steel, low-alloyed, hot rolled',
+];
+
+// Same values as dss/examples/kam_welding_stations.json (synthetic).
+const EXAMPLES = [
+  { experimentId: 1, country: 'UK', recyclability: 'high', maintenanceCosts: 18000, cycleTime: 75, scrapRate: 0.03,
+    weldLength: 2400, weldSpeed: 120, laserPower: 4.5, stationPower: 14, material: 'Aluminium sheet', materialWeight: 1.85,
+    nitrogen: 0, argon: 1.2, filler: 0.33, porosity: 2.0, tensile: 180, weldDepth: 1.5,
+    automation: 'high', specialisation: 'medium', monitoring: 5, leadTime: 12, saturation: 0.72 },
+  { experimentId: 2, country: 'DE', recyclability: 'high', maintenanceCosts: 15000, cycleTime: 68, scrapRate: 0.02,
+    weldLength: 2400, weldSpeed: 120, laserPower: 4.5, stationPower: 12, material: 'Aluminium sheet', materialWeight: 1.85,
+    nitrogen: 0, argon: 1.2, filler: 0.33, porosity: 1.6, tensile: 184, weldDepth: 1.5,
+    automation: 'high', specialisation: 'high', monitoring: 2, leadTime: 10, saturation: 0.81 },
+  { experimentId: 3, country: 'IT', recyclability: 'medium', maintenanceCosts: 12000, cycleTime: 90, scrapRate: 0.04,
+    weldLength: 2400, weldSpeed: 100, laserPower: 4.0, stationPower: 12, material: 'Aluminium sheet', materialWeight: 1.85,
+    nitrogen: 0, argon: 1.0, filler: 0.30, porosity: 2.4, tensile: 178, weldDepth: 1.4,
+    automation: 'medium', specialisation: 'medium', monitoring: 15, leadTime: 14, saturation: 0.64 },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTML builder helpers
+// HTML helpers (Bootstrap)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const inputCls = `w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2
-                  text-sm text-slate-100 placeholder-slate-500
-                  focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500`;
-
-function labelWrap(label, unit, inner) {
+function field(id, label, unit, inner) {
   return `
-    <div>
-      <label class="block text-xs font-semibold uppercase tracking-wider
-                    text-slate-400 mb-1">
-        ${label}${unit ? ` <span class="normal-case font-normal text-slate-500">(${unit})</span>` : ''}
-      </label>
+    <div class="col-sm-4">
+      <label class="form-label" for="${id}">${label}${unit ? ` <span class="text-secondary fw-normal">(${unit})</span>` : ''}</label>
       ${inner}
     </div>`;
 }
 
-function numInput(field, value, {min = 0, step = 'any', placeholder = ''} = {}) {
-  return `<input type="number" data-field="${field}" value="${value ?? ''}"
-                 min="${min}" step="${step}" placeholder="${placeholder}"
-                 class="${inputCls}">`;
+function numInput(id, name, value, {min = 0, max = '', step = 'any'} = {}) {
+  return `<input type="number" class="form-control" id="${id}" data-field="${name}" value="${value ?? ''}" min="${min}" ${max !== '' ? `max="${max}"` : ''} step="${step}">`;
 }
 
-function selectInput(field, options, selected) {
-  const opts = options.map(o =>
-    `<option value="${o}" ${o === selected ? 'selected' : ''}>${o}</option>`
-  ).join('');
-  return `<select data-field="${field}" class="${inputCls}">${opts}</select>`;
+function selectInput(id, name, options, selected) {
+  const opts = options.map(o => `<option value="${o}"${o === selected ? ' selected' : ''}>${o}</option>`).join('');
+  return `<select class="form-select" id="${id}" data-field="${name}">${opts}</select>`;
 }
 
-function sectionHeader(title, hint = '') {
+function section(title, hint = '') {
   return `
-    <div class="flex items-baseline gap-3 mb-3 mt-8 first:mt-0">
-      <h3 class="text-sm font-semibold text-slate-200 whitespace-nowrap">${title}</h3>
-      <span class="h-px flex-1 bg-slate-800"></span>
-    </div>
-    ${hint ? `<p class="text-xs text-slate-500 mb-3">${hint}</p>` : ''}`;
-}
-
-function grid2(...fields) {
-  return `<div class="grid grid-cols-2 gap-3">${fields.join('')}</div>`;
-}
-
-function grid3(...fields) {
-  return `<div class="grid grid-cols-3 gap-3">${fields.join('')}</div>`;
+    <h2 class="section-title mt-4 mb-1">${title}</h2>
+    ${hint ? `<p class="text-secondary small mb-2">${hint}</p>` : ''}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Panel builder
+// One panel per station
 // ─────────────────────────────────────────────────────────────────────────────
 
-function createPanel(idx) {
+function createPanel(idx, v) {
+  const id = (name) => `s${idx}-${name}`;
+  const num = (name, label, unit, opts) => field(id(name), label, unit, numInput(id(name), name, v[name], opts));
+  const sel = (name, label, unit, options) => field(id(name), label, unit, selectInput(id(name), name, options, v[name]));
 
   const panel = document.createElement('div');
   panel.className = 'tab-panel';
   panel.dataset.panel = idx;
-
+  panel.setAttribute('role', 'tabpanel');
   panel.innerHTML = `
+    ${section('General')}
+    <div class="row g-3">
+      ${num('experimentId', 'Station ID', '', {min: 1, step: 1})}
+      ${sel('country', 'Country', '', COUNTRIES)}
+      ${sel('recyclability', 'Recyclability', '', QUALITY_OPTIONS)}
+      ${num('maintenanceCosts', 'Maintenance costs', '€/year', {step: 100})}
+      ${num('cycleTime', 'Cycle time', 's', {min: 0.1, step: 1})}
+      ${num('scrapRate', 'Scrap rate', '0–0.99', {max: 0.99, step: 0.01})}
+    </div>
 
-    ${sectionHeader('General')}
-    ${grid3(
-      labelWrap('Experiment ID', '', numInput('experimentId', idx+1, {min: 1, step: 1})),
-      labelWrap('Country', '', selectInput('country', COUNTRIES)),
-      labelWrap('Recyclability', '', selectInput('recyclability', QUALITY_OPTIONS, 'medium')),
-    )}
-    ${grid3(
-      labelWrap('Maintenance costs', '€', numInput('maintenanceCosts', {placeholder: '0.00'})),
-      labelWrap('Cycle time', 's', numInput('cycleTime', 1, {min: 1, step: 1})),
-      labelWrap('Scrap rate', '0–1', numInput('scrapRate', 0, {min: 0, max: 1, step: 0.01})),
-    )}
+    ${section('Process')}
+    <div class="row g-3">
+      ${num('weldLength', 'Weld length', 'mm', {step: 1})}
+      ${num('weldSpeed', 'Weld speed', 'mm/s', {step: 1})}
+      ${num('laserPower', 'Laser power', 'kW', {step: 0.1})}
+      ${num('stationPower', 'Station power, excl. laser', 'kW', {step: 0.1})}
+    </div>
 
-    ${sectionHeader('Process')}
-    ${grid2(
-      labelWrap('Weld length', 'mm', numInput('weldLength', 1)),
-      labelWrap('Weld speed', 'mm/min', numInput('weldSpeed', 1)),
-    )}
-    ${grid2(
-      labelWrap('Laser power', 'kW', numInput('laserPower', 1)),
-      labelWrap('Station power', 'kW', numInput('stationPower', 1)),
-    )}
+    ${section('Material', 'Main material of the product, per product.')}
+    <div class="row g-3">
+      ${sel('material', 'Material', '', MATERIALS)}
+      ${num('materialWeight', 'Weight', 'kg', {step: 0.01})}
+    </div>
 
-    ${sectionHeader('Material', 'Predefined material — enter quantity used')}
-    ${labelWrap('Stainless steel', 'kg', numInput('materialWeight', 1))}
+    ${section('Consumables', 'Flow rates during welding. Leave 0 for consumables that are not used.')}
+    <div class="row g-3">
+      ${num('nitrogen', 'Nitrogen', 'm³/h', {step: 0.1})}
+      ${num('argon', 'Argon', 'm³/h', {step: 0.1})}
+      ${num('filler', 'Aluminium filler wire', 'kg/h', {step: 0.01})}
+    </div>
 
-    ${sectionHeader('Consumables', 'Predefined names — enter quantity used')}
-    ${grid3(
-      labelWrap('Nitrogen', 'm³/h', numInput('nitrogen', 0)),
-      labelWrap('Argon', 'm³/h', numInput('argon', 0)),
-      labelWrap('Aluminium (filler wire)', 'kg/h', numInput('aluminium', 0, {step: 0.001})),
-    )}
+    ${section('Quality parameters', 'Targets: porosity → lowest, tensile strength → highest, weld depth → 1.5 mm.')}
+    <div class="row g-3">
+      ${num('porosity', 'Porosity', '%', {step: 0.1})}
+      ${num('tensile', 'Tensile strength', 'MPa', {step: 1})}
+      ${num('weldDepth', 'Weld depth', 'mm', {step: 0.1})}
+    </div>
 
-    ${sectionHeader('Quality parameters', 'Targets: Porosity → min · Tensile strength → max · Weld depth → 3.5')}
-    ${grid3(
-      labelWrap('Porosity', '',         numInput('porosity', 0.0, {step: 0.01})),
-      labelWrap('Tensile strength', '', numInput('tensile', 0.0, {step: 0.01})),
-      labelWrap('Weld depth', 'mm',     numInput('weldDepth', 0.0, {step: 0.1})),
-    )}
-
-    ${sectionHeader('Productivity', 'Targets: Automation → max · Specialisation → min · Monitoring → min · Lead time → min · Saturation → max')}
-
-    ${grid2(
-      labelWrap('Automation level', '', selectInput('automation', QUALITY_OPTIONS, 'medium')),
-      labelWrap('Specialisation level', '', selectInput('specialisation', QUALITY_OPTIONS, 'low')),
-    )}
-    ${grid3(
-      labelWrap('Monitoring', 'min until issue detection', numInput('monitoring', {step: 1})),
-      labelWrap('Lead time', 'hours', numInput('leadTime', 1, {step: 1})),
-      labelWrap('Saturation', '0–1', numInput('saturation', {max: 1, step: 0.01})),
-    )}
+    ${section('Productivity', 'Targets: automation → highest; specialisation, monitoring time, lead time and saturation → lowest.')}
+    <div class="row g-3">
+      ${sel('automation', 'Automation level', '', QUALITY_OPTIONS)}
+      ${sel('specialisation', 'Operator specialisation', '', QUALITY_OPTIONS)}
+      ${num('monitoring', 'Time to detect an issue', 'min', {step: 1})}
+      ${num('leadTime', 'Lead time', 'days', {step: 1})}
+      ${num('saturation', 'Machine saturation', '0–1', {max: 1, step: 0.01})}
+    </div>
   `;
-
   return panel;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab management
+// Tabs
 // ─────────────────────────────────────────────────────────────────────────────
 
-let expCount  = 0;
-let activeTab = 0;
+let nextIdx = 0;
+const tabBar = document.getElementById('tab-bar');
+const panels = document.getElementById('tab-panels');
 
-const tabBar    = document.getElementById('tab-bar');
-const addTabBtn = document.getElementById('add-tab-btn');
-const panels    = document.getElementById('tab-panels');
+function stationCount() {
+  return panels.querySelectorAll('.tab-panel').length;
+}
 
 function updateCountLabel() {
-  const n = expCount;
-  document.getElementById('exp-count-label').textContent =
-    `${n} experiment${n === 1 ? '' : 's'}`;
+  const n = stationCount();
+  document.getElementById('exp-count-label').textContent = `${n} station${n === 1 ? '' : 's'} (at least 2)`;
+  // Stations can be removed only while more than 2 remain
+  tabBar.querySelectorAll('.remove-tab').forEach(btn => btn.classList.toggle('d-none', n <= 2));
 }
 
 function showTab(idx) {
-  activeTab = idx;
   tabBar.querySelectorAll('.tab-btn').forEach(btn => {
     const active = parseInt(btn.dataset.tab) === idx;
-    btn.className = `tab-btn mb-[-1px] flex-none flex items-center gap-1.5 px-4 py-2 text-sm
-      font-medium border-b-2 transition ${
-        active
-          ? 'border-indigo-500 text-indigo-400'
-          : 'border-transparent text-slate-500 hover:text-slate-300'
-      }`;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active);
   });
   panels.querySelectorAll('.tab-panel').forEach(p => {
-    p.style.display = parseInt(p.dataset.panel) === idx ? 'block' : 'none';
+    p.hidden = parseInt(p.dataset.panel) !== idx;
   });
 }
 
-function addExperiment() {
-  const idx = expCount;
-  expCount++;
+function addStation(values) {
+  const idx = nextIdx++;
+  const v = values ?? { ...EXAMPLES[EXAMPLES.length - 1], experimentId: idx + 1 };
 
-  // Tab button
-  const tab = document.createElement('button');
-  tab.type = 'button';
-  tab.dataset.tab = idx;
-  tab.innerHTML = `
-    <span>Exp ${idx + 1}</span>
-    ${idx >= 2 ? `<span class="remove-tab text-slate-600 hover:text-red-400 leading-none"
-                        data-tab="${idx}">×</span>` : ''}
-  `;
-  tab.addEventListener('click', (e) => {
-    if (e.target.classList.contains('remove-tab')) return;
-    showTab(idx);
-  });
-  addTabBtn.insertAdjacentElement('beforebegin', tab);
+  const item = document.createElement('li');
+  item.className = 'nav-item d-flex align-items-center';
+  item.setAttribute('role', 'presentation');
+  item.innerHTML = `
+    <button type="button" class="nav-link tab-btn" role="tab" data-tab="${idx}">Station ${v.experimentId}</button>
+    <button type="button" class="btn btn-sm btn-link link-danger btn-icon remove-tab" data-tab="${idx}" aria-label="Remove station ${v.experimentId}"><i class="bi bi-x-lg" aria-hidden="true"></i></button>`;
+  item.querySelector('.tab-btn').addEventListener('click', () => showTab(idx));
+  item.querySelector('.remove-tab').addEventListener('click', () => removeStation(idx));
+  tabBar.appendChild(item);
 
-  // Remove handler on the × span
-  const removeSpan = tab.querySelector('.remove-tab');
-  if (removeSpan) {
-    removeSpan.addEventListener('click', () => removeExperiment(idx));
-  }
-
-  // Panel
-  const panel = createPanel(idx);
-  panels.appendChild(panel);
-
+  panels.appendChild(createPanel(idx, v));
   showTab(idx);
   updateCountLabel();
 }
 
-function removeExperiment(idx) {
-  if (expCount <= 2) return;
-
-  // Remove tab button
-  tabBar.querySelector(`[data-tab="${idx}"]`)?.closest('button')?.remove();
-
-  // Remove panel
+function removeStation(idx) {
+  if (stationCount() <= 2) return;
+  tabBar.querySelector(`.tab-btn[data-tab="${idx}"]`)?.closest('li')?.remove();
   panels.querySelector(`[data-panel="${idx}"]`)?.remove();
-
-  expCount--;
   updateCountLabel();
-
-  // Show a remaining tab
-  const remaining = panels.querySelector('.tab-panel');
-  if (remaining) showTab(parseInt(remaining.dataset.panel));
+  const first = panels.querySelector('.tab-panel');
+  if (first) showTab(parseInt(first.dataset.panel));
 }
 
-addTabBtn.addEventListener('click', addExperiment);
+document.getElementById('add-tab-btn').addEventListener('click', () => addStation());
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Payload builder
+// Request body, in the format of the platform
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildPayload() {
   return Array.from(panels.querySelectorAll('.tab-panel')).map(panel => {
     const g  = (f) => panel.querySelector(`[data-field="${f}"]`)?.value ?? '';
     const gf = (f) => parseFloat(g(f)) || 0;
-    const gi = (f) => parseInt(g(f))   || 0;
-    const gl = (f) => ({ low: 0, medium: 0.5, high: 1 }[g(f)] ?? 0);
+    const gi = (f) => parseInt(g(f)) || 0;
+
+    const consumables = [
+      { name: 'Nitrogen', flowRate: gf('nitrogen'), unit: 'm3/h' },
+      { name: 'Argon', flowRate: gf('argon'), unit: 'm3/h' },
+      { name: 'Aluminium filler wire', flowRate: gf('filler'), unit: 'kg/h' },
+    ].filter(c => c.flowRate > 0);
 
     return {
-      experimentId:          gi('experimentId'),
-      weldLength:            gf('weldLength'),
-      weldSpeed:             gf('weldSpeed'),
-      country:               g('country'),
-      laserPowerkW:          gf('laserPower'),
+      experimentId: gi('experimentId'),
+      weldLength: gf('weldLength'),
+      weldSpeed: gf('weldSpeed'),
+      country: g('country'),
+      laserPowerkW: gf('laserPower'),
       weldingStationPowerkW: gf('stationPower'),
-      materials: [{ name: 'Stainless steel', weight: gf('materialWeight') }],
-      maintenanceCosts:      gf('maintenanceCosts'),
-      cycleTime:             gf('cycleTime'),
-      scrapRate:             gf('scrapRate'),
-      recyclability:         gl('recyclability'),
-      consumables: [
-        { name: 'Nitrogen',                flowRate: gf('nitrogen'),  unit: 'm3/h'},
-        { name: 'Argon',                   flowRate: gf('argon'),     unit: 'm3/h'},
-        { name: 'Aluminium (filler wire)', flowRate: gf('aluminium'), unit: 'kg/h'},
-      ],
+      consumables,
       qualityParameters: [
-        { name: 'Porosity',         value: gf('porosity'),  target: 'min'},
-        { name: 'Tensile strength', value: gf('tensile'),   target: 'max'},
-        { name: 'Weld depth',       value: gf('weldDepth'), target: 3.5},
+        { name: 'Porosity', value: gf('porosity'), target: 'min' },
+        { name: 'Tensile strength', value: gf('tensile'), target: 'max' },
+        { name: 'Weld depth', value: gf('weldDepth'), target: 1.5 },
       ],
+      maintenanceCosts: gf('maintenanceCosts'),
+      cycleTime: gf('cycleTime'),
+      scrapRate: gf('scrapRate'),
+      recyclability: g('recyclability'),
+      materials: [{ name: g('material'), weight: gf('materialWeight') }],
       productivity: [
-        { name: 'Process automation level', value: gl('automation'), target: 'max' },
-        { name: 'Operator specialisation level', value: gl('specialisation'), target: 'min' },
-        { name: 'Process monitoring', value: gi('monitoring'), target: 'min' },
-        { name: 'Production lead time', value: gi('leadTime'), target: 'min' },
+        { name: 'Process automation level', value: g('automation'), target: 'max' },
+        { name: 'Operator specialisation level', value: g('specialisation'), target: 'min' },
+        { name: 'Process monitoring', value: gf('monitoring'), target: 'min' },
+        { name: 'Production lead time', value: gf('leadTime'), target: 'min' },
         { name: 'Machine saturation', value: gf('saturation'), target: 'min' },
       ],
     };
@@ -258,58 +235,46 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
   const btn  = document.getElementById('submit-btn');
   const pane = document.getElementById('response-panel');
   const body = document.getElementById('response-body');
-  const dot  = document.getElementById('response-status-dot');
   const lbl  = document.getElementById('response-status-label');
   const link = document.getElementById('response-link');
+  const label = btn.innerHTML;
 
   btn.disabled = true;
-  btn.textContent = 'Submitting…';
-  pane.classList.remove('hidden');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>Submitting…';
+  pane.classList.remove('d-none');
   body.textContent = '';
-  dot.className  = 'h-2.5 w-2.5 rounded-full bg-slate-500 animate-pulse';
-  lbl.textContent = 'Sending request…';
-  link.classList.add('hidden');
+  lbl.className = 'badge rounded-pill text-bg-light';
+  lbl.textContent = 'Sending…';
+  link.classList.add('d-none');
 
   const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value ?? '';
-
   try {
-    const payload = buildPayload();
-    const resp    = await fetch('/dss/welding-stations/', {
-      method:  'POST',
+    const resp = await fetch('/dss/welding-stations/', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-      body:    JSON.stringify(payload),
+      body: JSON.stringify(buildPayload()),
     });
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text.slice(0, 2000); }
 
-    const data = await resp.json();
-    const ok   = resp.ok;
-
-    dot.className   = `h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`;
+    lbl.className = `badge rounded-pill ${resp.ok ? 'text-bg-success' : 'text-bg-danger'}`;
     lbl.textContent = `${resp.status} ${resp.statusText}`;
-    lbl.className   = `text-sm font-semibold ${ok ? 'text-emerald-400' : 'text-red-400'}`;
-    body.textContent = JSON.stringify(data, null, 2);
-
-    if (ok && data.session_id) {
+    body.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    if (resp.ok && data.session_id) {
       link.href = `/dss/${data.session_id}/step/0/`;
-      link.classList.remove('hidden');
+      link.classList.remove('d-none');
     }
   } catch (err) {
-    dot.className   = 'h-2.5 w-2.5 rounded-full bg-red-500';
+    lbl.className = 'badge rounded-pill text-bg-danger';
     lbl.textContent = 'Network error';
-    lbl.className   = 'text-sm font-semibold text-red-400';
     body.textContent = String(err);
   } finally {
-    btn.disabled    = false;
-    btn.innerHTML   = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-      </svg>
-      Submit to API`;
+    btn.disabled = false;
+    btn.innerHTML = label;
   }
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Initialise with two experiments
-// ─────────────────────────────────────────────────────────────────────────────
-addExperiment();
-addExperiment();
+// Start with the three example stations
+EXAMPLES.forEach(v => addStation(v));
+showTab(0);

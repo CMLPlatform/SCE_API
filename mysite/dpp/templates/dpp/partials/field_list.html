@@ -1,0 +1,18 @@
+{% load dpp_extras %}
+{% comment %}
+  A card listing the fields of a model instance.
+  Variables: fields (from the get_fields filter), title (optional), editable_only (optional)
+{% endcomment %}
+<div class="card mb-4">
+  <div class="card-header">{{ title|default:"Details" }}</div>
+  <dl class="detail-list">
+    {% for field in fields %}
+    {% if not editable_only or field.editable %}
+    <div>
+      <dt>{{ field.verbose_name|sentencecase }}</dt>
+      <dd>{% if field.value is True %}Yes{% elif field.value is False %}No{% else %}{{ field.value|default:"—" }}{% endif %}</dd>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </dl>
+</div>

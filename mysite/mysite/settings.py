@@ -87,7 +87,7 @@ INSTALLED_APPS = [
     'django_countries',
     'django_extensions',
     'crispy_forms',
-    'crispy_tailwind',
+    'crispy_bootstrap5',
     'api',
     'accounts',
     'dpp.apps.DppConfig',
@@ -125,7 +125,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'mysite.wsgi.application'
 
-CRISPY_TEMPLATE_PACK = 'tailwind'
+CRISPY_ALLOWED_TEMPLATE_PACKS = 'bootstrap5'
+CRISPY_TEMPLATE_PACK = 'bootstrap5'
 
 
 # Database

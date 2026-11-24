@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sustainability and Cost Evaluator | Lasers4MaaS</title>
   <meta name="description" content="The Lasers4MaaS Sustainability and Cost Evaluator ranks laser welding set-ups on cost, quality, productivity, sustainability and circularity, and creates their Digital Product Passport.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Roboto:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="{% static 'vendor/fonts/fonts.css' %}">
   <link rel="stylesheet" href="{% static 'css/landing.css' %}">
 </head>
 <body class="landing">
@@ -23,6 +21,7 @@
       <a href="#objective">Objective</a>
       <a href="#capabilities">Capabilities</a>
       <a href="#users">Who it is for</a>
+      <a href="{% url 'swagger-ui' %}">API docs</a>
       {% if user.is_authenticated %}
       <a class="btn btn-primary" href="{{ app_url }}">Open the app</a>
       {% else %}
