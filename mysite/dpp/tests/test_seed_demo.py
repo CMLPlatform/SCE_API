@@ -139,6 +139,27 @@ class PublisherViewTests(TestCase):
         self.publisher.refresh_from_db()
         self.assertEqual(self.publisher.amount, 7)
 
+    def test_detail_page_lists_problems_with_fix_links(self):
+        self.line.final_product.details.delete()
+        response = self.client.get(reverse("dpp:publisher_detail", args=[self.publisher.pk]))
+        self.assertContains(response, "before you run the steps")
+        self.assertContains(response, f"{reverse('dpp:dppdetails_add')}?product={self.line.final_product.pk}")
+
+    def test_create_form_returns_to_next_url(self):
+        product = self.line.final_product
+        product.details.delete()
+        back = reverse("dpp:publisher_detail", args=[self.publisher.pk])
+        url = f"{reverse('dpp:dppdetails_add')}?product={product.pk}&next={back}"
+        response = self.client.post(url, {"product": product.pk, "warranty_period": 0, "spare_parts_availability_duration": 0, "takeback_system": "no"})
+        self.assertRedirects(response, back)
+
+    def test_create_form_ignores_next_url_to_other_site(self):
+        product = self.line.final_product
+        product.details.delete()
+        url = f"{reverse('dpp:dppdetails_add')}?next=https://evil.example/"
+        response = self.client.post(url, {"product": product.pk, "warranty_period": 0, "spare_parts_availability_duration": 0, "takeback_system": "no"})
+        self.assertRedirects(response, reverse("dpp:dppdetails_list"), fetch_redirect_response=False)
+
     def test_failed_run_shows_error_message(self):
         self.line.final_product.details.delete()
         url = reverse("dpp:publisher_detail", args=[self.publisher.pk])

@@ -50,7 +50,7 @@
           {% endwith %}
           {% else %}
           <div class="card-body">
-            <a class="btn btn-outline-primary" href="{% url 'dpp:productproperties_add' %}?product={{ object.pk }}&_popup=1" onclick="window.open(this.href, 'productproperties-popup', 'width=520,height=680,scrollbars=yes,resizable=yes'); return false;"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add physical properties</a>
+            <a class="btn btn-outline-primary" href="{% url 'dpp:productproperties_add' %}?product={{ object.pk }}"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add physical properties</a>
           </div>
           {% endif %}
         </div>
@@ -126,7 +126,7 @@
     {% else %}
     <div class="card" style="max-width: 820px"><div class="card-body">
       <p>The DPP details (importer, codes, warranty, take-back system) are needed before the passport can be published.</p>
-      <a class="btn btn-primary" href="{% url 'dpp:dppdetails_add' %}?product={{ object.pk }}&_popup=1" onclick="window.open(this.href, 'dppdetails-popup', 'width=520,height=720,scrollbars=yes,resizable=yes'); return false;"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add DPP details</a>
+      <a class="btn btn-primary" href="{% url 'dpp:dppdetails_add' %}?product={{ object.pk }}"><i class="bi bi-plus-circle" aria-hidden="true"></i>Add DPP details</a>
     </div></div>
     {% endif %}
     {% endwith %}

@@ -120,7 +120,6 @@ body.app { background: #fff; }
 .app-topbar img { height: 34px; width: auto; }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .app-content { width: 100%; max-width: 1280px; padding: 40px 40px 64px; }
-.app-content--popup { padding: 24px; }
 @media (max-width: 991.98px) {
   .app-shell { flex-direction: column; }
   .app-content { padding: 24px 16px 48px; }

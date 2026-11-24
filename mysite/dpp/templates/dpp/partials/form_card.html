@@ -1,0 +1,21 @@
+{% load crispy_forms_tags %}
+{# The form of an add or edit page. Shown on the full page and in the form card (in_card). #}
+<div data-card-title="{% if object %}Edit{% else %}New{% endif %} {{ verbose_name }}">
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    {% if form.errors %}
+    <div class="alert alert-danger" role="alert">
+      Not saved. Correct the fields marked in red, then save again.
+    </div>
+    {% endif %}
+    {{ form|crispy }}
+    <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+      {% if in_card %}
+      <button type="button" class="btn btn-outline-secondary" data-card-cancel>Cancel</button>
+      {% else %}
+      <a class="btn btn-outline-secondary" href="{{ request.META.HTTP_REFERER|default:'javascript:history.back()' }}">Cancel</a>
+      {% endif %}
+      <button type="submit" class="btn btn-primary">{% if object %}Save changes{% else %}Create{% endif %}</button>
+    </div>
+  </form>
+</div>

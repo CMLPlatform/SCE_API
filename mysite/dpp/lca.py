@@ -2,8 +2,10 @@
 and to import and export DPP data to Brightway.
 """
 import datetime
+import functools
 import json
 import logging
+import re
 import time
 import requests
 
@@ -12,8 +14,13 @@ import pandas as pd
 from django.conf import settings
 
 import bw2data as bwd
+from bw2calc.errors import EmptyBiosphere
 import bw2io as bwi
 from sentier_brightway import import_db
+
+
+class DppDataError(Exception):
+    """The DPP data is incomplete. The message tells the user what to add."""
 
 
 logger = logging.getLogger(__name__)
@@ -27,14 +34,10 @@ RESOURCE_UNITS = [
 #     RESOURCE_UNITS += list(UNIT_CHOICES[cat].keys()) + list(UNIT_CHOICES[cat].values())
 
 # Methods that are too detailed (for (in)organics)
-EXCLUDED_METHODS = {
-    "ecotoxicity: freshwater, inorganics', 'comparative toxic unit for ecosystems (CTUe)",
-	"ecotoxicity: freshwater, organics', 'comparative toxic unit for ecosystems (CTUe)",
-	"human toxicity: carcinogenic, inorganics', 'comparative toxic unit for human (CTUh)",
-	"human toxicity: carcinogenic, organics', 'comparative toxic unit for human (CTUh)",
-	"human toxicity: non-carcinogenic, inorganics', 'comparative toxic unit for human (CTUh)",
-	"human toxicity: non-carcinogenic, organics', 'comparative toxic unit for human (CTUh)')",
-}
+# Sub-indicators that split a main indicator into organics and inorganics.
+# Both naming styles: "ecotoxicity: freshwater, inorganics" (ecoinvent) and
+# "Ecotoxicity, freshwater_inorganics" (sentier).
+EXCLUDED_METHODS = re.compile(r"[,_]\s*(in)?organics$")
 DPP_PROJECT = "L4M-DPP"
 BIOSPHERE = "ecoinvent-3.12-biosphere"
 ECOINVENT = "ecoinvent-3-12-cutoff"
@@ -66,6 +69,26 @@ def project_status(project_name: str) -> dict[str, bool]:
         name: Path(bwd.Database(name).filepath_processed()).is_file()
         for name in bwd.databases
     }
+
+def installed_databases(project_name: str = DPP_PROJECT) -> list[str]:
+    """Names of the fully imported background databases.
+
+    Leaves out biosphere databases, and the "dpp_" databases that hold the
+    app's own LCA results: they are not a source of background processes.
+    """
+    return [db for db, ok in project_status(project_name).items()
+            if ok and 'biosphere' not in db and not db.startswith('dpp_')]
+
+def find_activities(database: str, text: str, limit: int = 5) -> list[dict]:
+    """Search `database` for activities that match `text`.
+
+    Returns:
+        list[dict]: keys 'code', 'name', 'location' and 'unit'.
+    """
+    return [
+        {key: act.get(key, '') for key in ('code', 'name', 'location', 'unit')}
+        for act in bwd.Database(database).search(text, limit=limit)
+    ]
 
 def staged_bonsai_export(export_dir: Path|None=None) -> tuple[Path, dict]:
     """
@@ -167,22 +190,58 @@ def ensure_methods(family: str):
         method_set = IndicatorSet.objects.create(
             name=family, start_date=datetime.date.today()
         )
-    methods = [
-        m for m in bwd.methods
-        if family in m and m[-2:] not in EXCLUDED_METHODS
-    ]
-    if len(methods) < len(ImpactIndicator.objects.filter(indicator_set=method_set)):
-        return method_set
+    methods = select_methods(family)
+    names = [indicator_name(m, family) for m in methods]
     unknown_category, _ = ImpactCategory.objects.get_or_create(name='Unknown')
-    for m in methods:
+    for m, name in zip(methods, names):
         ImpactIndicator.objects.update_or_create(
-            method=m[-2],
-            unit=bwd.methods[m].get('unit'),
+            method=name,
             indicator_set=method_set,
-            impact_category=unknown_category,
-            is_environmental=True,
+            defaults={'unit': bwd.methods[m].get('unit') or ''},
+            create_defaults={'unit': bwd.methods[m].get('unit') or '',
+                             'impact_category': unknown_category, 'is_environmental': True},
         )
+    # Remove indicators of methods that are not used any more, unless they have scores
+    ImpactIndicator.objects.filter(indicator_set=method_set, sustainabilityscore__isnull=True
+                                   ).exclude(method__in=names).delete()
     return method_set
+
+def indicator_name(method: tuple, family: str) -> str:
+    """The impact category of a Brightway method: the element after the family name.
+
+    ('ecoinvent-3.12', 'EF v3.1', 'climate change', 'GWP100') -> 'climate change'
+    ('sentier', 'EF v3.1', 'Climate change') -> 'Climate change'
+    """
+    return method[method.index(family) + 1]
+
+def _method_biosphere(method: tuple) -> str | None:
+    """The biosphere database that the characterisation factors of `method` use."""
+    try:
+        key = bwd.Method(method).load()[0][0]
+        node = bwd.get_node(id=key) if isinstance(key, int) else bwd.get_activity(key)
+        return node['database']
+    except Exception:
+        return None
+
+def select_methods(family: str) -> list[tuple]:
+    """The Brightway methods of `family` to calculate, sorted, from one source only.
+
+    A project can hold the same family from more than one source, for example
+    ('ecoinvent-3.12', 'EF v3.1', ...) and ('sentier', 'EF v3.1', ...). Each source
+    uses its own biosphere database. We use the source whose biosphere the installed
+    background databases use, so that their emissions are counted.
+    """
+    sources = {}
+    for m in bwd.methods:
+        if family in m and not EXCLUDED_METHODS.search(indicator_name(m, family)):
+            sources.setdefault(m[:m.index(family)], []).append(m)
+    if len(sources) > 1:
+        used = {dep for db in installed_databases() for dep in bwd.databases[db].get('depends', [])}
+        matching = [s for s, ms in sources.items() if _method_biosphere(ms[0]) in used]
+        chosen = matching[0] if matching else sorted(sources)[0]
+        logger.debug(f"{family}: using the methods of {chosen or 'no source'}, of {list(sources)}.")
+        return sorted(sources[chosen])
+    return sorted(next(iter(sources.values()), []))
 
 def prompt_choice(title: str, options: list, default_index: int = 0):
     """Simple numbered menu. CC-BY EMPA"""
@@ -246,19 +305,71 @@ def get_biosphere_db():
             return bwd.Database(name)
     raise FileNotFoundError(f"No biosphere database found in {bwd.projects.current}.")
 
+# Units of biosphere flows -> units of Emission objects
+BIOSPHERE_UNITS = {
+    'cubic meter': 'm3',
+    'cubic meter-year': 'm3-yr',
+    'kilo Becquerel': 'kBq',
+    'kilogram': 'kg',
+    'megajoule': 'MJ',
+    'square meter': 'm2',
+    'square meter-year': 'm2-yr',
+    'standard cubic meter': 'Nm3',
+}
+
+# Published mapping (randonneur_data) from ecoinvent biosphere flows to EF 3.1 flows.
+# The ecoinvent 3.11 mapping also covers the flows that ecoinvent 3.12 kept.
+EF_FLOW_MAPPING = "ecoinvent-3.11-biosphere-EF-3.1-biosphere"
+
+@functools.cache
+def _ecoinvent_to_ef_codes() -> dict[str, str]:
+    """{ecoinvent biosphere flow code: EF 3.1 biosphere flow code}"""
+    from randonneur_data import Registry
+    data = Registry().get_file(EF_FLOW_MAPPING)
+    return {entry['source']['uuid']: entry['target']['uuid'] for entry in data['replace']}
+
+def lca_biosphere(family: str) -> str | None:
+    """The biosphere database that the methods of `family` characterise, or None."""
+    methods = select_methods(family)
+    return _method_biosphere(methods[0]) if methods else None
+
+def translate_biosphere_flow(key: tuple, target: str | None) -> tuple | None:
+    """The flow in biosphere `target` that stands for `key`, a flow of another biosphere.
+
+    Returns `key` unchanged when it is already in `target` (or `target` is None),
+    and None when there is no matching flow.
+    """
+    database, code = key
+    if target is None or database == target:
+        return key
+    if database.startswith('ecoinvent') and target.lower().startswith('ef-3.1'):
+        ef_code = _ecoinvent_to_ef_codes().get(code)
+        if ef_code:
+            try:
+                bwd.get_node(database=target, code=ef_code)
+                return (target, ef_code)
+            except Exception:
+                return None
+    return None
+
+def emission_amount(exc, flow_unit: str) -> float | None:
+    """The amount of EnvExchange `exc` in `flow_unit`, the unit of its biosphere flow.
+
+    Returns None when the units cannot be converted (for example g to m3).
+    """
+    from .models import UNIT_CHOICES, CONVERSIONS
+    unit, target = exc.substance.unit, BIOSPHERE_UNITS.get(flow_unit, flow_unit)
+    if unit == target:
+        return exc.amount
+    for group in UNIT_CHOICES.values():
+        if isinstance(group, dict) and unit in group and target in group:
+            return exc.amount * CONVERSIONS[unit] / CONVERSIONS[target]
+    return None
+
 def biosphere_to_dpp_flows():
     """Convert all biosphere flows to Emission objects"""
     from .models import Emission
-    unit_map = {
-        'cubic meter': 'm3',
-        'cubic meter-year': 'm3-yr',
-        'kilo Becquerel': 'kBq',
-        'kilogram': 'kg',
-        'megajoule': 'MJ',
-        'square meter': 'm2',
-        'square meter-year': 'm2-yr',
-        'standard cubic meter': 'Nm3',
-    }
+    unit_map = BIOSPHERE_UNITS
     setup_project()
     biosphere_db = get_biosphere_db()
     bio_flows = set((i['name'], i['unit']) for i in list(biosphere_db))
@@ -361,8 +472,8 @@ def make_transport_exchange(transports, product, amount):
         mass = input_prod.properties.weight * CONVERSIONS[
             input_prod.properties.weight_unit
         ]
-    elif input_prod.unit in UNIT_CHOICES['Mass']:
-        mass = CONVERSIONS[input_prod.unit]
+    elif input_prod.model.unit in UNIT_CHOICES['Mass']:
+        mass = CONVERSIONS[input_prod.model.unit]
     else:
         mass = 1
 
@@ -375,8 +486,13 @@ def make_transport_exchange(transports, product, amount):
             "unit": 'ton kilometer',
         }
     elif BAFU_DB in bwd.databases:
+        if bafu_codes[transport.mode] == 'missing':
+            raise DppDataError(
+                f"The BAFU database has no process for transport by "
+                f"{transport.get_mode_display()}. Choose another mode of transport for {product}."
+            )
         exchange = {
-            "input": (BAFU_DB, ecoinvent_codes[transport.mode]),
+            "input": (BAFU_DB, bafu_codes[transport.mode]),
             "amount": mass / 1000 * amount * transport.distance,
             "type": "technosphere",
             "unit": 'ton kilometer',
@@ -413,30 +529,49 @@ def list_background_processes() -> dict:
 # Create DPP LCA and do LCA calculations
 # ---------------------------------------------------------------------------
 
-def convert_dpp_to_brightway(processes: list, db_name: str):
+def convert_dpp_to_brightway(processes: list, db_name: str, target_biosphere: str | None = None):
     """
     Convert DPP processes to Brightway activities in db_name
     
     :param dpp_process: List of ManufacturingProcess
     :param db_name: Bightway database name, to add the activity to.
+    :param target_biosphere: The biosphere database that the LCIA methods use.
+        Emissions are matched in the default biosphere (get_biosphere_db), then
+        moved to this one, so that the methods count them. None: do not move.
     """
     # Import here to avoid circular imports
     from .models import ProductExchange, EnvExchange, BackgroundProcess
 
     biosphere = get_biosphere_db()
     bw_activities = {}
-    for dpp_process in processes:
-        # Skip already known background processes
+    def background_key(process):
+        """(database, code) of the Brightway activity that stands for `process`,
+        or None when `process` is a DPP process that we must write ourselves."""
+        background = BackgroundProcess.objects.filter(pk=process.pk).first()
+        if background is None or not background.database:
+            return None
+        if background.database not in bwd.databases:
+            raise DppDataError(
+                f"The background process '{background.name}' links to the LCA database "
+                f"'{background.database}', which is not installed. Link it to a process "
+                f"in one of these databases: "
+                f"{', '.join(db for db in bwd.databases if 'biosphere' not in db and not db.startswith('dpp_'))}."
+            )
+        key = (background.database, background.db_code)
         try:
-            background_process = dpp_process.backgroundprocess
-        except BackgroundProcess.DoesNotExist:
-            background_process = None
+            bwd.get_activity(key)
+        except Exception:
+            raise DppDataError(
+                f"The background process '{background.name}' has the code "
+                f"'{background.db_code}', which is not in '{background.database}'."
+            ) from None
+        return key
 
-        if background_process and dpp_process.database in bwd.databases:
-            continue  #NOTE: assuming it exists in the bwd database, e.g. ecoinvent
+    for dpp_process in processes:
+        if background_key(dpp_process):
+            continue  # Already in a Brightway database, e.g. ecoinvent or BAFU
 
         location = str(dpp_process.facility.country) if dpp_process.facility else 'GLO'
-        transports = dpp_process.functional_flow.productionline.transport
         exchanges = [{
             "input": (db_name, dpp_process.pk),
             "amount": dpp_process.amount,
@@ -451,30 +586,43 @@ def convert_dpp_to_brightway(processes: list, db_name: str):
             if exc.product.manufacturing_info not in processes:
                 continue  # Cutoff in case max_depth was used.
             sign = 1 if exc.direction == 'in' else -1
-            try:  # Find the source DB of background processes
-                source_db = exc.product.manufacturing_info.database
-                db_code = exc.product.manufacturing_info.db_code
-            except AttributeError:
-                source_db = db_name
-                db_code = exc.product.manufacturing_info.pk
+            source = exc.product.manufacturing_info
             exchanges.append({
-                "input": (source_db, db_code),
+                "input": background_key(source) or (db_name, source.pk),
                 "amount": sign * exc.amount,
                 "type": "technosphere",
                 "unit": exc.product.model.unit,
             })
             # Add transport exchange for this input product
             if sign == 1:
+                # Only processes made by a production line have transport data
+                transports = dpp_process.functional_flow.productionline.transport
                 exchanges.append(
                     make_transport_exchange(transports, exc.product, exc.amount)
                 )
         for exc in EnvExchange.objects.filter(process=dpp_process):
-            bioshpere_flow = find_biosphere_flow(exc, biosphere)
+            found = find_biosphere_flow(exc, biosphere)
+            flow = translate_biosphere_flow(found, target_biosphere)
+            what = (f"The {exc.get_direction_display().lower()} '{exc.substance}' "
+                    f"({exc.get_compartment_display()}) of '{dpp_process.name}'")
+            if flow is None:
+                raise DppDataError(
+                    f"{what} has no match in the biosphere '{target_biosphere}' that the "
+                    f"impact methods use, so it would not be counted. Choose another "
+                    f"substance or compartment."
+                )
+            flow_unit = bwd.get_activity(flow).get('unit', '')
+            amount = emission_amount(exc, flow_unit)
+            if amount is None:
+                raise DppDataError(
+                    f"{what} is in '{exc.substance.unit}', which cannot be converted to "
+                    f"'{flow_unit}', the unit of the biosphere flow. Change the unit."
+                )
             exchanges.append({
-                "input": bioshpere_flow,
-                "amount": exc.amount,
+                "input": flow,
+                "amount": amount,
                 "type": "biosphere",
-                "unit": exc.substance.unit,
+                "unit": BIOSPHERE_UNITS.get(flow_unit, flow_unit),
             })
         
         activity = {
@@ -524,22 +672,25 @@ def lca_calculations(activity, family: str = 'EF v3.1'):
     :param family (str): Name of a LCIA method family
     """
     # Select methods belonging to family
-    methods = [
-        m for m in bwd.methods
-        if family in m and m[-2:] not in EXCLUDED_METHODS
-    ]
+    methods = select_methods(family)
     logger.debug(f"{len(methods)} EF methods found")
     if not methods:
         logger.warning(f"No {family} methods available.")
         raise RuntimeError(f"No {family} methods available.")
-    methods = sorted(methods)
     # Calculate LCA results
-    lca = activity.lca(methods[0])
-    results = [(methods[0][-2], lca.score, bwd.methods[methods[0]].get('unit'))]
+    try:
+        lca = activity.lca(methods[0])
+    except EmptyBiosphere:
+        raise DppDataError(
+            f"The supply chain of '{activity['reference product']}' has no emissions "
+            "or resource use, so there is nothing to assess. Add inputs or emissions "
+            "to its processes, then run step 2 again."
+        ) from None
+    results = [(indicator_name(methods[0], family), lca.score, bwd.methods[methods[0]].get('unit'))]
     for m in methods[1:]:
         lca.switch_method(m)
         lca.lcia()
-        results.append((m[-2], lca.score, bwd.methods[m].get("unit")))
+        results.append((indicator_name(m, family), lca.score, bwd.methods[m].get("unit")))
     return results
 
 def create_supply_chain_lca(product):
@@ -566,7 +717,8 @@ def create_supply_chain_lca(product):
         allocation_method='',
     )
     if not created:
-        SustainabilityScore.objects.filter().delete()
+        # Remove only the old scores of this assessment, not those of other products
+        SustainabilityScore.objects.filter(evaluation=evaluation).delete()
 
     # Create unique Brightway database
     db_name = f"dpp_{product.model.name}_{product.pk}"
@@ -588,7 +740,7 @@ def create_supply_chain_lca(product):
     
     # Collect supply chain processes and load in Brightway DB
     processes = select_supply_chain(product)
-    bw_activities = convert_dpp_to_brightway(processes, db.name)
+    bw_activities = convert_dpp_to_brightway(processes, db.name, lca_biosphere(lcia_family))
     db.write(bw_activities)
     
     # # Link to background database (ecoinvent, etc.)

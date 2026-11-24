@@ -412,44 +412,35 @@ def get_active_constraints(config: McdaConfig) -> WeightConstraints:
     - specific lower/upper bounds are not activated;
     - only natural simplex bounds 0 <= w <= 1 are used.
     """
-    groups = config.groups
-    active = WeightConstraints()
-
-    if config.scenario == "random":
-        active.group = {g: (0.0, 1.0) for g in groups}
-        active.group_order = []
-
-        active.local = {
-            g: {c: (0.0, 1.0) for c in crits}
-            for g, crits in groups.items()
-        }
-        active.local_order = {g: [] for g in groups}
-        active.criterion = {c: (0.0, 1.0) for c in config.criteria}
-
-    elif config.scenario == "bounded":
-        active = config.constraints
-        active.group_order = []
-        active.local_order = {g: [] for g in groups}
-
-    elif config.scenario == "ordered":
-        active.group = {g: (0.0, 1.0) for g in groups}
-        active.group_order = config.constraints.group_order
-
-        active.local = {
-            g: {c: (0.0, 1.0) for c in crits}
-            for g, crits in groups.items()
-        }
-        active.local_order = config.constraints.local_order
-
-    elif config.scenario == "bounded_ordered":
-        active = config.constraints
-
-    else:
+    scenarios = ("random", "bounded", "ordered", "bounded_ordered")
+    if config.scenario not in scenarios:
         raise ValueError(
             "scenario must be either "
             "'random', 'bounded', 'ordered', or 'bounded_ordered'"
         )
+    groups = config.groups or {}
+    given = config.constraints or WeightConstraints()
+    use_bounds = config.scenario in ("bounded", "bounded_ordered")
+    use_order = config.scenario in ("ordered", "bounded_ordered")
 
+    def bounds(names, user_bounds):
+        """User bounds where given and active, else the natural bounds 0 <= w <= 1."""
+        user_bounds = (user_bounds or {}) if use_bounds else {}
+        return {n: user_bounds.get(n, (0.0, 1.0)) for n in names}
+
+    # Build new constraints: never change config.constraints itself
+    active = WeightConstraints()
+    active.group = bounds(groups, given.group)
+    active.local = {
+        g: bounds(crits, (given.local or {}).get(g)) for g, crits in groups.items()
+    }
+    active.criterion = bounds(config.criteria or [], given.criterion)
+    active.group_order = list(given.group_order or []) if use_order else []
+    active.local_order = {
+        g: list((given.local_order or {}).get(g) or []) if use_order else []
+        for g in groups
+    }
+    active.criterion_order = list(given.criterion_order or []) if use_order else []
     return active
 
 
@@ -687,6 +678,7 @@ def sample_smaa_weights(config: McdaConfig, sampler_stats={}, rng=None):
     if config.weight_mode in ["equal", "flat"]:
         config._weights = sample_weights_dirichlet_constrained(
             bounds_dict=active_constr.criterion,
+            order_cons=active_constr.criterion_order,
             alpha=config.alpha,
             rng=rng,
             stats=sampler_stats,

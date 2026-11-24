@@ -10,6 +10,8 @@ from django.dispatch import receiver
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
+from django.urls import reverse
+from urllib.parse import urlencode
 from django_countries.fields import CountryField
 from . import lca
 
@@ -646,6 +648,13 @@ class ProductionLine(models.Model):
             product_names = ', '.join([str(p) for p in unused_outputs])
             return f"Warning: Products [{product_names}] are not linked to other processes."
         
+        return ""  # All good
+
+    def check_final_product(self):
+        """Check that a process in this production line makes the final product."""
+        if not self.bop.filter(functional_flow=self.final_product).exists():
+            return (f"Error: No process in this production line has "
+                    f"'{self.final_product}' as its main output. ")
         return ""  # All good
 
     def check_missing_origins(self):
@@ -1355,7 +1364,91 @@ class Publisher(models.Model):
                 message += "Warning: Insufficient registration numbers."
 
         return message
-    
+
+    def get_issues(self):
+        """List the problems that stop the DPP calculation, each with fix links.
+
+        Returns:
+            list[dict]: One dict per problem, with keys 'message' (str) and
+            'fixes' (list of (label, url) tuples). An empty list means no problems.
+        """
+        pl = self.production_line
+        fp = pl.final_product
+        back = reverse('dpp:publisher_detail', args=[self.pk])
+
+        def link(name, **params):
+            return f"{reverse(f'dpp:{name}')}?{urlencode({**params, 'next': back})}"
+
+        issues = []
+        processes = pl.bop.all()
+        if not processes.filter(functional_flow=fp).exists():
+            if not processes.exists():
+                message = (f"The production line '{pl}' has no processes. "
+                           f"Add the process that makes '{fp}'.")
+            else:
+                message = (f"No process in '{pl}' has '{fp}' as its main output. "
+                           f"Add that process, or set '{fp}' as the main output of the last process.")
+            issues.append({'message': message, 'fixes': [
+                ("Add the final process", link('process_add', production_line=pl.pk, functional_flow=fp.pk)),
+                ("Open the production line", reverse('dpp:production_line_detail', args=[pl.pk])),
+            ]})
+
+        inputs = Flow.objects.filter(exchanged_by__process__in=processes).distinct()
+        for flow in inputs:
+            if not (hasattr(flow, 'produced_by') or hasattr(flow, 'manufacturing_info')):
+                issues.append({'message': f"No process makes the input '{flow}'.", 'fixes': [
+                    ("Add a process that makes it", link('process_add', production_line=pl.pk, functional_flow=flow.pk)),
+                ]})
+
+        # Inputs bought from a background process need its LCA database (step 5)
+        try:
+            installed = lca.installed_databases()
+        except Exception:
+            installed = []  # Brightway not set up: step 5 reports the problem itself
+        if installed:
+            for background in BackgroundProcess.objects.filter(functional_flow__in=inputs).exclude(database=''):
+                if background.database not in installed:
+                    issues.append({'message': (
+                        f"The input '{background.functional_flow}' comes from '{background.name}'. "
+                        f"That process links to the LCA database '{background.database}', which is "
+                        f"not installed. Link it to a process in {', '.join(installed)}."), 'fixes': [
+                        ("Edit the background process", f"{reverse('dpp:backgroundprocess_update', args=[background.pk])}?{urlencode({'next': back})}"),
+                    ]})
+
+        has_inputs = ProductExchange.objects.filter(process__in=processes, direction='in').exists()
+        has_emissions = EnvExchange.objects.filter(process__in=processes).exists()
+        if processes.exists() and not (has_inputs or has_emissions):
+            target = processes.filter(functional_flow=fp).first() or processes.first()
+            issues.append({'message': (f"The processes in '{pl}' have no inputs and no emissions, "
+                                       f"so the life cycle assessment (step 5) has nothing to count. "
+                                       f"Add the materials, energy or emissions of '{target.name}'."), 'fixes': [
+                ("Add an input", link('productexchange_add', process=target.pk, direction='in')),
+                ("Add an emission", link('envexchange_add', process=target.pk, direction='out')),
+            ]})
+
+        for process in processes:
+            flow = process.functional_flow
+            if flow and flow.pk != fp.pk and not ProductExchange.objects.filter(
+                    product=flow, process__in=processes).exists():
+                issues.append({'message': f"No other process uses '{flow}', the output of '{process.name}'.", 'fixes': [
+                    ("Open the process", reverse('dpp:process_detail', args=[process.pk])),
+                ]})
+
+        if not hasattr(fp, 'details'):
+            issues.append({'message': f"'{fp}' has no DPP details.", 'fixes': [
+                ("Add DPP details", link('dppdetails_add', product=fp.pk)),
+            ]})
+        if not hasattr(fp, 'properties'):
+            issues.append({'message': f"'{fp}' has no product properties (weight, volume).", 'fixes': [
+                ("Add product properties", link('productproperties_add', product=fp.pk)),
+            ]})
+        if self.registration_numbers and len(self.registration_numbers.split(',')) < self.amount:
+            issues.append({'message': (f"There are fewer registration numbers than DPPs ({self.amount}). "
+                                       f"Add numbers, or leave the field empty to generate them."), 'fixes': [
+                ("Edit publishing details", reverse('dpp:publisher_update', args=[self.pk])),
+            ]})
+        return issues
+
     def run_from_step(self, start_step: int):
         """Do calculations needed to complete a DPP:
         - Check for missing origins and unused outputs
@@ -1381,7 +1474,7 @@ class Publisher(models.Model):
         try:
             # Step 1: Validation
             if start_step <= 1:
-                input_status = pl.check_missing_origins()
+                input_status = pl.check_final_product() + pl.check_missing_origins()
                 output_status = pl.check_unused_outputs()
                 detail_status = self.check_details(pl.final_product)
                 if message := input_status + output_status + detail_status:
@@ -1417,7 +1510,11 @@ class Publisher(models.Model):
                 self.save()
         
         except Exception as e:
-            self.error_message = f"Error at step {self.status + 1}: {str(e)}"
+            # AssertionError carries our own readable message. For other errors,
+            # add the type, so that a bare "25" reads as "KeyError: 25".
+            readable = isinstance(e, (AssertionError, lca.DppDataError))
+            detail = str(e) if readable else f"{type(e).__name__}: {e}"
+            self.error_message = f"Error at step {self.status + 1}: {detail}"
         finally:
             self.last_run = datetime.datetime.now()
             self.save()

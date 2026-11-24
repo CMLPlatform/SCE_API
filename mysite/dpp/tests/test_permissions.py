@@ -182,14 +182,15 @@ class WebViewTests(OwnershipTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context["latest_lines"]), [])
 
-    def test_popup_response_escapes_names(self):
+    def test_form_card_save_returns_json_with_the_name_as_data(self):
         self.client.force_login(self.bob)
+        name = '</script><script>alert(1)</script>'
         response = self.client.post(
-            reverse("dpp:company_add") + "?_popup=1",
-            {"name": '</script><script>alert(1)</script>', "country": "DE"},
+            reverse("dpp:company_add") + "?_card=1", {"name": name, "country": "DE"},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"<script>alert(1)", response.content)
+        self.assertEqual(response["Content-Type"], "application/json")
+        company = Company.objects.get(name=name)
+        self.assertEqual(response.json(), {"pk": str(company.pk), "name": str(company)})
 
 
 class ApiTests(OwnershipTestCase):

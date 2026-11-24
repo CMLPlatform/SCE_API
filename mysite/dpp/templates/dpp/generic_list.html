@@ -4,14 +4,12 @@
 {% block title %}{{ name_plural|capfirst }}{% endblock %}
 
 {% block breadcrumbs %}
-{% if not is_popup %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="{% url 'dpp:home' %}">Home</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{ name_plural|capfirst }}</li>
   </ol>
 </nav>
-{% endif %}
 {% endblock %}
 
 {% block content %}

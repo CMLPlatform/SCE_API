@@ -13,7 +13,6 @@
 </head>
 <body class="app">
 <div class="app-shell">
-  {% if not is_popup %}
   {# Top bar with menu button, small screens only #}
   <header class="app-topbar d-lg-none">
     <a href="{% url 'landing' %}"><img src="{% static 'img/L4M_logo.png' %}" alt="Lasers4MaaS home"></a>
@@ -74,10 +73,9 @@
       {% endif %}
     </div>
   </aside>
-  {% endif %}
 
   <main class="app-main" id="main">
-    <div class="app-content{% if is_popup %} app-content--popup{% endif %}">
+    <div class="app-content">
       {% block breadcrumbs %}{% endblock %}
 
       {% if messages %}
@@ -93,6 +91,29 @@
     </div>
   </main>
 </div>
+{% if user.is_authenticated %}
+{# The form card: add and edit forms open here, over the page (see sce.js) #}
+<div class="modal fade" id="form-card" tabindex="-1" aria-labelledby="form-card-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="min-w-0">
+          <h2 class="modal-title h5" id="form-card-title"></h2>
+          <div class="form-card-return small text-body-secondary d-none"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning d-flex gap-2 form-card-guide d-none" role="note">
+          <i class="bi bi-lightbulb" aria-hidden="true"></i>
+          <div><strong>What to fix:</strong> <span class="form-card-guide-text"></span></div>
+        </div>
+        <div class="form-card-body" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 <script src="{% static 'vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
 <script src="{% static 'js/sce.js' %}"></script>
 {% block extra_js_end %}{% endblock %}

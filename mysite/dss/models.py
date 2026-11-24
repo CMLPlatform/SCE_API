@@ -78,7 +78,7 @@ class McdaSession(models.Model):
 
     # Form 2 - conditional; stored as JSON to handle float|tuple values
     group_weights    = models.JSONField(null=True)  # {"group_name": float | [lo, hi]}
-    local_weights    = models.JSONField(null=True)  # {"criterion": {"group": float | [lo, hi]}}
+    local_weights    = models.JSONField(null=True)  # {"group": {"criterion": float | [lo, hi]}}
     criterion_weights= models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
     thresholds       = models.JSONField(null=True)  # {"criterion": float | [lo, hi]}
     veto_thresholds  = models.JSONField(null=True)  # {"criterion": float}

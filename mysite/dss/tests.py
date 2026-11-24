@@ -854,3 +854,46 @@ class SessionTokenTests(APITestCase):
         self.assertEqual(self.client.get(url).status_code, 404)
         response = self.client.get(f"/dss/results/{uuid.uuid4()}/")
         self.assertEqual(response.status_code, 404)
+
+
+class ActiveConstraintsTests(TestCase):
+    """get_active_constraints fills every level, for every scenario."""
+    def config(self, scenario, weight_mode="flat", constraints=None):
+        return McdaConfig(
+            df=pd.DataFrame({"a": [1.0, 2.0], "b": [2.0, 1.0], "c": [1.0, 1.0]}, index=["x", "y"]),
+            directions={"a": "max", "b": "min", "c": "max"},
+            scenario=scenario, method="simple", criteria=["a", "b", "c"],
+            weight_mode=weight_mode, groups={"g1": ["a", "b"], "g2": ["c"]},
+            constraints=constraints,
+        )
+
+    def test_every_scenario_sets_criterion_bounds(self):
+        from .mcda import get_active_constraints
+        for scenario in ("random", "bounded", "ordered", "bounded_ordered"):
+            active = get_active_constraints(self.config(scenario, constraints=WeightConstraints()))
+            self.assertEqual(set(active.criterion), {"a", "b", "c"}, scenario)
+            self.assertEqual(set(active.group), {"g1", "g2"}, scenario)
+
+    def test_ordered_equal_mode_samples_weights(self):
+        """The case from the wizard: scenario 'ordered', weight mode 'equal'."""
+        from .mcda import sample_smaa_weights
+        config = self.config("ordered", "equal", WeightConstraints(criterion_order=[]))
+        sample_smaa_weights(config)
+        self.assertAlmostEqual(sum(config._weights.values()), 1.0)
+
+    def test_flat_mode_uses_criterion_ranking(self):
+        from .mcda import sample_smaa_weights
+        config = self.config("ordered", "flat", WeightConstraints(criterion_order=[("c", "a"), ("a", "b")]))
+        for _ in range(20):
+            sample_smaa_weights(config)
+            w = config._weights
+            self.assertGreaterEqual(w["c"], w["a"])
+            self.assertGreaterEqual(w["a"], w["b"])
+
+    def test_bounded_keeps_user_bounds_and_does_not_change_config(self):
+        from .mcda import get_active_constraints
+        given = WeightConstraints(criterion={"a": (0.5, 0.6)}, criterion_order=[("a", "b")])
+        active = get_active_constraints(self.config("bounded", constraints=given))
+        self.assertEqual(active.criterion, {"a": (0.5, 0.6), "b": (0.0, 1.0), "c": (0.0, 1.0)})
+        self.assertEqual(active.criterion_order, [])     # bounded: no ordering
+        self.assertEqual(given.criterion_order, [("a", "b")])  # user settings unchanged

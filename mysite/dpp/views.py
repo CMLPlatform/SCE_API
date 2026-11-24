@@ -1,11 +1,10 @@
-import json
-
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.forms import ModelChoiceField, ModelMultipleChoiceField
-from django.http import HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse, reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
 from .models import (
     Institution, Company, Importer, ServiceOperator, Metadata, Facility,
@@ -63,11 +62,41 @@ class AdminTemplateMixin:
         })
         return context
 
-class PreFillFormMixin:
+class FormCardMixin:
+    """Show a view inside the form card (an on-screen dialog) when the URL has _card=1.
+
+    The page script (sce.js) loads the view with _card=1. The view then sends
+    only the form, without the page layout. After a valid save it sends JSON
+    {"pk": ..., "name": ...}, and the script returns the user to their page.
+    """
+    card_template_name = "dpp/partials/form_card.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.in_card = request.GET.get('_card') == '1'
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_template_names(self):
+        if self.in_card:
+            return [self.card_template_name]
+        return super().get_template_names()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['in_card'] = self.in_card
+        return context
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        if self.in_card:
+            return JsonResponse({'pk': str(self.object.pk), 'name': str(self.object)})
+        return response
+
+
+class PreFillFormMixin(FormCardMixin):
     """
     Mixin that pre-fills form fields from URL query parameters.
     Any query parameter matching a field name will be used as initial value.
-    Also check if it's a popup, and define success_url
+    Also shows the form in the form card (see FormCardMixin), and defines success_url.
     """
     def get_initial(self):
         initial = super().get_initial()
@@ -81,40 +110,18 @@ class PreFillFormMixin:
                 else:
                     initial[field_name] = value
         return initial
-    
-    def dispatch(self, request, *args, **kwargs):
-        self.is_popup = request.GET.get('_popup', False)
-        return super().dispatch(request, *args, **kwargs)
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['is_popup'] = self.is_popup
-        return context
-    
+
     def get_success_url(self):
+        # Go back to the page that sent the user here (for example a fix link)
+        next_url = self.request.GET.get('next')
+        if next_url and url_has_allowed_host_and_scheme(
+                next_url, allowed_hosts={self.request.get_host()},
+                require_https=self.request.is_secure()):
+            return next_url
         return reverse(
             f"{self.model._meta.app_label}:{self.model._meta.model_name}_list"
         )
     
-    def form_valid(self, form):
-        self.object = form.save()
-        
-        # Check if this is a popup request
-        if self.is_popup:
-            # json.dumps + escaping of "<" prevents user-entered names
-            # from breaking out of the script (cross-site scripting)
-            pk = json.dumps(str(self.object.pk)).replace("<", "\\u003c")
-            name = json.dumps(str(self.object)).replace("<", "\\u003c")
-            return HttpResponse(
-                f'''
-                <script type="text/javascript">
-                    opener.dismissAddRelatedObjectPopup(window, {pk}, {name});
-                </script>
-                '''
-            )
-        
-        return super().form_valid(form)
-
 def make_crud_views(model):
     app_label = model._meta.app_label
 
@@ -150,13 +157,6 @@ def make_crud_views(model):
         def get_form_class(self):
             return get_model_form_plus(self.model)
         
-        def form_valid(self, form):
-            result = super().form_valid(form)
-            # If this is a pop-up window, close it
-            if self.request.POST.get('is_popup'):
-                return HttpResponse('<script>window.close();</script>')
-            return result
-
     class Delete(OwnedQuerysetMixin, AdminTemplateMixin, DeleteView):
         model = model
         success_url = reverse_lazy(f"{app_label}:{model.__name__.lower()}_list")
@@ -186,7 +186,7 @@ for model in [
     Document, Material, HazardousMaterial, Emission,
     Flow, ProductModel, ProductBatch, SecondaryProduct, Composition,
     ProductItem, DppDetails, ProductProperties,
-    Activity, ProductionLine, ManufacturingProcess, Process,
+    Activity, ProductionLine, ManufacturingProcess, BackgroundProcess, Process,
     Exchange, ProductExchange, EnvExchange, Transport, ItemExchange,
     LifeCycleEvent, InspectionEvent, MaintenanceEvent, DisassemblyEvent,
     ImpactCategory, SustainabilityEvaluation, SustainabilityScore,
@@ -402,9 +402,11 @@ class TransportSubsetView(LoginRequiredMixin, AdminTemplateMixin, ListView):
             queryset = Transport.objects.filter(production_line=pl)
         return queryset
 
-class FlowCreateView(LoginRequiredMixin, CreateView):
+class FlowCreateView(LoginRequiredMixin, FormCardMixin, CreateView):
+    """Lets the user choose the kind of product to create (model or batch)."""
     model = Flow
     template_name = "dpp/create_flow.html"
+    card_template_name = "dpp/partials/create_flow_card.html"
     fields = []  # No user-editable fields
 
 class PublisherUpdateView(OwnedQuerysetMixin, OwnedFormMixin, AdminTemplateMixin, PreFillFormMixin, UpdateView):
@@ -464,6 +466,7 @@ class PublisherDetailView(OwnedQuerysetMixin, AdminTemplateMixin, DetailView):
             }
             for i in range(1, 6)
         ]
+        context['issues'] = publisher.get_issues()
         context['lca_results'] = SustainabilityEvaluation.objects.filter(is_environmental=True, product=publisher.production_line.final_product)
         return context
 

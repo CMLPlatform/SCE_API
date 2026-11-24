@@ -14,11 +14,12 @@ from django.test import SimpleTestCase, TestCase
 import datetime
 from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
-from ..models import CONVERSIONS, IndicatorSet, ProductModel, Transport
+from ..models import CONVERSIONS, ImpactCategory, ImpactIndicator, IndicatorSet, ProductModel, Transport
 from dpp.lca import (
-    EXCLUDED_METHODS, BIOSPHERE, ECOINVENT, BAFU_DB, BONSAI_DB,
+    BIOSPHERE, ECOINVENT, BAFU_DB, BONSAI_DB,
     setup_project, ensure_methods, make_transport_exchange, select_supply_chain,
     convert_dpp_to_brightway, lca_calculations, create_supply_chain_lca,
+    DppDataError, select_methods, translate_biosphere_flow, emission_amount,
 )
 
 # ---------------------------------------------------------------------------
@@ -179,38 +180,64 @@ class TestEnsureMethods(TestCase):
         assert result == existing_set
 
     @patch("dpp.lca.bwd")
-    def test_excludes_known_zero_impact_methods(self, mock_bwd):
-        """Methods in EXCLUDED_METHODS must never be stored."""
+    def test_excludes_organics_and_inorganics_sub_indicators(self, mock_bwd):
         family = "EF v3.1"
-        excluded = next(iter(EXCLUDED_METHODS))   # grab one excluded tuple
-        methods_dict = {
-            excluded: {"unit": "kg"},
-            (family, "acidification", "AP"): {"unit": "kg SO2 eq"},
+        mock_bwd.methods = {
+            ("src", family, "ecotoxicity: freshwater", "CTUe"): {"unit": "CTUe"},
+            ("src", family, "ecotoxicity: freshwater, inorganics", "CTUe"): {"unit": "CTUe"},
+            ("src", family, "Human toxicity, cancer_organics"): {"unit": "CTUh"},
         }
-        mock_bwd.methods = methods_dict
+        ensure_methods(family)
+        names = set(ImpactIndicator.objects.values_list("method", flat=True))
+        self.assertEqual(names, {"ecotoxicity: freshwater"})
 
-        indicator_set = MagicMock()
-        created_methods = []
+    @patch("dpp.lca.bwd")
+    def test_indicator_names_are_unique_for_three_part_methods(self, mock_bwd):
+        """('sentier', family, category): the name is the category, not the family."""
+        family = "EF v3.1"
+        mock_bwd.methods = {("sentier", family, "Climate change"): {"unit": "kg CO2 eq"},
+                            ("sentier", family, "Acidification"): {"unit": "mol H+ eq"}}
+        method_set = ensure_methods(family)
+        names = sorted(ImpactIndicator.objects.filter(indicator_set=method_set)
+                       .values_list("method", flat=True))
+        self.assertEqual(names, ["Acidification", "Climate change"])
 
-        with patch("dpp.models.IndicatorSet") as MockIS, \
-             patch("dpp.models.ImpactIndicator") as MockII, \
-             patch("dpp.models.ImpactCategory") as MockIC:
+    @patch("dpp.lca.bwd")
+    def test_running_twice_does_not_duplicate_and_removes_unused(self, mock_bwd):
+        family = "EF v3.1"
+        mock_bwd.methods = {("sentier", family, "Climate change"): {"unit": "kg CO2 eq"}}
+        method_set = ensure_methods(family)
+        category = ImpactCategory.objects.get(name="Unknown")
+        ImpactIndicator.objects.create(method=family, unit="x", indicator_set=method_set,
+                                       impact_category=category)  # left by the old code
+        ensure_methods(family)
+        self.assertEqual(list(ImpactIndicator.objects.values_list("method", flat=True)),
+                         ["Climate change"])
 
-            MockIS.objects.get.side_effect = MockIS.DoesNotExist
-            MockIS.DoesNotExist = Exception
-            MockIS.objects.create.return_value = indicator_set
-            MockIC.objects.get_or_create.return_value = (MagicMock(), True)
-            MockII.objects.filter.return_value = []
 
-            def capture_update_or_create(**kwargs):
-                created_methods.append(kwargs.get("method"))
-                return MagicMock(), True
+class TestSelectMethods(SimpleTestCase):
 
-            MockII.objects.update_or_create.side_effect = capture_update_or_create
-            ensure_methods(family)
+    @patch("dpp.lca.installed_databases", return_value=["bafu-2026"])
+    @patch("dpp.lca._method_biosphere",
+           side_effect=lambda m: {"ecoinvent-3.12": "ecoinvent-3.12-biosphere",
+                                  "sentier": "ef-3.1-biosphere"}[m[0]])
+    @patch("dpp.lca.bwd")
+    def test_uses_the_source_that_matches_the_background_biosphere(self, mock_bwd, *_):
+        family = "EF v3.1"
+        mock_bwd.methods = {
+            ("ecoinvent-3.12", family, "climate change", "GWP100"): {},
+            ("sentier", family, "Climate change"): {},
+            ("sentier", family, "Acidification"): {},
+        }
+        mock_bwd.databases = {"bafu-2026": {"depends": ["bafu-2026-residual", "ef-3.1-biosphere"]}}
+        self.assertEqual(select_methods(family), [("sentier", family, "Acidification"),
+                                                  ("sentier", family, "Climate change")])
 
-        # The excluded method's sub-string should not appear
-        assert excluded[1] not in created_methods
+    @patch("dpp.lca.bwd")
+    def test_one_source_needs_no_biosphere_check(self, mock_bwd):
+        mock_bwd.methods = {("EF v3.1", "climate change", "GWP100"): {}}
+        self.assertEqual(select_methods("EF v3.1"), [("EF v3.1", "climate change", "GWP100")])
+        mock_bwd.Method.assert_not_called()
 
 
 class TestSelectSupplyChain(TestCase):
@@ -379,6 +406,66 @@ class MockTransports:
     def first(self):
         return self._items[0] if self._items else None
 
+class TestEmissionsInTheMethodsBiosphere(TestCase):
+    """Emissions are matched in the ecoinvent biosphere, then moved to the biosphere
+    of the LCIA methods (EF 3.1 for BAFU), so that the methods count them."""
+    EI = ("ecoinvent-3.12-biosphere", "ei-pm25-urban")
+    EF = ("ef-3.1-biosphere", "ef-pm25-urban")
+
+    def emission(self, unit="g", amount=10.0):
+        exc = MagicMock()
+        exc.amount, exc.substance.unit = amount, unit
+        exc.substance.__str__ = lambda self: "Particulate Matter, < 2.5 um"
+        exc.get_direction_display.return_value = "Output"
+        exc.get_compartment_display.return_value = "Urban air"
+        return exc
+
+    def test_same_biosphere_is_not_translated(self):
+        self.assertEqual(translate_biosphere_flow(self.EI, "ecoinvent-3.12-biosphere"), self.EI)
+        self.assertEqual(translate_biosphere_flow(self.EI, None), self.EI)
+
+    @patch("dpp.lca.bwd")
+    @patch("dpp.lca._ecoinvent_to_ef_codes", return_value={"ei-pm25-urban": "ef-pm25-urban"})
+    def test_ecoinvent_flow_is_translated_to_ef(self, _mapping, mock_bwd):
+        self.assertEqual(translate_biosphere_flow(self.EI, "ef-3.1-biosphere"), self.EF)
+        mock_bwd.get_node.assert_called_once_with(database="ef-3.1-biosphere", code="ef-pm25-urban")
+
+    @patch("dpp.lca._ecoinvent_to_ef_codes", return_value={})
+    def test_unmapped_flow_gives_none(self, _mapping):
+        self.assertIsNone(translate_biosphere_flow(self.EI, "ef-3.1-biosphere"))
+
+    def test_amount_is_converted_to_the_flow_unit(self):
+        self.assertAlmostEqual(emission_amount(self.emission("g", 10), "kilogram"), 0.01)
+        self.assertEqual(emission_amount(self.emission("kg", 2), "kilogram"), 2)
+        self.assertAlmostEqual(emission_amount(self.emission("l", 500), "cubic meter"), 0.5)
+        self.assertIsNone(emission_amount(self.emission("g", 1), "cubic meter"))
+
+    def convert(self, mapping):
+        proc = make_process(pk=1, unit="kg")
+        with patch("dpp.lca.bwd") as mock_bwd, \
+             patch("dpp.lca.get_biosphere_db"), \
+             patch("dpp.lca.find_biosphere_flow", return_value=self.EI), \
+             patch("dpp.lca._ecoinvent_to_ef_codes", return_value=mapping), \
+             patch("dpp.models.ProductExchange") as MockPE, \
+             patch("dpp.models.EnvExchange") as MockEE:
+            mock_bwd.databases = {}
+            mock_bwd.get_activity.return_value = {"unit": "kilogram"}
+            MockPE.objects.filter.return_value = []
+            MockEE.objects.filter.return_value = [self.emission("g", 10)]
+            return convert_dpp_to_brightway([proc], "db", "ef-3.1-biosphere")
+
+    def test_conversion_writes_the_ef_flow_in_kilogram(self):
+        result = self.convert({"ei-pm25-urban": "ef-pm25-urban"})
+        [bio] = [e for e in result[("db", 1)]["exchanges"] if e["type"] == "biosphere"]
+        self.assertEqual(bio["input"], self.EF)
+        self.assertAlmostEqual(bio["amount"], 0.01)
+        self.assertEqual(bio["unit"], "kg")
+
+    def test_unmatched_emission_stops_with_a_clear_message(self):
+        with self.assertRaisesRegex(DppDataError, "Particulate Matter.*no match in the biosphere 'ef-3.1-biosphere'"):
+            self.convert({})
+
+
 class TestMakeTransportExchange(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -404,7 +491,8 @@ class TestMakeTransportExchange(TestCase):
         self.mock_prices = pd.DataFrame({"M_TLAND_ALL_price": [0.1]}, index=["?"])
 
         self.distance_km = 500
-        self.product = SimpleNamespace(name="widget", unit="kg")  # no `properties` -> uses unit
+        # Shaped like a Flow: the unit is on its ProductModel. No `properties` -> uses unit
+        self.product = SimpleNamespace(name="widget", model=SimpleNamespace(unit="kg"))
         self.transports = MockTransports(
             SimpleNamespace(product=self.product, mode="truck", distance=self.distance_km)
         )
@@ -435,6 +523,102 @@ class TestMakeTransportExchange(TestCase):
         with patch("dpp.lca.country_data", self.mock_prices):
             with self.assertRaises(LookupError):
                 make_transport_exchange(self.transports, other, 1)
+
+class TestMakeTransportExchangeBafu(TestCase):
+    """With the BAFU database, transport links to BAFU processes, not ecoinvent ones."""
+    TRUCK = "99f8a4b0-99b5-3130-924c-5de4c10b62ef"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.bw_project = f"test-{uuid.uuid4().hex}"
+        bwd.projects.set_current(cls.bw_project)
+        cls.addClassCleanup(bwd.projects.delete_project, cls.bw_project, delete_dir=True)
+        bwd.Database(BAFU_DB).write({
+            (BAFU_DB, cls.TRUCK): {
+                "name": "Transport, freight, lorry, fleet average",
+                "unit": "ton kilometer", "location": "RER", "exchanges": [],
+            },
+        })
+
+    def setUp(self):
+        bwd.projects.set_current(self.bw_project)
+        self.product = SimpleNamespace(name="widget", model=SimpleNamespace(unit="kg"))
+
+    def transports(self, mode):
+        return MockTransports(SimpleNamespace(
+            product=self.product, mode=mode, distance=500,
+            get_mode_display=lambda: mode,
+        ))
+
+    def test_truck_links_to_bafu_process(self):
+        exchange = make_transport_exchange(self.transports("truck"), self.product, 200)
+        self.assertEqual(exchange["input"], (BAFU_DB, self.TRUCK))
+        self.assertAlmostEqual(exchange["amount"], 1 / 1000 * 200 * 500)  # t-km
+        self.assertEqual(bwd.get_activity(exchange["input"])["unit"], "ton kilometer")
+
+    def test_mode_without_bafu_process_raises_readable_error(self):
+        with self.assertRaises(DppDataError):
+            make_transport_exchange(self.transports("inland ship"), self.product, 1)
+
+
+class TestConvertWithBackgroundProcess(TestCase):
+    """A DPP process with an input that comes from a BAFU background process."""
+    ARGON = "argon-code"
+    TRUCK = "99f8a4b0-99b5-3130-924c-5de4c10b62ef"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.bw_project = f"test-{uuid.uuid4().hex}"
+        bwd.projects.set_current(cls.bw_project)
+        cls.addClassCleanup(bwd.projects.delete_project, cls.bw_project, delete_dir=True)
+        bwd.Database(BIOSPHERE).register()
+        bwd.Database(BAFU_DB).write({
+            (BAFU_DB, cls.ARGON): {"name": "market for argon", "unit": "kilogram",
+                                   "location": "GLO", "exchanges": []},
+            (BAFU_DB, cls.TRUCK): {"name": "lorry", "unit": "ton kilometer",
+                                   "location": "RER", "exchanges": []},
+        })
+
+    def setUp(self):
+        from ..models import BackgroundProcess, ManufacturingProcess, ProductExchange, ProductionLine
+        from .test_models import make_facility, make_line
+        bwd.projects.set_current(self.bw_project)
+        facility = make_facility()
+        self.argon = ProductModel.objects.create(name="Argon", unit="kg")
+        self.plate = ProductModel.objects.create(name="Plate", unit="p")
+        self.background = BackgroundProcess.objects.create(
+            name="market for argon", functional_flow=self.argon,
+            database=BAFU_DB, db_code=self.ARGON, facility=facility)
+        self.process = ManufacturingProcess.objects.create(
+            name="make plate", functional_flow=self.plate, facility=facility)
+        ProductExchange.objects.create(process=self.process, product=self.argon,
+                                       amount=2, direction="in", type="prod")
+        line = make_line(self.plate, facility)
+        Transport.objects.create(production_line=line, product=self.argon, distance=100, mode="truck")
+        # As select_supply_chain returns them: base ManufacturingProcess objects
+        self.processes = [ManufacturingProcess.objects.get(pk=p.pk) for p in (self.process, self.background)]
+
+    def test_links_input_to_installed_background_process(self):
+        activities = convert_dpp_to_brightway(self.processes, "dpp_test")
+        self.assertEqual(list(activities), [("dpp_test", self.process.pk)])  # background not copied
+        inputs = [e["input"] for e in activities[("dpp_test", self.process.pk)]["exchanges"]]
+        self.assertIn((BAFU_DB, self.ARGON), inputs)
+        self.assertIn((BAFU_DB, self.TRUCK), inputs)
+
+    def test_background_database_not_installed_raises_readable_error(self):
+        self.background.database = "Demo stand-in (no LCA data)"
+        self.background.save()
+        with self.assertRaisesRegex(DppDataError, "not installed"):
+            convert_dpp_to_brightway(self.processes, "dpp_test")
+
+    def test_unknown_background_code_raises_readable_error(self):
+        self.background.db_code = "no-such-code"
+        self.background.save()
+        with self.assertRaisesRegex(DppDataError, "no-such-code"):
+            convert_dpp_to_brightway(self.processes, "dpp_test")
+
 
 class TestLcaCalculations(TestCase):
 

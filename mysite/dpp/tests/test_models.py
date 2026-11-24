@@ -705,6 +705,61 @@ class PublisherTests(SupplyChainTestCase):
         publisher = Publisher(amount=3, registration_numbers="a,b")
         self.assertIn("Insufficient registration numbers", publisher.check_details(fresh))
 
+    # -- get_issues ---------------------------------------------------------
+    def test_get_issues_lists_problems_with_fix_links(self):
+        messages = [i["message"] for i in self.publisher.get_issues()]
+        self.assertIn("No process makes the input 'Raw'.", messages)
+        self.assertTrue(any("no DPP details" in m for m in messages))
+        self.assertTrue(any("no product properties" in m for m in messages))
+        for issue in self.publisher.get_issues():
+            self.assertTrue(issue["fixes"])  # every problem offers a fix
+
+    def test_get_issues_empty_line_links_to_prefilled_process_form(self):
+        Process.objects.filter(production_line=self.line).delete()
+        issue = self.publisher.get_issues()[0]
+        self.assertIn("has no processes", issue["message"])
+        label, url = issue["fixes"][0]
+        self.assertIn(reverse("dpp:process_add"), url)
+        self.assertIn(f"production_line={self.line.pk}", url)
+        self.assertIn(f"functional_flow={self.final.pk}", url)
+        self.assertIn("next=", url)
+
+    def test_get_issues_flags_line_without_inputs_or_emissions(self):
+        ProductExchange.objects.filter(process__in=self.line.bop.all()).delete()
+        issue = next(i for i in self.publisher.get_issues() if "nothing to count" in i["message"])
+        urls = [url for _, url in issue["fixes"]]
+        self.assertIn(f"process={self.p2.pk}", urls[0])  # the process that makes the final product
+        self.assertIn(reverse("dpp:envexchange_add"), urls[1])
+
+    def test_get_issues_flags_background_process_without_installed_database(self):
+        BackgroundProcess.objects.create(name="market for raw", functional_flow=self.raw,
+                                         facility=self.facility, database="Demo stand-in")
+        status = {"bafu-2026": True, "ecoinvent-3.12-biosphere": True, "dpp_Some product_1": True}
+        with patch.object(lca, "project_status", return_value=status):
+            issue = next(i for i in self.publisher.get_issues() if "not installed" in i["message"])
+        self.assertIn("Link it to a process in bafu-2026.", issue["message"])
+        self.assertIn("/dpp/backgroundprocess/", issue["fixes"][0][1])
+        self.assertIn("next=", issue["fixes"][0][1])
+
+    def test_run_shows_data_error_without_type_name(self):
+        mocks = self.patch_pipeline()
+        mocks["lca"].side_effect = lca.DppDataError("Add emissions.")
+        self.publisher.run_from_step(1)
+        self.assertEqual(self.publisher.error_message, "Error at step 5: Add emissions.")
+
+    def test_get_issues_empty_when_ready(self):
+        make_process(self.line, self.raw)
+        DppDetails.objects.create(product=self.final)
+        add_properties(self.final)
+        self.publisher.production_line = ProductionLine.objects.get(pk=self.line.pk)
+        self.assertEqual(self.publisher.get_issues(), [])
+
+    def test_run_stops_at_step_1_when_no_process_makes_final_product(self):
+        Process.objects.filter(production_line=self.line).delete()
+        self.assertTrue(self.publisher.run_from_step(1))
+        self.assertEqual(self.publisher.status, 0)
+        self.assertIn("main output", self.publisher.error_message)
+
     # -- run_from_step ------------------------------------------------------
     def patch_pipeline(self):
         """Mock every step of the pipeline; returns {name: mock}."""
@@ -755,7 +810,7 @@ class PublisherTests(SupplyChainTestCase):
 
         self.assertTrue(had_error)
         self.assertEqual(self.publisher.status, 1)
-        self.assertEqual(self.publisher.error_message, "Error at step 2: boom")
+        self.assertEqual(self.publisher.error_message, "Error at step 2: RuntimeError: boom")
         mocks["transport"].assert_not_called()
         self.assertFalse(self.publisher.can_publish())
 
@@ -805,3 +860,47 @@ class PublisherTests(SupplyChainTestCase):
 
         self.assertEqual(ProductItem.objects.count(), 0)
         self.assertEqual(Metadata.objects.count(), 0)
+
+
+class BackgroundProcessFormTests(TestCase):
+    """The edit form only accepts a code that exists in the chosen database."""
+    def setUp(self):
+        from ..forms import get_model_form_plus
+        self.Form = get_model_form_plus(BackgroundProcess)
+        self.argon = make_product("Argon, welding grade", unit="kg")
+        self.data = {"name": "market for argon", "amount": 1, "functional_flow": self.argon.pk,
+                     "facility": make_facility().pk, "database": "bafu-2026"}
+        patcher = patch.object(lca, "installed_databases", return_value=["bafu-2026"])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def form(self, code):
+        return self.Form(data={**self.data, "db_code": code})
+
+    def test_empty_code_is_refused_with_suggestions(self):
+        match = {"code": "abc", "name": "Argon, liquid, at plant", "location": "RER", "unit": "kilogram"}
+        with patch.object(lca, "find_activities", side_effect=[[], [match]]) as search:
+            form = self.form("")
+            self.assertFalse(form.is_valid())
+        self.assertEqual([c.args[1] for c in search.call_args_list], ["Argon, welding grade", "Argon"])
+        self.assertIn("choose an activity that matches 'Argon'", form.errors["db_code"][0])
+        html = str(form["db_code"])
+        self.assertIn('<option value="abc">Argon, liquid, at plant (RER, kilogram)</option>', html)
+        self.assertIn('list="id_db_code_suggestions"', html)
+
+    def test_unknown_code_is_refused(self):
+        with patch.object(lca.bwd, "get_activity", side_effect=KeyError), \
+             patch.object(lca, "find_activities", return_value=[]):
+            form = self.form("wrong")
+            self.assertFalse(form.is_valid())
+        self.assertIn("The code 'wrong' is not in 'bafu-2026'.", form.errors["db_code"][0])
+
+    def test_existing_code_is_accepted(self):
+        with patch.object(lca.bwd, "get_activity", return_value=object()):
+            self.assertTrue(self.form("abc").is_valid())
+
+    def test_database_that_is_not_installed_is_not_checked(self):
+        self.data["database"] = "Demo stand-in (no LCA data)"
+        form = self.Form(data={**self.data, "db_code": ""},
+                         instance=BackgroundProcess(database="Demo stand-in (no LCA data)"))
+        self.assertTrue(form.is_valid(), form.errors)
